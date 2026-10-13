@@ -98,7 +98,17 @@ public sealed class WorkflowQueuesController(
                 && item.OpmsTarget.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null ? item.OpmsTarget.RevisedIndicatorNumber : item.OpmsTarget.IndicatorNumber,
             Quarter = item.ReportingPeriod == null ? item.Quarter : item.ReportingPeriod.Code,
             DueDate = item.DueDate,
-            Status = item.Status,
+            Status = context.SubmissionWorkflowInstances
+                .Where(instance => instance.SubmissionKind == SubmissionKind.Opms && instance.SubmissionId == item.Id)
+                .Select(instance => instance.State == WorkflowInstanceState.Completed ? "completed"
+                    : instance.State == WorkflowInstanceState.Cancelled ? "cancelled"
+                    : instance.State == WorkflowInstanceState.Rework ? "returned_for_info"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".VERIFY") ? "pending_verification"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".APPROVE") ? "pending_approval"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".PMS_REVIEW") ? "approved"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".INTERNAL_AUDIT") ? "reviewed"
+                    : "submitted")
+                .FirstOrDefault() ?? (item.BaseState == SubmissionBaseStates.InProgress ? "draft" : "submitted"),
             SubmittedByUserId = item.SubmittedByUserId,
             SubmittedByUserPublicId = item.SubmittedByUser == null ? null : item.SubmittedByUser.PublicId,
             SubmittedByName = item.SubmittedByUser == null ? null : item.SubmittedByUser.FirstName + " " + item.SubmittedByUser.LastName,
@@ -138,7 +148,17 @@ public sealed class WorkflowQueuesController(
                 && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber,
             Quarter = item.ReportingPeriod == null ? item.Quarter : item.ReportingPeriod.Code,
             DueDate = item.DueDate,
-            Status = item.Status,
+            Status = context.SubmissionWorkflowInstances
+                .Where(instance => instance.SubmissionKind == SubmissionKind.Ipms && instance.SubmissionId == item.Id)
+                .Select(instance => instance.State == WorkflowInstanceState.Completed ? "completed"
+                    : instance.State == WorkflowInstanceState.Cancelled ? "cancelled"
+                    : instance.State == WorkflowInstanceState.Rework ? "returned_for_info"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".VERIFY") ? "pending_verification"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".APPROVE") ? "pending_approval"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".PMS_REVIEW") ? "approved"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".INTERNAL_AUDIT") ? "reviewed"
+                    : "submitted")
+                .FirstOrDefault() ?? (item.BaseState == SubmissionBaseStates.InProgress ? "draft" : "submitted"),
             SubmittedByUserId = item.SubmittedByUserId,
             SubmittedByUserPublicId = item.SubmittedByUser == null ? null : item.SubmittedByUser.PublicId,
             SubmittedByName = item.SubmittedByUser == null ? null : item.SubmittedByUser.FirstName + " " + item.SubmittedByUser.LastName,
