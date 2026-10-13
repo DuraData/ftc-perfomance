@@ -164,6 +164,8 @@ import type {
   LegacyRatingSourceKind,
   LegacyRatingReconciliationPreviewDto,
   LegacyRatingReconciliationResultDto,
+  LegacySubmissionPeriodPreviewDto,
+  LegacySubmissionPeriodResultDto,
   PerformanceDashboardDto,
   WorkflowQueueDto,
   WorkflowQueueName,
@@ -1580,6 +1582,24 @@ export async function executeLegacyRatingReconciliation(payload: {
   reason: string;
 }): Promise<ApiResponse<LegacyRatingReconciliationResultDto>> {
   return post<LegacyRatingReconciliationResultDto>('/v1/workflow/rating-reconciliation/execute', payload);
+}
+
+export async function getLegacySubmissionPeriodPreview(
+  submissionKind: 1 | 2,
+  page = 1,
+  pageSize = 25,
+): Promise<ApiResponse<PagedResult<LegacySubmissionPeriodPreviewDto>>> {
+  return get<PagedResult<LegacySubmissionPeriodPreviewDto>>(`/v1/workflow/period-reconciliation/preview?submissionKind=${submissionKind}&page=${page}&pageSize=${pageSize}`);
+}
+
+export async function executeLegacySubmissionPeriodReconciliation(payload: {
+  submissionKind: 1 | 2;
+  submissionPublicId: string;
+  reportingPeriodPublicId: string;
+  reason: string;
+  rowVersion: string;
+}): Promise<ApiResponse<LegacySubmissionPeriodResultDto>> {
+  return post<LegacySubmissionPeriodResultDto>('/v1/workflow/period-reconciliation/execute', payload);
 }
 
 export async function getPerformanceTargetRevisionsPage(publicId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<PerformanceTargetRevisionDto>>> {

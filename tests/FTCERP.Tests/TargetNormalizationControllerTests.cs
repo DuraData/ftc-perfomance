@@ -56,6 +56,19 @@ public sealed class TargetNormalizationControllerTests
         Assert.Empty(await context.PerformancePeriodTargets.ToArrayAsync());
     }
 
+    [Fact]
+    public async Task Execute_requires_a_substantive_governance_reason()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var (municipality, user, target) = await SeedAsync(context);
+
+        var result = await Controller(context, municipality.Id, user, Mock.Of<IWorkflowGovernanceService>())
+            .Execute(new TargetNormalizationRequest(SubmissionKind.Opms, [target.PublicId], "short"));
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Empty(await context.PerformancePeriodTargets.ToArrayAsync());
+    }
+
     private static TargetNormalizationController Controller(
         FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context,
         long municipalityId,

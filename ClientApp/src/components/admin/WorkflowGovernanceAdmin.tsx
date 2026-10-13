@@ -26,6 +26,7 @@ import { useSecurity } from '../../context/SecurityContext';
 import { NotificationDeliveryOperations } from './NotificationDeliveryOperations';
 import { NotificationPolicyAdministration } from './NotificationPolicyAdministration';
 import { TargetNormalizationAdministration } from './TargetNormalizationAdministration';
+import { LegacySubmissionPeriodReconciliationAdministration } from './LegacySubmissionPeriodReconciliationAdministration';
 import { LegacyRatingReconciliationAdministration } from './LegacyRatingReconciliationAdministration';
 
 type Tab = 'definitions' | 'windows' | 'ratings' | 'audit' | 'notifications' | 'delivery' | 'cutover' | 'rating-cutover';
@@ -383,7 +384,7 @@ export function WorkflowGovernanceAdminPage() {
 
         {tab === 'delivery' && <NotificationDeliveryOperations />}
         {tab === 'notifications' && <NotificationPolicyAdministration />}
-        {tab === 'cutover' && <TargetNormalizationAdministration />}
+        {tab === 'cutover' && <div className="space-y-6"><TargetNormalizationAdministration /><LegacySubmissionPeriodReconciliationAdministration /></div>}
         {tab === 'rating-cutover' && <LegacyRatingReconciliationAdministration />}
       </div>
     </AppShell>

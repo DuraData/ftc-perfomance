@@ -1424,6 +1424,34 @@ export interface LegacyRatingReconciliationResultDto {
   usedExistingRating: boolean;
 }
 
+export interface LegacySubmissionPeriodCandidateDto {
+  reportingPeriodPublicId: string;
+  code: string;
+  name: string;
+  periodType: number;
+  financialYearCode: string;
+  hasSubmissionConflict: boolean;
+}
+
+export interface LegacySubmissionPeriodPreviewDto {
+  submissionKind: 1 | 2;
+  submissionPublicId: string;
+  indicatorNumber: string;
+  targetName: string;
+  legacyQuarter: string;
+  status: 'Blocked' | 'Ready' | 'RequiresMapping';
+  message: string;
+  candidates: LegacySubmissionPeriodCandidateDto[];
+  rowVersion: string;
+}
+
+export interface LegacySubmissionPeriodResultDto {
+  reconciliationPublicId: string;
+  submissionPublicId: string;
+  reportingPeriodPublicId: string;
+  reportingPeriodCode: string;
+}
+
 export interface LoginRequest {
   email?: string | null;
   password: string;

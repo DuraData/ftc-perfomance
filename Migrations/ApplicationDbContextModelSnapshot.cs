@@ -5163,6 +5163,79 @@ namespace FTCERP.Host.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.LegacySubmissionPeriodReconciliation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("IpmsSubmissionId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OpmsSubmissionId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("ReconciledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReconciledByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<long>("ReportingPeriodId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SourceQuarterSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("SubmissionKind")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IpmsSubmissionId")
+                        .IsUnique()
+                        .HasFilter("[IpmsSubmissionId] IS NOT NULL");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("OpmsSubmissionId")
+                        .IsUnique()
+                        .HasFilter("[OpmsSubmissionId] IS NOT NULL");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ReconciledByUserId");
+
+                    b.HasIndex("ReportingPeriodId");
+
+                    b.ToTable("LegacySubmissionPeriodReconciliations", t =>
+                        {
+                            t.HasCheckConstraint("CK_LegacySubmissionPeriodReconciliations_OneSubmission", "CASE WHEN [OpmsSubmissionId] IS NULL THEN 0 ELSE 1 END + CASE WHEN [IpmsSubmissionId] IS NULL THEN 0 ELSE 1 END = 1");
+                        });
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.LegacySubmissionRatingReconciliation", b =>
                 {
                     b.Property<long>("Id")
@@ -14255,6 +14328,47 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("OpmsTarget");
 
                     b.Navigation("RevisedByUser");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.LegacySubmissionPeriodReconciliation", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.IpmsSubmission", "IpmsSubmission")
+                        .WithMany()
+                        .HasForeignKey("IpmsSubmissionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.OpmsSubmission", "OpmsSubmission")
+                        .WithMany()
+                        .HasForeignKey("OpmsSubmissionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "ReconciledByUser")
+                        .WithMany()
+                        .HasForeignKey("ReconciledByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ReportingPeriod", "ReportingPeriod")
+                        .WithMany()
+                        .HasForeignKey("ReportingPeriodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("IpmsSubmission");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("OpmsSubmission");
+
+                    b.Navigation("ReconciledByUser");
+
+                    b.Navigation("ReportingPeriod");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.LegacySubmissionRatingReconciliation", b =>

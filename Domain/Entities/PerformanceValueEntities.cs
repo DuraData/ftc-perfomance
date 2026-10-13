@@ -106,3 +106,30 @@ public sealed class LegacySubmissionValueArchive
     public OpmsSubmission? OpmsSubmission { get; set; }
     public IpmsSubmission? IpmsSubmission { get; set; }
 }
+
+/// <summary>
+/// Append-only evidence linking a preserved free-text legacy submission period to the
+/// canonical, target-scoped reporting period selected during controlled reconciliation.
+/// The source Quarter value is deliberately retained on the submission and snapshotted here.
+/// </summary>
+public sealed class LegacySubmissionPeriodReconciliation
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public SubmissionKind SubmissionKind { get; set; }
+    public string? OpmsSubmissionId { get; set; }
+    public string? IpmsSubmissionId { get; set; }
+    public string SourceQuarterSnapshot { get; set; } = string.Empty;
+    public long ReportingPeriodId { get; set; }
+    public string ReconciledByUserId { get; set; } = string.Empty;
+    public DateTime ReconciledAt { get; set; } = DateTime.UtcNow;
+    public string Reason { get; set; } = string.Empty;
+    public string CorrelationId { get; set; } = string.Empty;
+
+    public Municipality Municipality { get; set; } = null!;
+    public OpmsSubmission? OpmsSubmission { get; set; }
+    public IpmsSubmission? IpmsSubmission { get; set; }
+    public ReportingPeriod ReportingPeriod { get; set; } = null!;
+    public ApplicationUser ReconciledByUser { get; set; } = null!;
+}

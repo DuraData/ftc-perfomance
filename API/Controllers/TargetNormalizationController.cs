@@ -54,8 +54,8 @@ public sealed class TargetNormalizationController(
         if (ids.Length != request.TargetPublicIds.Length)
             return BadRequest(Fail<TargetNormalizationResultDto>("Target public IDs must be unique."));
         var reason = request.Reason?.Trim();
-        if (string.IsNullOrWhiteSpace(reason) || reason.Length > 1000)
-            return BadRequest(Fail<TargetNormalizationResultDto>("A reconciliation reason between 1 and 1000 characters is required."));
+        if (reason is not { Length: >= 10 and <= 1000 })
+            return BadRequest(Fail<TargetNormalizationResultDto>("A reconciliation reason between 10 and 1000 characters is required."));
         var user = await CurrentUser();
         if (user == null) return Unauthorized(Fail<TargetNormalizationResultDto>("User not found."));
 

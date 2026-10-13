@@ -106,6 +106,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     public DbSet<PerformanceTargetRevision> PerformanceTargetRevisions { get; set; } = null!;
     public DbSet<KpiFieldRevision> KpiFieldRevisions { get; set; } = null!;
     public DbSet<LegacySubmissionValueArchive> LegacySubmissionValueArchives { get; set; } = null!;
+    public DbSet<LegacySubmissionPeriodReconciliation> LegacySubmissionPeriodReconciliations { get; set; } = null!;
     public DbSet<WorkflowDefinition> WorkflowDefinitions { get; set; } = null!;
     public DbSet<WorkflowStageDefinition> WorkflowStageDefinitions { get; set; } = null!;
     public DbSet<SubmissionWorkflowInstance> SubmissionWorkflowInstances { get; set; } = null!;
@@ -342,6 +343,18 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<LegacySubmissionValueArchive>().HasOne(item => item.OpmsSubmission).WithMany().HasForeignKey(item => item.OpmsSubmissionId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<LegacySubmissionValueArchive>().HasOne(item => item.IpmsSubmission).WithMany().HasForeignKey(item => item.IpmsSubmissionId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<LegacySubmissionValueArchive>().ToTable(table => table.HasCheckConstraint("CK_LegacySubmissionValueArchives_OneSubmission", "CASE WHEN [OpmsSubmissionId] IS NULL THEN 0 ELSE 1 END + CASE WHEN [IpmsSubmissionId] IS NULL THEN 0 ELSE 1 END = 1"));
+        builder.Entity<LegacySubmissionPeriodReconciliation>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<LegacySubmissionPeriodReconciliation>().HasIndex(item => item.OpmsSubmissionId).IsUnique().HasFilter("[OpmsSubmissionId] IS NOT NULL");
+        builder.Entity<LegacySubmissionPeriodReconciliation>().HasIndex(item => item.IpmsSubmissionId).IsUnique().HasFilter("[IpmsSubmissionId] IS NOT NULL");
+        builder.Entity<LegacySubmissionPeriodReconciliation>().Property(item => item.SourceQuarterSnapshot).HasMaxLength(100);
+        builder.Entity<LegacySubmissionPeriodReconciliation>().Property(item => item.Reason).HasMaxLength(1000);
+        builder.Entity<LegacySubmissionPeriodReconciliation>().Property(item => item.CorrelationId).HasMaxLength(100);
+        builder.Entity<LegacySubmissionPeriodReconciliation>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionPeriodReconciliation>().HasOne(item => item.OpmsSubmission).WithMany().HasForeignKey(item => item.OpmsSubmissionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionPeriodReconciliation>().HasOne(item => item.IpmsSubmission).WithMany().HasForeignKey(item => item.IpmsSubmissionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionPeriodReconciliation>().HasOne(item => item.ReportingPeriod).WithMany().HasForeignKey(item => item.ReportingPeriodId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionPeriodReconciliation>().HasOne(item => item.ReconciledByUser).WithMany().HasForeignKey(item => item.ReconciledByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionPeriodReconciliation>().ToTable(table => table.HasCheckConstraint("CK_LegacySubmissionPeriodReconciliations_OneSubmission", "CASE WHEN [OpmsSubmissionId] IS NULL THEN 0 ELSE 1 END + CASE WHEN [IpmsSubmissionId] IS NULL THEN 0 ELSE 1 END = 1"));
 
         builder.Entity<WorkflowDefinition>().HasIndex(x => x.PublicId).IsUnique();
         builder.Entity<WorkflowDefinition>().HasIndex(x => new { x.MunicipalityId, x.MunicipalityFinancialYearId, x.SubmissionKind, x.Code, x.Version }).IsUnique();
@@ -466,6 +479,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<PerformanceTargetRevision>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<KpiFieldRevision>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<LegacySubmissionValueArchive>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<LegacySubmissionPeriodReconciliation>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<WorkflowDefinition>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<WorkflowStageDefinition>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<SubmissionWorkflowInstance>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -2148,7 +2162,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(IpmsTarget), typeof(OpmsSubmission), typeof(IpmsSubmission),
             typeof(DueDateExtension), typeof(ReviewComment), typeof(AuditFinding), typeof(SubmissionScore),
             typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear), typeof(SdbipLayer), typeof(OpmsImportBatch),
-            typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive)
+            typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive), typeof(LegacySubmissionPeriodReconciliation)
             , typeof(MunicipalityConsolidationPolicy), typeof(PerformanceSuggestionEvent)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating), typeof(LegacySubmissionRatingReconciliation)
@@ -2516,6 +2530,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Submission stage rating history is append-only.");
         if (ChangeTracker.Entries<LegacySubmissionRatingReconciliation>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Legacy submission rating reconciliation evidence is append-only.");
+        if (ChangeTracker.Entries<LegacySubmissionPeriodReconciliation>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Legacy submission period reconciliation evidence is append-only.");
         if (ChangeTracker.Entries<InternalAuditAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Internal Audit assessment history is append-only.");
         foreach (var entry in ChangeTracker.Entries<InternalAuditAssessmentConfiguration>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))

@@ -36,12 +36,14 @@ const api = vi.hoisted(() => ({
   executeTargetNormalization: vi.fn(),
   getLegacyRatingReconciliationPreview: vi.fn(),
   executeLegacyRatingReconciliation: vi.fn(),
+  getLegacySubmissionPeriodPreview: vi.fn(),
+  executeLegacySubmissionPeriodReconciliation: vi.fn(),
 }));
 const security = vi.hoisted(() => ({ permissions: new Set<string>() }));
 
 vi.mock('../../api/api', () => api);
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
-vi.mock('../../context/AppContext', () => ({ useApp: () => ({ permissions: ['OPMS_KPI.NORMALIZE_LEGACY', 'WORKFLOW.RECONCILE_LEGACY_RATINGS'], pushToast: vi.fn() }) }));
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ permissions: ['OPMS_KPI.NORMALIZE_LEGACY', 'WORKFLOW.RECONCILE_LEGACY_RATINGS', 'WORKFLOW.RECONCILE_LEGACY_PERIODS'], pushToast: vi.fn() }) }));
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({
   canRead: (resource: string) => security.permissions.has(`${resource}.READ`),
   canCreate: (resource: string) => security.permissions.has(`${resource}.CREATE`),
@@ -77,6 +79,7 @@ describe('WorkflowGovernanceAdminPage', () => {
     api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'year-1', financialYearPublicId: 'fy-1', code: '2026/27', name: '2026/27', isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getRatingSchemesPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'scheme-1', code: 'FIVE_POINT', name: 'Five point scale', isActive: true, rowVersion: 'AQ==', values: [] }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getInternalAuditConfigurationsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getLegacySubmissionPeriodPreview.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getNotificationPoliciesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getWorkingCalendarHolidaysPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getTargetNormalizationPreview.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 50, totalCount: 0, totalPages: 0 } });
