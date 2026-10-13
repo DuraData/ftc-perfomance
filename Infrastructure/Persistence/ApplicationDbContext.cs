@@ -2341,6 +2341,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceRolePermissionHistory();
         EnforceSecurityRoleHistory();
         EnforceSecurityRegistryHistory();
+        EnforcePermissionProjectionHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
@@ -3266,6 +3267,108 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 "Security-navigation public identity and code are immutable.");
             RequireGovernanceAudit(nameof(SecurityNavigationItem), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
         }
+    }
+
+    private void EnforcePermissionProjectionHistory()
+    {
+        if (ChangeTracker.Entries<Permission>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Permission catalogue history cannot be hard deleted; deactivate the governing security definition instead.");
+
+        foreach (var entry in ChangeTracker.Entries<Permission>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(Permission.Module), nameof(Permission.Feature), nameof(Permission.Action),
+                    nameof(Permission.Description), nameof(Permission.ResourceCode), nameof(Permission.Operation),
+                    nameof(Permission.MemberCode), nameof(Permission.NavigationCode), nameof(Permission.ActionCode),
+                    nameof(Permission.IsActive)],
+                "Permission catalogue code and kind are immutable.");
+
+            if (!IsExactTrackedPermissionProjection(entry.Entity))
+                throw new InvalidOperationException("Permission catalogue projections may change only to the exact value derived from their governed security registry definition in the same transaction.");
+        }
+    }
+
+    private bool IsExactTrackedPermissionProjection(Permission permission)
+    {
+        static bool IsChanged(EntityEntry entry) => entry.State is EntityState.Added or EntityState.Modified;
+        var resourceEntry = ChangeTracker.Entries<SecurityResource>().FirstOrDefault(entry => entry.State != EntityState.Deleted
+            && entry.Entity.Code == permission.ResourceCode);
+        var resourceChanged = resourceEntry != null && IsChanged(resourceEntry);
+
+        return permission.Kind switch
+        {
+            SecurityPermissionKind.Resource => resourceChanged && IsExactResourcePermission(permission, resourceEntry!.Entity),
+            SecurityPermissionKind.Action => ExactActionProjection(permission, resourceEntry?.Entity, resourceChanged),
+            SecurityPermissionKind.Member => ExactMemberProjection(permission, resourceEntry?.Entity, resourceChanged),
+            SecurityPermissionKind.Navigation => ExactNavigationProjection(permission),
+            _ => false
+        };
+    }
+
+    private bool ExactActionProjection(Permission permission, SecurityResource? resource, bool resourceChanged)
+    {
+        var actionEntry = ChangeTracker.Entries<SecurityActionDefinition>().FirstOrDefault(entry => entry.State != EntityState.Deleted
+            && entry.Entity.Code == (permission.ActionCode ?? permission.Code));
+        if (actionEntry == null || resource == null || (!resourceChanged && actionEntry.State is not (EntityState.Added or EntityState.Modified)))
+            return false;
+        var action = actionEntry.Entity;
+        return permission.Code == action.Code && permission.Module == "Action" && permission.Feature == action.ResourceCode
+            && permission.Action == action.Code.Split('.').Last() && permission.ResourceCode == action.ResourceCode
+            && permission.Operation == SecurityOperation.Execute && permission.MemberCode == null && permission.NavigationCode == null
+            && permission.ActionCode == action.Code && permission.Description == (action.Description ?? action.Name)
+            && permission.IsActive == (resource.IsActive && action.IsActive);
+    }
+
+    private bool ExactMemberProjection(Permission permission, SecurityResource? resource, bool resourceChanged)
+    {
+        var memberEntry = ChangeTracker.Entries<SecurityMemberDefinition>().FirstOrDefault(entry => entry.State != EntityState.Deleted
+            && entry.Entity.ResourceCode == permission.ResourceCode && entry.Entity.MemberCode == permission.MemberCode);
+        if (memberEntry == null || resource == null || (!resourceChanged && memberEntry.State is not (EntityState.Added or EntityState.Modified)))
+            return false;
+        var member = memberEntry.Entity;
+        if (permission.Operation is not (SecurityOperation.Read or SecurityOperation.Update)) return false;
+        var operation = permission.Operation.Value;
+        var expectedActive = resource.IsActive && resource.SupportsFieldSecurity && member.IsActive
+            && (operation == SecurityOperation.Read || !member.IsSystemManaged);
+        return permission.Code == $"{member.ResourceCode}.{member.MemberCode}.{operation.ToString().ToUpperInvariant()}"
+            && permission.Module == "Member" && permission.Feature == member.ResourceCode && permission.Action == operation.ToString()
+            && permission.ResourceCode == member.ResourceCode && permission.MemberCode == member.MemberCode
+            && permission.NavigationCode == null && permission.ActionCode == null
+            && permission.Description == $"{operation} {member.DisplayName}" && permission.IsActive == expectedActive;
+    }
+
+    private bool ExactNavigationProjection(Permission permission)
+    {
+        var navigationEntry = ChangeTracker.Entries<SecurityNavigationItem>().FirstOrDefault(entry => entry.State is EntityState.Added or EntityState.Modified
+            && (entry.Entity.Code == permission.NavigationCode || entry.Entity.RequiredPermissionCode == permission.Code));
+        if (navigationEntry == null) return false;
+        var navigation = navigationEntry.Entity;
+        return permission.Code == navigation.RequiredPermissionCode && permission.Module == "Navigation"
+            && permission.Feature == navigation.Name && permission.Action == "View" && permission.ResourceCode == null
+            && permission.Operation == null && permission.MemberCode == null && permission.NavigationCode == navigation.Code
+            && permission.ActionCode == null && permission.Description == $"View {navigation.Name} navigation"
+            && permission.IsActive == navigation.IsActive;
+    }
+
+    private static bool IsExactResourcePermission(Permission permission, SecurityResource resource)
+    {
+        if (!permission.Operation.HasValue) return false;
+        var operation = permission.Operation.Value;
+        var supported = operation switch
+        {
+            SecurityOperation.Create => resource.SupportsCreate,
+            SecurityOperation.Read => resource.SupportsRead,
+            SecurityOperation.Update => resource.SupportsUpdate,
+            SecurityOperation.Delete => resource.SupportsDelete,
+            SecurityOperation.Export => resource.SupportsExport,
+            SecurityOperation.Import => resource.SupportsImport,
+            _ => false
+        };
+        return permission.Code == $"{resource.Code}.{operation.ToString().ToUpperInvariant()}"
+            && permission.Module == "Resource" && permission.Feature == resource.Code && permission.Action == operation.ToString()
+            && permission.ResourceCode == resource.Code && permission.MemberCode == null && permission.NavigationCode == null
+            && permission.ActionCode == null && permission.Description == $"{operation} {resource.Name}"
+            && permission.IsActive == (resource.IsActive && supported);
     }
 
     private void EnforcePerformancePeriodTargetHistory()

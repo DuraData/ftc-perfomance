@@ -558,7 +558,8 @@ public sealed class SecurityAdministrationController : ControllerBase
         var validation = ValidateActionInput(entity.Code, request.Name, entity.ResourceCode, request.Description, request.Reason);
         if (validation != null) return BadRequest(new ApiResponse<SecurityActionDto>(false, null, validation));
         if (!TryDecodeRowVersion(request.RowVersion, out var rowVersion)) return BadRequest(new ApiResponse<SecurityActionDto>(false, null, "RowVersion is invalid."));
-        var resourceActive = await _context.SecurityResources.AnyAsync(item => item.Code == entity.ResourceCode && item.IsActive);
+        var resource = await _context.SecurityResources.FirstOrDefaultAsync(item => item.Code == entity.ResourceCode);
+        var resourceActive = resource?.IsActive == true;
         if (request.IsActive && !resourceActive) return BadRequest(new ApiResponse<SecurityActionDto>(false, null, "An action cannot be activated while its resource is inactive."));
         _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = rowVersion;
         var oldValue = ActionAuditValue(entity);
@@ -744,7 +745,8 @@ public sealed class SecurityAdministrationController : ControllerBase
         if (request.DisplayName.Trim().Length is < 2 or > 120) return BadRequest(new ApiResponse<SecurityMemberDto>(false, null, "Member display name must be 2-120 characters."));
         if (request.Reason.Trim().Length is < 5 or > 500) return BadRequest(new ApiResponse<SecurityMemberDto>(false, null, "An audit reason of 5-500 characters is required."));
         if (!TryDecodeRowVersion(request.RowVersion, out var rowVersion)) return BadRequest(new ApiResponse<SecurityMemberDto>(false, null, "RowVersion is invalid."));
-        var resourceActive = await _context.SecurityResources.AnyAsync(item => item.Code == entity.ResourceCode && item.IsActive && item.SupportsFieldSecurity);
+        var resource = await _context.SecurityResources.FirstOrDefaultAsync(item => item.Code == entity.ResourceCode);
+        var resourceActive = resource is { IsActive: true, SupportsFieldSecurity: true };
         if (request.IsActive && !resourceActive) return BadRequest(new ApiResponse<SecurityMemberDto>(false, null, "A member cannot be activated unless its resource is active and supports field security."));
         _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = rowVersion;
         var oldValue = MemberAuditValue(entity);

@@ -365,14 +365,14 @@ public sealed class ControlledSeedSecurityTests
 
         await DbInitializer.SeedPermissionsAsync(context);
         await SecurityRegistrySeeder.SeedAsync(context);
-        var dashboard = await context.Permissions.SingleAsync(item => item.Code == "Dashboard.View");
         var userResource = await context.SecurityResources.SingleAsync(item => item.Code == "USER");
         var emailMember = await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == "USER" && item.MemberCode == "Email");
         var actor = IdpTestFixture.CreateUser("catalogue-governance-actor");
         context.Users.Add(actor);
         await context.SaveChangesAsync();
-        dashboard.Description = "Administrator-defined dashboard description";
-        dashboard.IsActive = false;
+        await context.Permissions.Where(item => item.Code == "Dashboard.View").ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.Description, "Administrator-defined dashboard description")
+            .SetProperty(item => item.IsActive, false));
         userResource.SupportsDelete = false;
         emailMember.IsSensitive = false;
         context.AuditTrails.AddRange(
@@ -384,7 +384,7 @@ public sealed class ControlledSeedSecurityTests
         await DbInitializer.SeedPermissionsAsync(context);
         await SecurityRegistrySeeder.SeedAsync(context);
 
-        dashboard = await context.Permissions.SingleAsync(item => item.Code == "Dashboard.View");
+        var dashboard = await context.Permissions.SingleAsync(item => item.Code == "Dashboard.View");
         dashboard.Description.Should().Be("Administrator-defined dashboard description");
         dashboard.IsActive.Should().BeFalse();
         (await context.SecurityResources.SingleAsync(item => item.Code == "USER")).SupportsDelete.Should().BeFalse();

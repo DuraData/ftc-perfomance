@@ -2,6 +2,40 @@ namespace FTCERP.Tests;
 
 public class SecurityRegistryPersistenceGovernanceTests
 {
+    [Fact]
+    public void Production_permission_construction_is_confined_to_governed_registry_and_controlled_seed_paths()
+    {
+        var root = FindRepositoryRoot();
+        var productionFiles = new[] { "API", "Application", "Domain", "Infrastructure" }
+            .Select(path => new DirectoryInfo(Path.Combine(root.FullName, path)))
+            .Where(directory => directory.Exists)
+            .SelectMany(directory => directory.GetFiles("*.cs", SearchOption.AllDirectories))
+            .ToArray();
+        var files = productionFiles
+            .Where(file => File.ReadAllText(file.FullName).Contains("new Permission", StringComparison.Ordinal))
+            .Select(file => Path.GetRelativePath(root.FullName, file.FullName).Replace('\\', '/'))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        files.Should().Equal(
+            "API/Controllers/SecurityAdministrationController.cs",
+            "Infrastructure/Persistence/Seed/DbInitializer.cs",
+            "Infrastructure/Persistence/Seed/SecurityRegistrySeeder.cs");
+
+        var directBulkMutationFiles = productionFiles
+            .Where(file =>
+            {
+                var source = File.ReadAllText(file.FullName);
+                return source.Contains("Permissions.Update", StringComparison.Ordinal)
+                    || source.Contains("Permissions.Remove", StringComparison.Ordinal)
+                    || source.Contains("Permissions.ExecuteUpdate", StringComparison.Ordinal)
+                    || source.Contains("Permissions.ExecuteDelete", StringComparison.Ordinal);
+            })
+            .Select(file => Path.GetRelativePath(root.FullName, file.FullName).Replace('\\', '/'))
+            .ToArray();
+        directBulkMutationFiles.Should().BeEmpty("production permission changes must pass through the tracked persistence guard");
+    }
+
     [Theory]
     [InlineData(nameof(SecurityResource))]
     [InlineData(nameof(SecurityActionDefinition))]
@@ -93,6 +127,93 @@ public class SecurityRegistryPersistenceGovernanceTests
         (await context.AuditTrails.CountAsync(item => item.Action == "Update")).Should().Be(4);
     }
 
+    [Fact]
+    public async Task Permission_catalogue_projection_cannot_be_rewritten_directly()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var permission = ResourcePermission();
+        context.Permissions.Add(permission);
+        await context.SaveChangesAsync();
+
+        permission.Description = "Uncontrolled rewrite";
+
+        var save = () => context.SaveChangesAsync();
+        await save.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Permission catalogue projections may change only to the exact value derived from their governed security registry definition*");
+    }
+
+    [Fact]
+    public async Task Permission_catalogue_identity_cannot_be_rewritten_with_registry_evidence()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser("permission-identity-actor");
+        var resource = (SecurityResource)Definition(nameof(SecurityResource));
+        var permission = ResourcePermission();
+        context.AddRange(actor, resource, permission);
+        await context.SaveChangesAsync();
+
+        resource.Name = "Updated Resource";
+        permission.Code = "GOVERNED_RESOURCE.REWRITTEN";
+        context.AuditTrails.Add(Audit(nameof(SecurityResource), resource.PublicId, actor.Id));
+
+        var save = () => context.SaveChangesAsync();
+        await save.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Permission catalogue code and kind are immutable.*");
+    }
+
+    [Fact]
+    public async Task Permission_catalogue_projection_accepts_atomic_registry_change()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser("permission-projection-actor");
+        var resource = (SecurityResource)Definition(nameof(SecurityResource));
+        var permission = ResourcePermission();
+        context.AddRange(actor, resource, permission);
+        await context.SaveChangesAsync();
+
+        resource.Name = "Updated Resource";
+        permission.Description = "Read Updated Resource";
+        context.AuditTrails.Add(Audit(nameof(SecurityResource), resource.PublicId, actor.Id));
+
+        await context.SaveChangesAsync();
+
+        (await context.Permissions.SingleAsync(item => item.Id == permission.Id)).Description.Should().Be("Read Updated Resource");
+    }
+
+    [Fact]
+    public async Task Permission_catalogue_projection_rejects_forged_value_beside_registry_change()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser("permission-forgery-actor");
+        var resource = (SecurityResource)Definition(nameof(SecurityResource));
+        var permission = ResourcePermission();
+        context.AddRange(actor, resource, permission);
+        await context.SaveChangesAsync();
+
+        resource.Name = "Updated Resource";
+        permission.Description = "Forged projection value";
+        context.AuditTrails.Add(Audit(nameof(SecurityResource), resource.PublicId, actor.Id));
+
+        var save = () => context.SaveChangesAsync();
+        await save.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Permission catalogue projections may change only to the exact value derived from their governed security registry definition*");
+    }
+
+    [Fact]
+    public async Task Permission_catalogue_history_cannot_be_hard_deleted()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var permission = ResourcePermission();
+        context.Permissions.Add(permission);
+        await context.SaveChangesAsync();
+
+        context.Permissions.Remove(permission);
+
+        var save = () => context.SaveChangesAsync();
+        await save.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Permission catalogue history cannot be hard deleted*");
+    }
+
     private static object Definition(string definitionType) => definitionType switch
     {
         nameof(SecurityResource) => new SecurityResource
@@ -177,4 +298,28 @@ public class SecurityRegistryPersistenceGovernanceTests
         ChangedAt = DateTime.UtcNow,
         Reason = "Govern registry definition through the approved persistence boundary."
     };
+
+    private static Permission ResourcePermission() => new()
+    {
+        Code = "GOVERNED_RESOURCE.READ",
+        Module = "Resource",
+        Feature = "GOVERNED_RESOURCE",
+        Action = "Read",
+        Kind = SecurityPermissionKind.Resource,
+        ResourceCode = "GOVERNED_RESOURCE",
+        Operation = SecurityOperation.Read,
+        Description = "Read Governed Resource"
+    };
+
+    private static DirectoryInfo FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "Program.cs"))
+                && Directory.Exists(Path.Combine(directory.FullName, "API", "Controllers")))
+                return directory;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate the repository root from the test output directory.");
+    }
 }
