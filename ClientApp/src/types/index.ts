@@ -1026,24 +1026,6 @@ export interface KPITemplate {
   isActive: boolean;
 }
 
-// Task Management
-export interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  status: 'pending' | 'in_progress' | 'completed' | 'postponed' | 'cancelled';
-  assignedTo: Employee[];
-  estimatedHours?: number;
-  actualHours?: number;
-  dueDate: string;
-  completedAt?: string;
-  notes?: string;
-  createdBy: Employee;
-  createdAt: string;
-  updatedAt: string;
-}
-
 // Approval Setup
 export interface ApprovalSetup {
   id: string;

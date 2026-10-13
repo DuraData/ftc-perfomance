@@ -32,7 +32,6 @@ const IPMSTargetTemplateFormPage = lazy(() => import('./components/library/Targe
 const OPMSTargetLibraryDetail = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.OPMSTargetLibraryDetail })));
 const OPMSTargetLibraryList = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.OPMSTargetLibraryList })));
 const OPMSTargetTemplateFormPage = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.OPMSTargetTemplateFormPage })));
-const TaskManagement = lazy(() => import('./components/tasks/TaskManagement').then(module => ({ default: module.TaskManagement })));
 const IPMSTargetFormPage = lazy(() => import('./components/targets/TargetFormPages').then(module => ({ default: module.IPMSTargetFormPage })));
 const OPMSTargetFormPage = lazy(() => import('./components/targets/TargetFormPages').then(module => ({ default: module.OPMSTargetFormPage })));
 const KPILibrary = lazy(() => import('./components/kpi/KPILibrary').then(module => ({ default: module.KPILibrary })));
@@ -200,8 +199,6 @@ function AppContent() {
         return <TenantEmployeeAdministration />;
       case '/hr/resumes':
         return <TenantEmployeeAdministration />;
-      case '/tasks':
-        return <TaskManagement />;
       case '/admin/periods':
         return <TenantCalendarAdministration />;
       case '/admin/organisations':

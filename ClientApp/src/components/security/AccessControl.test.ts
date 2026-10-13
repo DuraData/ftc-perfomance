@@ -31,6 +31,11 @@ describe('AccessControl helpers', () => {
     expect(canAccessPath('/dashboard', [])).toBe(false);
   });
 
+  it('denies the retired generic task workspace while governed workflow routes remain available', () => {
+    expect(canAccessPath('/tasks', menu)).toBe(false);
+    expect(canAccessPath('/workflow/verification', menu)).toBe(true);
+  });
+
   it('limits mandatory account setup to the security settings route', () => {
     expect(canAccessPath('/settings', RESTRICTED_ACCOUNT_MENU)).toBe(true);
     expect(canAccessPath('/dashboard', RESTRICTED_ACCOUNT_MENU)).toBe(false);
