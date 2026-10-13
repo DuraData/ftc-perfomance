@@ -3996,6 +3996,8 @@ All affected startup seed paths are now additive. They create a missing baseline
 
 Relational SQLite verification changes every affected field family, including platform organization records and tenant-owned ward/vote records, runs each seeder twice, and proves the administrator values persist while baseline identities remain unique. Focused controlled-seed verification passes **12/12**. Complete Debug and Release regression each pass **716 backend tests with 1 explicit SQL Server-only skip and 0 failures**; frontend regression remains **369/369 across 76 files**, accessibility passes **2/2**, TypeScript and ESLint pass, and Release compilation reports **0 warnings and 0 errors**. Vite transforms **2,110 modules**, and the enforced **78-chunk/402.1-KiB** bundle budget passes. Backend and frontend dependency audits report no vulnerabilities. With the Production/SQL Server provider selected, EF reports no model drift and emits the unchanged **681,765-byte** idempotent migration chain; the recovery-drill safety contract validates. No schema migration, Docker process, cloud resource or paid resource was introduced.
 
+Implementation commit `fee7b0a` was pushed directly to both `codex/dev` and `main`. GitHub Actions run `38326143771` executed exact commit `fee7b0ae76c18995fff916443b64737419aad84e`; all **18/18** quality/security steps passed in **5m53s**, and check-run `115065150780` exposed no annotations.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
