@@ -132,6 +132,12 @@ import type {
   StrategicRiskKpiLinkDto,
   StrategicRiskSummaryDto,
   SaveStrategicRiskPayload,
+  StrategicRiskAssessmentDto,
+  StrategicRiskTreatmentDto,
+  StrategicRiskReviewDto,
+  StrategicRiskHeatmapDto,
+  StrategicRiskOwnerOptionDto,
+  SaveStrategicRiskTreatmentPayload,
   C88Configuration,
   C88CatalogueVersion,
   C88CatalogueItem,
@@ -2986,6 +2992,55 @@ export function linkStrategicRisk(payload: {
 
 export function unlinkStrategicRisk(publicId: string, payload: { reason: string; rowVersion: string }): Promise<ApiResponse<StrategicRiskKpiLinkDto>> {
   return post<StrategicRiskKpiLinkDto>(`/v1/strategic-risks/links/${encodeURIComponent(publicId)}/unlink`, payload);
+}
+
+export async function getStrategicRiskAssessmentsPage(query: RegisterPageQuery = {}, strategicRiskPublicId?: string): Promise<ApiResponse<PagedResult<StrategicRiskAssessmentDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (strategicRiskPublicId) parameters.set('strategicRiskPublicId', strategicRiskPublicId);
+  return get<PagedResult<StrategicRiskAssessmentDto>>(`/v1/strategic-risks/assessments/page?${parameters.toString()}`);
+}
+
+export function recordStrategicRiskAssessment(payload: {
+  strategicRiskPublicId: string; assessedAt: string; inherentLikelihood: number; inherentImpact: number;
+  residualLikelihood: number; residualImpact: number; controlAssessment?: string | null; reason: string;
+}): Promise<ApiResponse<StrategicRiskAssessmentDto>> {
+  return post<StrategicRiskAssessmentDto>('/v1/strategic-risks/assessments', payload);
+}
+
+export async function getStrategicRiskTreatmentsPage(query: RegisterPageQuery = {}, filters: {
+  strategicRiskPublicId?: string; status?: string; overdueOnly?: boolean;
+} = {}): Promise<ApiResponse<PagedResult<StrategicRiskTreatmentDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (filters.strategicRiskPublicId) parameters.set('strategicRiskPublicId', filters.strategicRiskPublicId);
+  if (filters.status) parameters.set('status', filters.status);
+  if (filters.overdueOnly) parameters.set('overdueOnly', 'true');
+  return get<PagedResult<StrategicRiskTreatmentDto>>(`/v1/strategic-risks/treatments/page?${parameters.toString()}`);
+}
+
+export function saveStrategicRiskTreatment(publicId: string | null, payload: SaveStrategicRiskTreatmentPayload): Promise<ApiResponse<StrategicRiskTreatmentDto>> {
+  return publicId
+    ? put<StrategicRiskTreatmentDto>(`/v1/strategic-risks/treatments/${encodeURIComponent(publicId)}`, payload)
+    : post<StrategicRiskTreatmentDto>('/v1/strategic-risks/treatments', payload);
+}
+
+export async function getStrategicRiskReviewsPage(query: RegisterPageQuery = {}, strategicRiskPublicId?: string): Promise<ApiResponse<PagedResult<StrategicRiskReviewDto>>> {
+  const parameters = new URLSearchParams(registerPageQuery(query).slice(1));
+  if (strategicRiskPublicId) parameters.set('strategicRiskPublicId', strategicRiskPublicId);
+  return get<PagedResult<StrategicRiskReviewDto>>(`/v1/strategic-risks/reviews/page?${parameters.toString()}`);
+}
+
+export function recordStrategicRiskReview(payload: {
+  strategicRiskPublicId: string; reviewedAt: string; outcome: string; nextReviewAt?: string | null; reason: string;
+}): Promise<ApiResponse<StrategicRiskReviewDto>> {
+  return post<StrategicRiskReviewDto>('/v1/strategic-risks/reviews', payload);
+}
+
+export function getStrategicRiskHeatmap(): Promise<ApiResponse<StrategicRiskHeatmapDto>> {
+  return get<StrategicRiskHeatmapDto>('/v1/strategic-risks/heatmap');
+}
+
+export async function getStrategicRiskOwnersPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<StrategicRiskOwnerOptionDto>>> {
+  return get<PagedResult<StrategicRiskOwnerOptionDto>>(`/v1/strategic-risks/owners/page${registerPageQuery(query)}`);
 }
 
 export async function getC88CatalogueItemsPage(query: RegisterPageQuery = {}, filters: { catalogueItemPublicId?: string; catalogueVersionPublicId?: string; kind?: C88CatalogueItemKind; parentItemPublicId?: string; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88CatalogueItem>>> {

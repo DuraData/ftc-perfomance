@@ -84,6 +84,10 @@ public sealed class StrategicRisksController(
         if (!TryNormalize(request, out var normalized, out var error)) return BadRequest(Fail<StrategicRiskDto>(error!));
         if (normalized.Description != null && !await CanUpdateMemberAsync(session.User!, "RiskDescription"))
             return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskDto>("Strategic risk description update permission is required."));
+        if (request.OwnerUserPublicId.HasValue && !await CanUpdateMemberAsync(session.User!, "OwnerUserId"))
+            return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskDto>("Strategic risk owner update permission is required."));
+        var owner = await ResolveOwnerAsync(request.OwnerUserPublicId);
+        if (request.OwnerUserPublicId.HasValue && owner == null) return BadRequest(Fail<StrategicRiskDto>("Risk owner was not found in the selected municipality."));
         var years = await ResolveYears(request.EffectiveFromMunicipalityFinancialYearPublicId, request.EffectiveToMunicipalityFinancialYearPublicId);
         if (years.Error != null) return BadRequest(Fail<StrategicRiskDto>(years.Error));
         if (await DuplicateReference(normalized.Reference, null)) return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists."));
@@ -94,6 +98,7 @@ public sealed class StrategicRisksController(
             RiskReference = normalized.Reference,
             RiskTitle = normalized.Title,
             RiskDescription = normalized.Description,
+            OwnerUserId = owner?.Id,
             EffectiveFromMunicipalityFinancialYearId = years.From?.Id,
             EffectiveToMunicipalityFinancialYearId = years.To?.Id,
             IsActive = request.IsActive,
@@ -101,7 +106,7 @@ public sealed class StrategicRisksController(
         };
         context.StrategicRisks.Add(entity);
         workflow.QueueAuditTrail(nameof(StrategicRisk), entity.PublicId.ToString(), "Create", null,
-            new { entity.RiskReference, entity.RiskTitle, entity.RiskDescription, request.EffectiveFromMunicipalityFinancialYearPublicId, request.EffectiveToMunicipalityFinancialYearPublicId, entity.IsActive },
+            new { entity.RiskReference, entity.RiskTitle, entity.RiskDescription, OwnerUserPublicId = owner?.PublicId, request.EffectiveFromMunicipalityFinancialYearPublicId, request.EffectiveToMunicipalityFinancialYearPublicId, entity.IsActive },
             session.User.Id, IpAddress(), normalized.Reason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists.")); }
@@ -127,19 +132,27 @@ public sealed class StrategicRisksController(
                 return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskDto>("Strategic risk description update permission is required."));
             normalized.Description = entity.RiskDescription;
         }
+        var canUpdateOwner = await CanUpdateMemberAsync(session.User!, "OwnerUserId");
+        var owner = await ResolveOwnerAsync(request.OwnerUserPublicId);
+        if (request.OwnerUserPublicId.HasValue && owner == null) return BadRequest(Fail<StrategicRiskDto>("Risk owner was not found in the selected municipality."));
+        var ownerUserId = !request.OwnerUserPublicId.HasValue && !canUpdateOwner ? entity.OwnerUserId : owner?.Id;
+        if (!string.Equals(entity.OwnerUserId, ownerUserId, StringComparison.Ordinal) && !canUpdateOwner)
+            return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskDto>("Strategic risk owner update permission is required."));
         if (await DuplicateReference(normalized.Reference, entity.Id)) return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists."));
-        var before = new { entity.RiskReference, entity.RiskTitle, entity.RiskDescription, entity.EffectiveFromMunicipalityFinancialYearId, entity.EffectiveToMunicipalityFinancialYearId, entity.IsActive };
+        var previousOwnerPublicId = entity.OwnerUserId == null ? (Guid?)null : await context.Users.Where(item => item.Id == entity.OwnerUserId).Select(item => (Guid?)item.PublicId).SingleOrDefaultAsync();
+        var before = new { entity.RiskReference, entity.RiskTitle, entity.RiskDescription, OwnerUserPublicId = previousOwnerPublicId, entity.EffectiveFromMunicipalityFinancialYearId, entity.EffectiveToMunicipalityFinancialYearId, entity.IsActive };
         context.Entry(entity).Property(item => item.RowVersion).OriginalValue = expected;
         entity.RiskReference = normalized.Reference;
         entity.RiskTitle = normalized.Title;
         entity.RiskDescription = normalized.Description;
+        entity.OwnerUserId = ownerUserId;
         entity.EffectiveFromMunicipalityFinancialYearId = years.From?.Id;
         entity.EffectiveToMunicipalityFinancialYearId = years.To?.Id;
         entity.IsActive = request.IsActive;
         entity.UpdatedAt = DateTime.UtcNow;
         entity.UpdatedByUserId = session.User!.Id;
         workflow.QueueAuditTrail(nameof(StrategicRisk), entity.PublicId.ToString(), "Update", before,
-            new { entity.RiskReference, entity.RiskTitle, entity.RiskDescription, request.EffectiveFromMunicipalityFinancialYearPublicId, request.EffectiveToMunicipalityFinancialYearPublicId, entity.IsActive },
+            new { entity.RiskReference, entity.RiskTitle, entity.RiskDescription, OwnerUserPublicId = request.OwnerUserPublicId ?? previousOwnerPublicId, request.EffectiveFromMunicipalityFinancialYearPublicId, request.EffectiveToMunicipalityFinancialYearPublicId, entity.IsActive },
             session.User.Id, IpAddress(), normalized.Reason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicRiskDto>("The strategic risk changed before this update. Reload and retry.")); }
@@ -266,6 +279,7 @@ public sealed class StrategicRisksController(
     private IQueryable<StrategicRisk> RiskQuery() => context.StrategicRisks.AsNoTracking()
         .Include(item => item.EffectiveFromMunicipalityFinancialYear).ThenInclude(item => item!.FinancialYear)
         .Include(item => item.EffectiveToMunicipalityFinancialYear).ThenInclude(item => item!.FinancialYear)
+        .Include(item => item.OwnerUser)
         .Include(item => item.KpiLinks);
 
     private IQueryable<OpmsKpiStrategicRisk> LinkQuery() => context.OpmsKpiStrategicRisks
@@ -298,6 +312,11 @@ public sealed class StrategicRisksController(
         ? Task.FromResult(false)
         : context.StrategicRisks.AnyAsync(item => item.RiskReference == reference && (!excludedId.HasValue || item.Id != excludedId.Value));
 
+    private Task<ApplicationUser?> ResolveOwnerAsync(Guid? publicId) => !publicId.HasValue
+        ? Task.FromResult<ApplicationUser?>(null)
+        : context.Users.SingleOrDefaultAsync(item => item.PublicId == publicId.Value
+            && item.MunicipalityId == tenantContext.MunicipalityId && item.IsActive);
+
     private async Task<StrategicRiskMemberAccess> GetMemberAccessAsync(ApplicationUser user)
     {
         async Task<bool> CanReadAsync(string memberCode) =>
@@ -305,6 +324,7 @@ public sealed class StrategicRisksController(
 
         return new StrategicRiskMemberAccess(
             await CanReadAsync("RiskDescription"),
+            await CanReadAsync("OwnerUserId"),
             await CanReadAsync("LinkReason"),
             await CanReadAsync("UnlinkReason"));
     }
@@ -384,7 +404,9 @@ public sealed class StrategicRisksController(
         item.PublicId, item.RiskReference, item.RiskTitle, access.RiskDescription ? item.RiskDescription : null,
         item.EffectiveFromMunicipalityFinancialYear?.PublicId, item.EffectiveFromMunicipalityFinancialYear?.FinancialYear.Code,
         item.EffectiveToMunicipalityFinancialYear?.PublicId, item.EffectiveToMunicipalityFinancialYear?.FinancialYear.Code,
-        item.IsActive, item.KpiLinks.Count(link => link.IsActive), item.CreatedAt, item.UpdatedAt, Convert.ToBase64String(item.RowVersion));
+        item.IsActive, item.KpiLinks.Count(link => link.IsActive), item.CreatedAt, item.UpdatedAt, Convert.ToBase64String(item.RowVersion),
+        access.OwnerUserId ? item.OwnerUser?.PublicId : null,
+        access.OwnerUserId && item.OwnerUser != null ? $"{item.OwnerUser.FirstName} {item.OwnerUser.LastName}".Trim() : null);
 
     private static StrategicRiskKpiLinkDto ToLinkDto(OpmsKpiStrategicRisk item, StrategicRiskMemberAccess access) => new(
         item.PublicId, item.StrategicRisk.PublicId, item.StrategicRisk.RiskReference, item.StrategicRisk.RiskTitle,
@@ -393,7 +415,7 @@ public sealed class StrategicRisksController(
         item.LinkedAt, access.LinkReason ? item.LinkReason : null, item.UnlinkedAt,
         access.UnlinkReason ? item.UnlinkReason : null, Convert.ToBase64String(item.RowVersion));
 
-    private sealed record StrategicRiskMemberAccess(bool RiskDescription, bool LinkReason, bool UnlinkReason);
+    private sealed record StrategicRiskMemberAccess(bool RiskDescription, bool OwnerUserId, bool LinkReason, bool UnlinkReason);
 
     private string? IpAddress() => HttpContext.Connection.RemoteIpAddress?.ToString();
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
@@ -402,7 +424,8 @@ public sealed class StrategicRisksController(
 public sealed record StrategicRiskDto(Guid PublicId, string? RiskReference, string RiskTitle, string? RiskDescription,
     Guid? EffectiveFromMunicipalityFinancialYearPublicId, string? EffectiveFromFinancialYear,
     Guid? EffectiveToMunicipalityFinancialYearPublicId, string? EffectiveToFinancialYear,
-    bool IsActive, int ActiveKpiLinks, DateTime CreatedAt, DateTime? UpdatedAt, string RowVersion);
+    bool IsActive, int ActiveKpiLinks, DateTime CreatedAt, DateTime? UpdatedAt, string RowVersion,
+    Guid? OwnerUserPublicId = null, string? OwnerName = null);
 
 public sealed record StrategicRiskKpiLinkDto(Guid PublicId, Guid StrategicRiskPublicId, string? RiskReference, string RiskTitle,
     Guid TargetPublicId, string IndicatorNumber, string TargetName, string? DepartmentName, string? UnitName,
@@ -411,6 +434,6 @@ public sealed record StrategicRiskKpiLinkDto(Guid PublicId, Guid StrategicRiskPu
 public sealed record StrategicRiskSummaryDto(int TotalRisks, int ActiveRisks, int LinkedRisks, int UnlinkedActiveRisks, int LinkedKpis);
 public sealed record SaveStrategicRiskRequest(string? RiskReference, string RiskTitle, string? RiskDescription,
     Guid? EffectiveFromMunicipalityFinancialYearPublicId, Guid? EffectiveToMunicipalityFinancialYearPublicId,
-    bool IsActive, string Reason, string? RowVersion);
+    bool IsActive, string Reason, string? RowVersion, Guid? OwnerUserPublicId = null);
 public sealed record LinkStrategicRiskRequest(Guid StrategicRiskPublicId, Guid TargetPublicId, bool IsPrimary, string Reason);
 public sealed record UnlinkStrategicRiskRequest(string Reason, string RowVersion);

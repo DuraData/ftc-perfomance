@@ -23,11 +23,15 @@ public sealed class StrategicRiskTests
 
         var codes = await context.Permissions.Where(item => item.Code.StartsWith("STRATEGIC_RISK"))
             .Select(item => item.Code).ToArrayAsync();
-        codes.Should().HaveCount(13).And.Contain([
+        codes.Should().HaveCount(24).And.Contain([
             "STRATEGIC_RISK.CREATE", "STRATEGIC_RISK.EXPORT", "STRATEGIC_RISK.IMPORT", "STRATEGIC_RISK.LINK_KPI",
             "STRATEGIC_RISK.LinkReason.READ", "STRATEGIC_RISK.LinkReason.UPDATE", "STRATEGIC_RISK.READ", "STRATEGIC_RISK.RiskDescription.READ",
             "STRATEGIC_RISK.RiskDescription.UPDATE", "STRATEGIC_RISK.UNLINK_KPI", "STRATEGIC_RISK.UnlinkReason.READ", "STRATEGIC_RISK.UnlinkReason.UPDATE",
-            "STRATEGIC_RISK.UPDATE"]);
+            "STRATEGIC_RISK.UPDATE", "STRATEGIC_RISK.RECORD_ASSESSMENT", "STRATEGIC_RISK.MANAGE_TREATMENT",
+            "STRATEGIC_RISK.RECORD_REVIEW", "STRATEGIC_RISK.OwnerUserId.READ", "STRATEGIC_RISK.OwnerUserId.UPDATE",
+            "STRATEGIC_RISK.AssessmentControls.READ", "STRATEGIC_RISK.AssessmentControls.UPDATE",
+            "STRATEGIC_RISK.TreatmentDescription.READ", "STRATEGIC_RISK.TreatmentDescription.UPDATE",
+            "STRATEGIC_RISK.ReviewOutcome.READ", "STRATEGIC_RISK.ReviewOutcome.UPDATE"]);
         (await context.SecurityResources.SingleAsync(item => item.Code == "STRATEGIC_RISK")).SupportsFieldSecurity.Should().BeTrue();
     }
 
@@ -182,6 +186,7 @@ public sealed class StrategicRiskTests
         var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "STRATEGIC_RISK.RiskDescription.READ", "STRATEGIC_RISK.RiskDescription.UPDATE",
+            "STRATEGIC_RISK.OwnerUserId.READ", "STRATEGIC_RISK.OwnerUserId.UPDATE",
             "STRATEGIC_RISK.LinkReason.READ", "STRATEGIC_RISK.LinkReason.UPDATE",
             "STRATEGIC_RISK.UnlinkReason.READ", "STRATEGIC_RISK.UnlinkReason.UPDATE"
         };
@@ -194,10 +199,21 @@ public sealed class StrategicRiskTests
         (await context.StrategicRisks.CountAsync()).Should().Be(0);
 
         var created = Data(await controller.Create(Request("SEC-1", "Confidential infrastructure risk", seed.Year.PublicId)));
+        var deniedOwner = await controller.Update(created.PublicId, new SaveStrategicRiskRequest(
+            "SEC-1", "Confidential infrastructure risk", null, seed.Year.PublicId, seed.Year.PublicId,
+            true, "Approved accountable owner assignment", created.RowVersion, user.PublicId));
+        deniedOwner.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        denied.Remove("STRATEGIC_RISK.OwnerUserId.UPDATE");
+        var ownerAssigned = Data(await controller.Update(created.PublicId, new SaveStrategicRiskRequest(
+            "SEC-1", "Confidential infrastructure risk", null, seed.Year.PublicId, seed.Year.PublicId,
+            true, "Approved accountable owner assignment", created.RowVersion, user.PublicId)));
+        ownerAssigned.OwnerUserPublicId.Should().BeNull();
+        (await context.StrategicRisks.SingleAsync()).OwnerUserId.Should().Be(user.Id);
+        denied.Add("STRATEGIC_RISK.OwnerUserId.UPDATE");
         denied.Remove("STRATEGIC_RISK.RiskDescription.UPDATE");
         var updated = Data(await controller.Update(created.PublicId, new SaveStrategicRiskRequest(
             "SEC-1", "Confidential infrastructure risk", "Protected assessment detail", seed.Year.PublicId,
-            seed.Year.PublicId, true, "Approved protected assessment", created.RowVersion)));
+            seed.Year.PublicId, true, "Approved protected assessment", ownerAssigned.RowVersion)));
         updated.RiskDescription.Should().BeNull();
         (await context.StrategicRisks.SingleAsync()).RiskDescription.Should().Be("Protected assessment detail");
 
@@ -254,6 +270,145 @@ public sealed class StrategicRiskTests
         revealedLinks.Items[0].UnlinkReason.Should().Be("Restricted mitigation outcome");
     }
 
+    [Fact]
+    public async Task Risk_operations_persist_owner_assessments_treatments_reviews_and_heatmap()
+    {
+        const long municipalityId = 9110;
+        var user = IdpTestFixture.CreateUser("risk-operations-admin");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+        var master = Controller(context, user, municipalityId);
+        var risk = Data(await master.Create(new SaveStrategicRiskRequest("OPS-1", "Flood exposure", "River and storm-water exposure",
+            seed.Year.PublicId, seed.Year.PublicId, true, "Risk committee approved owner", null, user.PublicId)));
+        risk.OwnerUserPublicId.Should().Be(user.PublicId);
+
+        var operations = OperationsController(context, user, municipalityId);
+        var assessment = Data(await operations.RecordAssessment(new RecordStrategicRiskAssessmentRequest(
+            risk.PublicId, DateTime.UtcNow.AddDays(-1), 5, 4, 3, 3, "Drainage maintenance and early warning controls",
+            "Quarterly risk committee assessment")));
+        assessment.InherentScore.Should().Be(20);
+        assessment.ResidualScore.Should().Be(9);
+
+        var treatment = Data(await operations.CreateTreatment(new SaveStrategicRiskTreatmentRequest(
+            risk.PublicId, "Clear high-risk drainage channels", "Prioritised preventative maintenance", user.PublicId,
+            DateTime.UtcNow.AddDays(30), "OPEN", 0, "Approved mitigation action plan", null)));
+        treatment.OwnerUserPublicId.Should().Be(user.PublicId);
+        var updated = Data(await operations.UpdateTreatment(treatment.PublicId, new SaveStrategicRiskTreatmentRequest(
+            risk.PublicId, treatment.Title, treatment.Description, user.PublicId, treatment.DueAt,
+            "IN_PROGRESS", 40, "Monthly implementation progress review", treatment.RowVersion)));
+        updated.ProgressPercent.Should().Be(40);
+        var stale = await operations.UpdateTreatment(treatment.PublicId, new SaveStrategicRiskTreatmentRequest(
+            risk.PublicId, treatment.Title, treatment.Description, user.PublicId, treatment.DueAt,
+            "IN_PROGRESS", 60, "Stale concurrent implementation update", treatment.RowVersion));
+        stale.Result.Should().BeOfType<ConflictObjectResult>();
+        context.ChangeTracker.Clear();
+
+        var review = Data(await operations.RecordReview(new RecordStrategicRiskReviewRequest(
+            risk.PublicId, DateTime.UtcNow.AddHours(-1), "Controls reduced exposure; treatment remains in progress.",
+            DateTime.UtcNow.AddMonths(3), "Scheduled quarterly governance review")));
+        review.NextReviewAt.Should().NotBeNull();
+
+        var heatmap = Data(await operations.GetHeatmap());
+        heatmap.ActiveRisks.Should().Be(1);
+        heatmap.AssessedRisks.Should().Be(1);
+        heatmap.OpenTreatments.Should().Be(1);
+        heatmap.Cells.Should().ContainSingle(item => item.Likelihood == 3 && item.Impact == 3 && item.Count == 1);
+        (await context.AuditTrails.CountAsync(item => item.EntityName.StartsWith("StrategicRisk"))).Should().Be(5);
+    }
+
+    [Fact]
+    public async Task Risk_operation_ledgers_are_append_only_and_treatment_terminal_state_is_immutable()
+    {
+        const long municipalityId = 9111;
+        var user = IdpTestFixture.CreateUser("risk-ledger-admin");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+        var risk = Data(await Controller(context, user, municipalityId).Create(Request("LEDGER", "Governed ledger risk", seed.Year.PublicId)));
+        var operations = OperationsController(context, user, municipalityId);
+        var assessment = Data(await operations.RecordAssessment(new RecordStrategicRiskAssessmentRequest(
+            risk.PublicId, DateTime.UtcNow.AddDays(-1), 4, 4, 2, 3, "Verified controls", "Approved assessment evidence")));
+        var review = Data(await operations.RecordReview(new RecordStrategicRiskReviewRequest(
+            risk.PublicId, DateTime.UtcNow.AddHours(-2), "Risk remains within tolerance.", DateTime.UtcNow.AddMonths(2),
+            "Approved review evidence")));
+        var treatment = Data(await operations.CreateTreatment(new SaveStrategicRiskTreatmentRequest(
+            risk.PublicId, "Complete control action", "Final action", user.PublicId, DateTime.UtcNow.AddDays(1),
+            "OPEN", 0, "Approved treatment evidence", null)));
+        var completed = Data(await operations.UpdateTreatment(treatment.PublicId, new SaveStrategicRiskTreatmentRequest(
+            risk.PublicId, treatment.Title, treatment.Description, user.PublicId, treatment.DueAt,
+            "COMPLETED", 100, "Verified treatment completion evidence", treatment.RowVersion)));
+
+        context.ChangeTracker.Clear();
+        (await context.StrategicRiskAssessments.SingleAsync(item => item.PublicId == assessment.PublicId)).ControlAssessment = "Rewritten";
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*assessment history is append-only*");
+        context.ChangeTracker.Clear();
+        (await context.StrategicRiskReviews.SingleAsync(item => item.PublicId == review.PublicId)).Outcome = "Rewritten";
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*review history is append-only*");
+        context.ChangeTracker.Clear();
+        (await context.StrategicRiskTreatments.SingleAsync(item => item.PublicId == completed.PublicId)).ProgressPercent = 90;
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*terminal strategic-risk treatment is immutable*");
+    }
+
+    [Fact]
+    public async Task Risk_operation_narratives_require_dynamic_member_grants_and_are_not_searchable_when_denied()
+    {
+        const long municipalityId = 9112;
+        var user = IdpTestFixture.CreateUser("risk-operation-member-user");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+        var risk = Data(await Controller(context, user, municipalityId).Create(Request("MEMBER", "Protected operation risk", seed.Year.PublicId)));
+        var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "STRATEGIC_RISK.OwnerUserId.READ", "STRATEGIC_RISK.OwnerUserId.UPDATE",
+            "STRATEGIC_RISK.AssessmentControls.READ", "STRATEGIC_RISK.AssessmentControls.UPDATE",
+            "STRATEGIC_RISK.TreatmentDescription.READ", "STRATEGIC_RISK.TreatmentDescription.UPDATE",
+            "STRATEGIC_RISK.ReviewOutcome.READ", "STRATEGIC_RISK.ReviewOutcome.UPDATE"
+        };
+        var operations = OperationsController(context, user, municipalityId, denied);
+
+        var refusedAssessment = await operations.RecordAssessment(new RecordStrategicRiskAssessmentRequest(
+            risk.PublicId, DateTime.UtcNow.AddHours(-1), 4, 4, 2, 2, "confidential-control-evidence",
+            "Approved protected assessment"));
+        refusedAssessment.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        denied.Remove("STRATEGIC_RISK.AssessmentControls.UPDATE");
+        var assessment = Data(await operations.RecordAssessment(new RecordStrategicRiskAssessmentRequest(
+            risk.PublicId, DateTime.UtcNow.AddHours(-1), 4, 4, 2, 2, "confidential-control-evidence",
+            "Approved protected assessment")));
+        assessment.ControlAssessment.Should().BeNull();
+        var hidden = Data(await operations.GetAssessmentsPage(new PagedQueryRequest
+        { Page = 1, PageSize = 10, Search = "confidential-control-evidence", SortBy = "assessedAt" }));
+        hidden.TotalCount.Should().Be(0);
+
+        var refusedTreatment = await operations.CreateTreatment(new SaveStrategicRiskTreatmentRequest(
+            risk.PublicId, "Protected treatment", "confidential-treatment-evidence", user.PublicId,
+            DateTime.UtcNow.AddDays(10), "OPEN", 0, "Approved protected treatment", null));
+        refusedTreatment.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        denied.Remove("STRATEGIC_RISK.TreatmentDescription.UPDATE");
+        denied.Remove("STRATEGIC_RISK.OwnerUserId.UPDATE");
+        var maskedTreatment = Data(await operations.CreateTreatment(new SaveStrategicRiskTreatmentRequest(
+            risk.PublicId, "Protected treatment", "confidential-treatment-evidence", user.PublicId,
+            DateTime.UtcNow.AddDays(10), "OPEN", 0, "Approved protected treatment", null)));
+        maskedTreatment.Description.Should().BeNull();
+        maskedTreatment.OwnerUserPublicId.Should().BeNull();
+        maskedTreatment.OwnerName.Should().BeNull();
+
+        var refusedReview = await operations.RecordReview(new RecordStrategicRiskReviewRequest(
+            risk.PublicId, DateTime.UtcNow.AddHours(-1), "confidential-review-evidence", DateTime.UtcNow.AddMonths(1),
+            "Approved protected review"));
+        refusedReview.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        denied.Remove("STRATEGIC_RISK.ReviewOutcome.UPDATE");
+        Data(await operations.RecordReview(new RecordStrategicRiskReviewRequest(
+            risk.PublicId, DateTime.UtcNow.AddHours(-1), "confidential-review-evidence", DateTime.UtcNow.AddMonths(1),
+            "Approved protected review"))).Outcome.Should().BeNull();
+
+        denied.Clear();
+        Data(await operations.GetAssessmentsPage(new PagedQueryRequest
+        { Page = 1, PageSize = 10, Search = "confidential-control-evidence", SortBy = "assessedAt" }))
+            .Items.Should().ContainSingle().Which.ControlAssessment.Should().Be("confidential-control-evidence");
+    }
+
     private static SaveStrategicRiskRequest Request(string reference, string title, Guid yearPublicId) =>
         new(reference, title, null, yearPublicId, yearPublicId, true, "Approved risk administration", null);
 
@@ -276,6 +431,27 @@ public sealed class StrategicRiskTests
             .ReturnsAsync(new AccessQueryScopeResult(allow, allow, [], [], [], [], [], []));
         return new StrategicRisksController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
             audit ?? new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id)), IdpTestFixture.Tenant(municipalityId, user.Id))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) }
+            }
+        };
+    }
+
+    private static StrategicRiskOperationsController OperationsController(
+        ApplicationDbContext context, ApplicationUser user, long municipalityId, ISet<string>? deniedPermissions = null)
+    {
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) =>
+            {
+                var granted = !(deniedPermissions?.Contains(code) ?? false);
+                return new AccessDecisionResult(granted, granted ? "Allowed" : "Denied", granted ? [code] : [], [], []);
+            });
+        return new StrategicRiskOperationsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
+            new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id)),
+            IdpTestFixture.Tenant(municipalityId, user.Id))
         {
             ControllerContext = new ControllerContext
             {

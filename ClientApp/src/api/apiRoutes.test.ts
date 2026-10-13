@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { approveStrategicDocument, changePassword, closeEmployeeAssignment, commitIdpHierarchyImport, commitIdpImport, createStrategicDocumentType, createStrategicDocumentVersion, createTidVersion, enableMfa, getAuthenticationEventsPage, getAuditTrailsPage, getAuthSessionsPage, getC88ReportsPage, getC88Workspace, getDepartmentMastersPage, getFinancialYearMastersPage, getIdpAlignmentMatrixPage, getIdpDocumentsPage, getIdpHierarchyPathsPage, getIdpImportBatch, getIdpImportBatchesPage, getIdpPlansPage, getIdpPlanVersionsPage, getIdpStakeholderEngagementsPage, getInternalAuditConfigurationsPage, getIpmsPerformanceDashboard, getIpmsSubmissionsPage, getIpmsTargetOptions, getIpmsTargetsPage, getIpmsTargetTemplatesPage, getLoginAuditLogs, getMfaStatus, getMunicipalityFinancialYearMastersPage, getNotificationPoliciesPage, getNotifications, getOfficialReportGenerationsPage, getOfficialReportJobsPage, getOfficialReportSchedulesPage, getOfficialReportTemplatesPage, getOpmsPerformanceDashboard, getOpmsSubmissionAttachmentsPage, getOpmsSubmissionsPage, getOpmsTargetOptions, getOpmsTargetsPage, getOpmsTargetTemplatesPage, getPendingNotificationDeliveries, getPerformanceRfisPage, getPerformanceTargetRevisionsPage, getPositionMastersPage, getRatingSchemesPage, getReportingPeriodMastersPage, getReportingWindowExceptionsPage, getReportingWindowsPage, getRoleAccessMatrixPage, getRoleImplementationAuditPage, getSdbipLayerMastersPage, getStrategicDocumentHistoryPage, getStrategicDocumentsPage, getStrategicDocumentTypesPage, getSubmissionStageRatingsPage, getTidConfiguration, getTidHistoryPage, getTidRegisterPage, getUserAuthenticatorsPage, getVoteNumberMastersPage, getWardMastersPage, getWorkflowDefinitionsPage, getWorkflowQueue, getWorkingCalendarHolidaysPage, markNotificationRead, publishStrategicDocument, releaseOpmsEvidenceLegalHold, replaceOpmsSubmissionAttachment, requestOpmsEvidenceDisposal, requestPasswordReset, resetPassword, revokeAllAuthSessions, savePositionMaster, saveVoteNumberMaster, setupMfa, simulateAccess, stageIdpHierarchyImport, stageIdpKpiImport, updateTidConfiguration, withdrawOpmsSubmission, withdrawOpmsTarget } from './api';
-import { getGlobalStrategicReferencesPage, getStrategicPlanningRelationshipsPage, getStrategicRiskLinksPage, getStrategicRisksPage, linkStrategicRisk, saveStrategicRisk, unlinkStrategicRisk } from './api';
+import { getGlobalStrategicReferencesPage, getStrategicPlanningRelationshipsPage, getStrategicRiskAssessmentsPage, getStrategicRiskHeatmap, getStrategicRiskLinksPage, getStrategicRiskOwnersPage, getStrategicRiskReviewsPage, getStrategicRisksPage, getStrategicRiskTreatmentsPage, linkStrategicRisk, recordStrategicRiskAssessment, recordStrategicRiskReview, saveStrategicRisk, saveStrategicRiskTreatment, unlinkStrategicRisk } from './api';
 import { getIpmsConsolidationHistoryPage, getOpmsConsolidationHistoryPage } from './api';
 import { getIpmsTargetFieldRevisionsPage, getIpmsTargetOrderingRevisionsPage, getOpmsTargetFieldRevisionsPage, getOpmsTargetOrderingRevisionsPage } from './api';
 import { getEmployeeAssignmentsPage, getInternalAuditAssessmentsPage } from './api';
@@ -431,6 +431,31 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/strategic-risks/links/page?page=3&pageSize=10&sortBy=linkedAt&sortDirection=desc&strategicRiskPublicId=risk%2Fid&includeInactive=true'), expect.objectContaining({ method: 'GET' }));
     expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/strategic-risks/links'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('target/id') }));
     expect(fetchMock).toHaveBeenNthCalledWith(6, expect.stringContaining('/v1/strategic-risks/links/link%2Fid/unlink'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('Mitigated') }));
+  });
+
+  it('uses versioned bounded strategic-risk operation routes and stable identifiers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const riskId = '11111111-1111-1111-1111-111111111111';
+    const ownerId = '22222222-2222-2222-2222-222222222222';
+
+    await getStrategicRiskOwnersPage({ page: 2, pageSize: 10, search: 'owner', sortBy: 'fullName' });
+    await getStrategicRiskAssessmentsPage({ page: 2, pageSize: 10, sortBy: 'assessedAt', sortDirection: 'desc' }, riskId);
+    await recordStrategicRiskAssessment({ strategicRiskPublicId: riskId, assessedAt: '2026-10-01T00:00:00Z', inherentLikelihood: 5, inherentImpact: 4, residualLikelihood: 3, residualImpact: 2, reason: 'Approved assessment' });
+    await getStrategicRiskTreatmentsPage({ page: 1, pageSize: 25, sortBy: 'dueAt' }, { strategicRiskPublicId: riskId, status: 'OPEN', overdueOnly: true });
+    await saveStrategicRiskTreatment(null, { strategicRiskPublicId: riskId, title: 'Mitigate', ownerUserPublicId: ownerId, dueAt: '2026-11-01T00:00:00Z', status: 'OPEN', progressPercent: 0, reason: 'Approved action' });
+    await getStrategicRiskReviewsPage({ page: 1, pageSize: 25, sortBy: 'reviewedAt' }, riskId);
+    await recordStrategicRiskReview({ strategicRiskPublicId: riskId, reviewedAt: '2026-10-01T00:00:00Z', outcome: 'Controlled', reason: 'Approved review' });
+    await getStrategicRiskHeatmap();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/strategic-risks/owners/page?page=2&pageSize=10&search=owner&sortBy=fullName'), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining(`/v1/strategic-risks/assessments/page?page=2&pageSize=10&sortBy=assessedAt&sortDirection=desc&strategicRiskPublicId=${riskId}`), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/strategic-risks/assessments'), expect.objectContaining({ method: 'POST', body: expect.stringContaining(riskId) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining(`/v1/strategic-risks/treatments/page?page=1&pageSize=25&sortBy=dueAt&strategicRiskPublicId=${riskId}&status=OPEN&overdueOnly=true`), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/strategic-risks/treatments'), expect.objectContaining({ method: 'POST', body: expect.stringContaining(ownerId) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, expect.stringContaining(`/v1/strategic-risks/reviews/page?page=1&pageSize=25&sortBy=reviewedAt&strategicRiskPublicId=${riskId}`), expect.objectContaining({ method: 'GET' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, expect.stringContaining('/v1/strategic-risks/reviews'), expect.objectContaining({ method: 'POST', body: expect.stringContaining('Controlled') }));
+    expect(fetchMock).toHaveBeenNthCalledWith(8, expect.stringContaining('/v1/strategic-risks/heatmap'), expect.objectContaining({ method: 'GET' }));
   });
 
   it('loads performance target revisions from the controller route', async () => {

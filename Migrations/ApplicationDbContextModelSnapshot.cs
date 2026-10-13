@@ -11268,6 +11268,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<long>("MunicipalityId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("OwnerUserId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uniqueidentifier");
 
@@ -11304,6 +11307,8 @@ namespace FTCERP.Host.Migrations
 
                     b.HasIndex("EffectiveToMunicipalityFinancialYearId");
 
+                    b.HasIndex("OwnerUserId");
+
                     b.HasIndex("PublicId")
                         .IsUnique();
 
@@ -11314,6 +11319,216 @@ namespace FTCERP.Host.Migrations
                         .HasFilter("[RiskReference] IS NOT NULL");
 
                     b.ToTable("OPMS_StrategicRisks", (string)null);
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.StrategicRiskAssessment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("AssessedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("AssessedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ControlAssessment")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("InherentImpact")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InherentLikelihood")
+                        .HasColumnType("int");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("ResidualImpact")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ResidualLikelihood")
+                        .HasColumnType("int");
+
+                    b.Property<long>("StrategicRiskId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssessedByUserId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("StrategicRiskId", "MunicipalityId");
+
+                    b.HasIndex("MunicipalityId", "StrategicRiskId", "AssessedAt");
+
+                    b.ToTable("OPMS_StrategicRiskAssessments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OPMS_StrategicRiskAssessments_InherentImpact", "[InherentImpact] BETWEEN 1 AND 5");
+
+                            t.HasCheckConstraint("CK_OPMS_StrategicRiskAssessments_InherentLikelihood", "[InherentLikelihood] BETWEEN 1 AND 5");
+
+                            t.HasCheckConstraint("CK_OPMS_StrategicRiskAssessments_ResidualImpact", "[ResidualImpact] BETWEEN 1 AND 5");
+
+                            t.HasCheckConstraint("CK_OPMS_StrategicRiskAssessments_ResidualLikelihood", "[ResidualLikelihood] BETWEEN 1 AND 5");
+                        });
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.StrategicRiskReview", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("NextReviewAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("ReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReviewedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<long>("StrategicRiskId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("ReviewedByUserId");
+
+                    b.HasIndex("StrategicRiskId", "MunicipalityId");
+
+                    b.HasIndex("MunicipalityId", "StrategicRiskId", "ReviewedAt");
+
+                    b.ToTable("OPMS_StrategicRiskReviews", (string)null);
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.StrategicRiskTreatment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime>("DueAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("ProgressPercent")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<long>("StrategicRiskId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.HasIndex("StrategicRiskId", "MunicipalityId");
+
+                    b.HasIndex("MunicipalityId", "StrategicRiskId", "Status", "DueAt");
+
+                    b.ToTable("OPMS_StrategicRiskTreatments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OPMS_StrategicRiskTreatments_Completion", "[Status] <> 'COMPLETED' OR [ProgressPercent] = 100");
+
+                            t.HasCheckConstraint("CK_OPMS_StrategicRiskTreatments_Progress", "[ProgressPercent] BETWEEN 0 AND 100");
+
+                            t.HasCheckConstraint("CK_OPMS_StrategicRiskTreatments_Status", "[Status] IN ('OPEN','IN_PROGRESS','COMPLETED','CANCELLED')");
+                        });
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.SubmissionScore", b =>
@@ -16552,6 +16767,11 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "OwnerUser")
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "UpdatedByUser")
                         .WithMany()
                         .HasForeignKey("UpdatedByUserId")
@@ -16564,6 +16784,107 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("EffectiveToMunicipalityFinancialYear");
 
                     b.Navigation("Municipality");
+
+                    b.Navigation("OwnerUser");
+
+                    b.Navigation("UpdatedByUser");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.StrategicRiskAssessment", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "AssessedByUser")
+                        .WithMany()
+                        .HasForeignKey("AssessedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.StrategicRisk", "StrategicRisk")
+                        .WithMany("Assessments")
+                        .HasForeignKey("StrategicRiskId", "MunicipalityId")
+                        .HasPrincipalKey("Id", "MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AssessedByUser");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("StrategicRisk");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.StrategicRiskReview", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "ReviewedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.StrategicRisk", "StrategicRisk")
+                        .WithMany("Reviews")
+                        .HasForeignKey("StrategicRiskId", "MunicipalityId")
+                        .HasPrincipalKey("Id", "MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("ReviewedByUser");
+
+                    b.Navigation("StrategicRisk");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.StrategicRiskTreatment", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "OwnerUser")
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "UpdatedByUser")
+                        .WithMany()
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.StrategicRisk", "StrategicRisk")
+                        .WithMany("Treatments")
+                        .HasForeignKey("StrategicRiskId", "MunicipalityId")
+                        .HasPrincipalKey("Id", "MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("OwnerUser");
+
+                    b.Navigation("StrategicRisk");
 
                     b.Navigation("UpdatedByUser");
                 });
@@ -17437,7 +17758,13 @@ namespace FTCERP.Host.Migrations
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.StrategicRisk", b =>
                 {
+                    b.Navigation("Assessments");
+
                     b.Navigation("KpiLinks");
+
+                    b.Navigation("Reviews");
+
+                    b.Navigation("Treatments");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.SubmissionWorkflowInstance", b =>

@@ -372,12 +372,10 @@ public sealed class UsersControllerSecurityTests
             .Where(item => item.ResourceCode == "STRATEGIC_RISK")
             .OrderBy(item => item.MemberCode)
             .ToArrayAsync();
-        strategicRiskMembers.Select(item => item.MemberCode).Should().Equal("LinkReason", "RiskDescription", "UnlinkReason");
-        strategicRiskMembers.Should().OnlyContain(item => item.IsSensitive);
-        strategicRiskMembers.Where(item => item.MemberCode is "LinkReason" or "UnlinkReason")
-            .Should().OnlyContain(item => !item.IsSystemManaged);
-        strategicRiskMembers.Single(item => item.MemberCode == "RiskDescription").IsSystemManaged.Should().BeFalse();
-        (await context.Permissions.CountAsync(item => item.ResourceCode == "STRATEGIC_RISK" && item.MemberCode != null)).Should().Be(6);
+        strategicRiskMembers.Select(item => item.MemberCode).Should().Equal(
+            "AssessmentControls", "LinkReason", "OwnerUserId", "ReviewOutcome", "RiskDescription", "TreatmentDescription", "UnlinkReason");
+        strategicRiskMembers.Should().OnlyContain(item => item.IsSensitive && !item.IsSystemManaged);
+        (await context.Permissions.CountAsync(item => item.ResourceCode == "STRATEGIC_RISK" && item.MemberCode != null)).Should().Be(14);
         (await context.SecurityResources.SingleAsync(item => item.Code == "STRATEGIC_RISK")).SupportsFieldSecurity.Should().BeTrue();
 
         var c88IndicatorMembers = await context.SecurityMemberDefinitions

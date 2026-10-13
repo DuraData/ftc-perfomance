@@ -46,6 +46,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     public DbSet<OpmsTargetVoteNumber> OpmsTargetVoteNumbers { get; set; } = null!;
     public DbSet<StrategicRisk> StrategicRisks { get; set; } = null!;
     public DbSet<OpmsKpiStrategicRisk> OpmsKpiStrategicRisks { get; set; } = null!;
+    public DbSet<StrategicRiskAssessment> StrategicRiskAssessments { get; set; } = null!;
+    public DbSet<StrategicRiskTreatment> StrategicRiskTreatments { get; set; } = null!;
+    public DbSet<StrategicRiskReview> StrategicRiskReviews { get; set; } = null!;
     public DbSet<IpmsTarget> IpmsTargets { get; set; } = null!;
     public DbSet<OpmsTargetTemplate> OpmsTargetTemplates { get; set; } = null!;
     public DbSet<IpmsTargetTemplate> IpmsTargetTemplates { get; set; } = null!;
@@ -1321,6 +1324,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<StrategicRisk>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<StrategicRisk>().ToTable("OPMS_StrategicRisks");
         builder.Entity<StrategicRisk>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<StrategicRisk>().HasAlternateKey(item => new { item.Id, item.MunicipalityId });
         builder.Entity<StrategicRisk>().HasIndex(item => new { item.MunicipalityId, item.RiskReference }).IsUnique().HasFilter("[RiskReference] IS NOT NULL");
         builder.Entity<StrategicRisk>().Property(item => item.RiskReference).HasMaxLength(100);
         builder.Entity<StrategicRisk>().Property(item => item.RiskTitle).HasMaxLength(500);
@@ -1330,6 +1334,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<StrategicRisk>().HasOne(item => item.EffectiveToMunicipalityFinancialYear).WithMany().HasForeignKey(item => item.EffectiveToMunicipalityFinancialYearId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<StrategicRisk>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<StrategicRisk>().HasOne(item => item.UpdatedByUser).WithMany().HasForeignKey(item => item.UpdatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRisk>().HasOne(item => item.OwnerUser).WithMany().HasForeignKey(item => item.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
         ConfigureRowVersion(builder.Entity<StrategicRisk>().Property(item => item.RowVersion));
 
         builder.Entity<OpmsKpiStrategicRisk>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
@@ -1345,6 +1350,57 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<OpmsKpiStrategicRisk>().HasOne(item => item.LinkedByUser).WithMany().HasForeignKey(item => item.LinkedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsKpiStrategicRisk>().HasOne(item => item.UnlinkedByUser).WithMany().HasForeignKey(item => item.UnlinkedByUserId).OnDelete(DeleteBehavior.Restrict);
         ConfigureRowVersion(builder.Entity<OpmsKpiStrategicRisk>().Property(item => item.RowVersion));
+
+        builder.Entity<StrategicRiskAssessment>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<StrategicRiskAssessment>().ToTable("OPMS_StrategicRiskAssessments", table =>
+        {
+            table.HasCheckConstraint("CK_OPMS_StrategicRiskAssessments_InherentLikelihood", "[InherentLikelihood] BETWEEN 1 AND 5");
+            table.HasCheckConstraint("CK_OPMS_StrategicRiskAssessments_InherentImpact", "[InherentImpact] BETWEEN 1 AND 5");
+            table.HasCheckConstraint("CK_OPMS_StrategicRiskAssessments_ResidualLikelihood", "[ResidualLikelihood] BETWEEN 1 AND 5");
+            table.HasCheckConstraint("CK_OPMS_StrategicRiskAssessments_ResidualImpact", "[ResidualImpact] BETWEEN 1 AND 5");
+        });
+        builder.Entity<StrategicRiskAssessment>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<StrategicRiskAssessment>().HasIndex(item => new { item.MunicipalityId, item.StrategicRiskId, item.AssessedAt });
+        builder.Entity<StrategicRiskAssessment>().Property(item => item.ControlAssessment).HasMaxLength(4000);
+        builder.Entity<StrategicRiskAssessment>().Property(item => item.Reason).HasMaxLength(1000);
+        builder.Entity<StrategicRiskAssessment>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRiskAssessment>().HasOne(item => item.StrategicRisk).WithMany(item => item.Assessments)
+            .HasForeignKey(item => new { item.StrategicRiskId, item.MunicipalityId })
+            .HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRiskAssessment>().HasOne(item => item.AssessedByUser).WithMany().HasForeignKey(item => item.AssessedByUserId).OnDelete(DeleteBehavior.Restrict);
+
+        builder.Entity<StrategicRiskTreatment>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<StrategicRiskTreatment>().ToTable("OPMS_StrategicRiskTreatments", table =>
+        {
+            table.HasCheckConstraint("CK_OPMS_StrategicRiskTreatments_Status", "[Status] IN ('OPEN','IN_PROGRESS','COMPLETED','CANCELLED')");
+            table.HasCheckConstraint("CK_OPMS_StrategicRiskTreatments_Progress", "[ProgressPercent] BETWEEN 0 AND 100");
+            table.HasCheckConstraint("CK_OPMS_StrategicRiskTreatments_Completion", "[Status] <> 'COMPLETED' OR [ProgressPercent] = 100");
+        });
+        builder.Entity<StrategicRiskTreatment>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<StrategicRiskTreatment>().HasIndex(item => new { item.MunicipalityId, item.StrategicRiskId, item.Status, item.DueAt });
+        builder.Entity<StrategicRiskTreatment>().Property(item => item.Title).HasMaxLength(500);
+        builder.Entity<StrategicRiskTreatment>().Property(item => item.Description).HasMaxLength(4000);
+        builder.Entity<StrategicRiskTreatment>().Property(item => item.Status).HasMaxLength(20);
+        builder.Entity<StrategicRiskTreatment>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRiskTreatment>().HasOne(item => item.StrategicRisk).WithMany(item => item.Treatments)
+            .HasForeignKey(item => new { item.StrategicRiskId, item.MunicipalityId })
+            .HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRiskTreatment>().HasOne(item => item.OwnerUser).WithMany().HasForeignKey(item => item.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRiskTreatment>().HasOne(item => item.CreatedByUser).WithMany().HasForeignKey(item => item.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRiskTreatment>().HasOne(item => item.UpdatedByUser).WithMany().HasForeignKey(item => item.UpdatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        ConfigureRowVersion(builder.Entity<StrategicRiskTreatment>().Property(item => item.RowVersion));
+
+        builder.Entity<StrategicRiskReview>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<StrategicRiskReview>().ToTable("OPMS_StrategicRiskReviews");
+        builder.Entity<StrategicRiskReview>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<StrategicRiskReview>().HasIndex(item => new { item.MunicipalityId, item.StrategicRiskId, item.ReviewedAt });
+        builder.Entity<StrategicRiskReview>().Property(item => item.Outcome).HasMaxLength(4000);
+        builder.Entity<StrategicRiskReview>().Property(item => item.Reason).HasMaxLength(1000);
+        builder.Entity<StrategicRiskReview>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRiskReview>().HasOne(item => item.StrategicRisk).WithMany(item => item.Reviews)
+            .HasForeignKey(item => new { item.StrategicRiskId, item.MunicipalityId })
+            .HasPrincipalKey(item => new { item.Id, item.MunicipalityId }).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<StrategicRiskReview>().HasOne(item => item.ReviewedByUser).WithMany().HasForeignKey(item => item.ReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<OpmsTarget>()
             .HasOne(ot => ot.Period)
@@ -2402,6 +2458,31 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Strategic-risk master history cannot be hard deleted.");
         foreach (var entry in ChangeTracker.Entries<StrategicRisk>().Where(entry => entry.State == EntityState.Modified))
             RequireGovernanceAudit(nameof(StrategicRisk), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        RejectRewrites<StrategicRiskAssessment>("Strategic-risk assessment history is append-only.");
+        RejectRewrites<StrategicRiskReview>("Strategic-risk review history is append-only.");
+        if (ChangeTracker.Entries<StrategicRiskTreatment>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Strategic-risk treatment history cannot be hard deleted.");
+        foreach (var entry in ChangeTracker.Entries<StrategicRiskTreatment>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(StrategicRiskTreatment.Title), nameof(StrategicRiskTreatment.Description),
+                    nameof(StrategicRiskTreatment.OwnerUserId), nameof(StrategicRiskTreatment.DueAt),
+                    nameof(StrategicRiskTreatment.Status), nameof(StrategicRiskTreatment.ProgressPercent),
+                    nameof(StrategicRiskTreatment.UpdatedByUserId), nameof(StrategicRiskTreatment.UpdatedAt),
+                    nameof(StrategicRiskTreatment.RowVersion)],
+                "Strategic-risk treatment ownership and creation evidence are immutable.");
+            var originalStatus = entry.OriginalValues.GetValue<string>(nameof(StrategicRiskTreatment.Status));
+            var currentStatus = entry.CurrentValues.GetValue<string>(nameof(StrategicRiskTreatment.Status));
+            var currentProgress = entry.CurrentValues.GetValue<int>(nameof(StrategicRiskTreatment.ProgressPercent));
+            if (originalStatus is "COMPLETED" or "CANCELLED")
+                throw new InvalidOperationException("A terminal strategic-risk treatment is immutable; create a successor action if more work is required.");
+            if (currentStatus == "COMPLETED" && currentProgress != 100)
+                throw new InvalidOperationException("A completed strategic-risk treatment must record 100 percent progress.");
+            if (string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(StrategicRiskTreatment.UpdatedByUserId)))
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(StrategicRiskTreatment.UpdatedAt)).HasValue)
+                throw new InvalidOperationException("Strategic-risk treatment changes require complete update evidence.");
+            RequireGovernanceAudit(nameof(StrategicRiskTreatment), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+        }
         foreach (var entry in ChangeTracker.Entries<OpmsKpiStrategicRisk>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {
             if (entry.State == EntityState.Deleted)

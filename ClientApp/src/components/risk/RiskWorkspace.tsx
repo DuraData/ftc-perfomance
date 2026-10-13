@@ -3,6 +3,7 @@ import { AlertTriangle, Link2, Pencil, Plus, RefreshCw, ShieldCheck, Unlink } fr
 import {
   getMunicipalityFinancialYearMastersPage,
   getStrategicRiskLinksPage,
+  getStrategicRiskOwnersPage,
   getStrategicRisksPage,
   getStrategicRiskSummary,
   linkStrategicRisk,
@@ -11,13 +12,14 @@ import {
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { MunicipalityFinancialYearMasterDto, StrategicRiskDto, StrategicRiskKpiLinkDto, StrategicRiskSummaryDto } from '../../types';
+import type { MunicipalityFinancialYearMasterDto, StrategicRiskDto, StrategicRiskKpiLinkDto, StrategicRiskOwnerOptionDto, StrategicRiskSummaryDto } from '../../types';
 import { FormPanel, Input, Select, Textarea } from '../common/Form';
 import { TargetPicker } from '../common/TargetPicker';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card, EmptyState, StatCard } from '../ui';
+import { RiskOperations } from './RiskOperations';
 
-type RiskView = 'dashboard' | 'register' | 'assessments' | 'treatments' | 'reviews' | 'heatmap' | 'reports';
+export type RiskView = 'dashboard' | 'register' | 'assessments' | 'treatments' | 'reviews' | 'heatmap' | 'reports';
 const viewCopy: Record<RiskView, { title: string; subtitle: string }> = {
   dashboard: { title: 'Risk Dashboard', subtitle: 'Live municipality strategic-risk and KPI exposure summary' },
   register: { title: 'Strategic Risk Register', subtitle: 'Effective-dated, audited strategic risks and governed KPI relationships' },
@@ -27,7 +29,7 @@ const viewCopy: Record<RiskView, { title: string; subtitle: string }> = {
   heatmap: { title: 'Risk Exposure', subtitle: 'Inspect current risk-to-KPI concentration using governed relationship data' },
   reports: { title: 'Risk Reports', subtitle: 'Live strategic-risk register and KPI relationship evidence' },
 };
-const emptyRisk = () => ({ reference: '', title: '', description: '', fromYear: '', toYear: '', active: 'true', reason: '' });
+const emptyRisk = () => ({ reference: '', title: '', description: '', owner: '', fromYear: '', toYear: '', active: 'true', reason: '' });
 
 function RiskWorkspace({ view }: { view: RiskView }) {
   const { pushToast } = useApp();
@@ -36,6 +38,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
   const [risks, setRisks] = useState<StrategicRiskDto[]>([]);
   const [links, setLinks] = useState<StrategicRiskKpiLinkDto[]>([]);
   const [years, setYears] = useState<MunicipalityFinancialYearMasterDto[]>([]);
+  const [owners, setOwners] = useState<StrategicRiskOwnerOptionDto[]>([]);
   const [selected, setSelected] = useState<StrategicRiskDto | null>(null);
   const [riskForm, setRiskForm] = useState(emptyRisk);
   const [targetPublicId, setTargetPublicId] = useState('');
@@ -55,14 +58,17 @@ function RiskWorkspace({ view }: { view: RiskView }) {
     if (!security.canRead('STRATEGIC_RISK')) return;
     setBusy(true); setError(null);
     const active = status === 'all' ? undefined : status === 'active';
-    const [summaryResult, riskResult, linkResult, yearResult] = await Promise.all([
+    const [summaryResult, riskResult, linkResult, yearResult, ownerResult] = await Promise.all([
       getStrategicRiskSummary(),
       getStrategicRisksPage({ page, pageSize: 25, search, sortBy: 'reference', sortDirection: 'asc' }, { active }),
       getStrategicRiskLinksPage({ page: 1, pageSize: 25, search, sortBy: 'linkedAt', sortDirection: 'desc' }, { includeInactive: view === 'reviews' }),
       getMunicipalityFinancialYearMastersPage({ page: 1, pageSize: 100, sortBy: 'startDate', sortDirection: 'desc', active: true }),
+      security.canReadField('STRATEGIC_RISK', 'OwnerUserId')
+        ? getStrategicRiskOwnersPage({ page: 1, pageSize: 100, sortBy: 'fullName', sortDirection: 'asc' })
+        : Promise.resolve({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 }, message: undefined as string | undefined }),
     ]);
-    if (!summaryResult.success || !riskResult.success || !linkResult.success || !yearResult.success) {
-      setError(summaryResult.message ?? riskResult.message ?? linkResult.message ?? yearResult.message ?? 'Strategic risk data could not be loaded.');
+    if (!summaryResult.success || !riskResult.success || !linkResult.success || !yearResult.success || !ownerResult.success) {
+      setError(summaryResult.message ?? riskResult.message ?? linkResult.message ?? yearResult.message ?? ownerResult.message ?? 'Strategic risk data could not be loaded.');
     }
     setSummary(summaryResult.data ?? null);
     setRisks(riskResult.data?.items ?? []);
@@ -70,6 +76,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
     setTotalPages(riskResult.data?.totalPages ?? 0);
     setLinks(linkResult.data?.items ?? []);
     setYears(yearResult.data?.items ?? []);
+    setOwners(ownerResult.data?.items ?? []);
     setBusy(false);
   }, [page, search, security, status, view]);
 
@@ -84,6 +91,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
     setSelected(risk);
     setRiskForm({
       reference: risk.riskReference ?? '', title: risk.riskTitle, description: canReadDescription ? risk.riskDescription ?? '' : '',
+      owner: risk.ownerUserPublicId ?? '',
       fromYear: risk.effectiveFromMunicipalityFinancialYearPublicId ?? '',
       toYear: risk.effectiveToMunicipalityFinancialYearPublicId ?? '', active: String(risk.isActive), reason: '',
     });
@@ -94,6 +102,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
     const result = await saveStrategicRisk(selected?.publicId ?? null, {
       riskReference: riskForm.reference.trim() || null,
       riskTitle: riskForm.title.trim(), riskDescription: canEditDescription ? riskForm.description.trim() || null : undefined,
+      ownerUserPublicId: canEditOwner ? riskForm.owner || null : selected?.ownerUserPublicId,
       effectiveFromMunicipalityFinancialYearPublicId: riskForm.fromYear || null,
       effectiveToMunicipalityFinancialYearPublicId: riskForm.toYear || null,
       isActive: riskForm.active === 'true', reason: riskForm.reason.trim(), rowVersion: selected?.rowVersion ?? null,
@@ -126,11 +135,14 @@ function RiskWorkspace({ view }: { view: RiskView }) {
   const copy = viewCopy[view];
   const canReadDescription = security.canReadField('STRATEGIC_RISK', 'RiskDescription');
   const canEditDescription = security.canEditField('STRATEGIC_RISK', 'RiskDescription');
+  const canReadOwner = security.canReadField('STRATEGIC_RISK', 'OwnerUserId');
+  const canEditOwner = security.canEditField('STRATEGIC_RISK', 'OwnerUserId');
   const canReadLinkReason = security.canReadField('STRATEGIC_RISK', 'LinkReason');
   const canReadUnlinkReason = security.canReadField('STRATEGIC_RISK', 'UnlinkReason');
   const canEditLinkReason = security.canEditField('STRATEGIC_RISK', 'LinkReason');
   const canEditUnlinkReason = security.canEditField('STRATEGIC_RISK', 'UnlinkReason');
   const yearOptions = [{ value: '', label: 'Open-ended' }, ...years.map(year => ({ value: year.publicId, label: `${year.code}${year.isCurrent ? ' · current' : ''}` }))];
+  const ownerOptions = [{ value: '', label: 'Unassigned' }, ...owners.map(owner => ({ value: owner.publicId, label: `${owner.fullName} · ${owner.email}` }))];
   const canEditRegister = view === 'register';
   if (!security.canRead('STRATEGIC_RISK')) return <AppShell title={copy.title} subtitle={copy.subtitle}><Card><EmptyState title="Access unavailable" description="Your current role does not grant strategic-risk read access." /></Card></AppShell>;
   return <AppShell title={copy.title} subtitle={copy.subtitle}>
@@ -143,6 +155,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
         <StatCard title="Unlinked active risks" value={summary?.unlinkedActiveRisks ?? 0} />
         <StatCard title="Exposed KPIs" value={summary?.linkedKpis ?? 0} icon={<Link2 className="h-4 w-4 text-primary-600" />} />
       </div>
+      {view !== 'register' ? <RiskOperations view={view} /> : <>
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-64 flex-1"><Input label="Search strategic risks" value={searchInput} onChange={event => setSearchInput(event.target.value)} /></div>
         <div className="min-w-44"><Select label="Status" value={status} options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }, { value: 'all', label: 'All statuses' }]} onChange={event => { setStatus(event.target.value); setPage(1); }} /></div>
@@ -153,6 +166,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
           <Input label="Risk reference" value={riskForm.reference} maxLength={100} onChange={event => setRiskForm(current => ({ ...current, reference: event.target.value }))} />
           <Input label="Risk title" value={riskForm.title} maxLength={500} required onChange={event => setRiskForm(current => ({ ...current, title: event.target.value }))} />
           {canEditDescription && <Textarea label="Description" value={riskForm.description} maxLength={2000} rows={4} onChange={event => setRiskForm(current => ({ ...current, description: event.target.value }))} />}
+          {canEditOwner && <Select label="Risk owner" value={riskForm.owner} options={ownerOptions} onChange={event => setRiskForm(current => ({ ...current, owner: event.target.value }))} />}
           <div className="grid grid-cols-2 gap-2"><Select label="Effective from" value={riskForm.fromYear} options={yearOptions} onChange={event => setRiskForm(current => ({ ...current, fromYear: event.target.value }))} /><Select label="Effective to" value={riskForm.toYear} options={yearOptions} onChange={event => setRiskForm(current => ({ ...current, toYear: event.target.value }))} /></div>
           <Select label="Status" value={riskForm.active} options={[{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }]} onChange={event => setRiskForm(current => ({ ...current, active: event.target.value }))} />
           <Textarea label="Governance reason" value={riskForm.reason} rows={3} required onChange={event => setRiskForm(current => ({ ...current, reason: event.target.value }))} />
@@ -162,7 +176,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
           <div className="flex items-center justify-between"><h2 className="font-semibold">Strategic risks</h2><Badge variant="primary">{totalCount}</Badge></div>
           <div className="mt-3 space-y-2">
             {risks.map(risk => <button type="button" key={risk.publicId} disabled={!canEditRegister} onClick={() => editRisk(risk)} className="flex w-full items-start justify-between gap-3 rounded-lg border border-secondary-200 p-3 text-left disabled:cursor-default dark:border-secondary-700">
-              <div><p className="font-medium">{risk.riskReference ? `${risk.riskReference} · ` : ''}{risk.riskTitle}</p><p className="mt-1 text-xs text-secondary-500">{risk.effectiveFromFinancialYear ?? 'Open'} — {risk.effectiveToFinancialYear ?? 'open-ended'} · {risk.activeKpiLinks} active KPI link{risk.activeKpiLinks === 1 ? '' : 's'}</p>{canReadDescription && risk.riskDescription && <p className="mt-1 text-sm text-secondary-600 dark:text-secondary-300">{risk.riskDescription}</p>}</div>
+              <div><p className="font-medium">{risk.riskReference ? `${risk.riskReference} · ` : ''}{risk.riskTitle}</p><p className="mt-1 text-xs text-secondary-500">{risk.effectiveFromFinancialYear ?? 'Open'} — {risk.effectiveToFinancialYear ?? 'open-ended'} · {risk.activeKpiLinks} active KPI link{risk.activeKpiLinks === 1 ? '' : 's'}{canReadOwner && risk.ownerName ? ` · owner ${risk.ownerName}` : ''}</p>{canReadDescription && risk.riskDescription && <p className="mt-1 text-sm text-secondary-600 dark:text-secondary-300">{risk.riskDescription}</p>}</div>
               <Badge variant={risk.isActive ? 'success' : 'default'}>{risk.isActive ? 'Active' : 'Inactive'}</Badge>
             </button>)}
             {!risks.length && <EmptyState title="No strategic risks" description="No risk is visible in the selected municipality and filter." />}
@@ -182,12 +196,13 @@ function RiskWorkspace({ view }: { view: RiskView }) {
         <Button className="mt-3" icon={<Link2 className="h-4 w-4" />} disabled={busy} onClick={() => void saveLink()}>Link risk</Button>
       </Card>}
       <Card>
-        <div className="flex items-center justify-between"><h2 className="font-semibold">KPI relationship {view === 'reviews' ? 'history' : 'register'}</h2><Badge variant="info">{links.length} shown</Badge></div>
+        <div className="flex items-center justify-between"><h2 className="font-semibold">KPI relationship register</h2><Badge variant="info">{links.length} shown</Badge></div>
         <div className="mt-3 space-y-2">
           {links.map(link => <div key={link.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{link.riskReference ? `${link.riskReference} · ` : ''}{link.riskTitle}</p><p className="text-sm text-secondary-600 dark:text-secondary-300">{link.indicatorNumber} · {link.targetName}</p><p className="text-xs text-secondary-500">{link.departmentName ?? 'No department'}{link.unitName ? ` / ${link.unitName}` : ''} · linked {new Date(link.linkedAt).toLocaleDateString()}</p>{canReadLinkReason && link.linkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Link reason: {link.linkReason}</p>}{canReadUnlinkReason && link.unlinkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Unlink reason: {link.unlinkReason}</p>}</div><div className="flex items-center gap-2">{link.isPrimary && <Badge variant="primary">Primary</Badge>}<Badge variant={link.isActive ? 'success' : 'default'}>{link.isActive ? 'Active' : 'Unlinked'}</Badge>{canEditRegister && link.isActive && security.canExecute('STRATEGIC_RISK.UNLINK_KPI') && canEditUnlinkReason && <Button size="sm" variant="outline" icon={<Unlink className="h-3.5 w-3.5" />} disabled={busy} onClick={() => void unlink(link)}>Unlink</Button>}</div></div>)}
           {!links.length && <EmptyState title="No authorised KPI relationships" description="No strategic-risk link falls within your current KPI read scope." />}
         </div>
       </Card>
+      </>}
     </div>
   </AppShell>;
 }

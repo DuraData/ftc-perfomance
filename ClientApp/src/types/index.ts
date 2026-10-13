@@ -3748,6 +3748,8 @@ export interface StrategicRiskDto {
   createdAt: string;
   updatedAt?: string | null;
   rowVersion: string;
+  ownerUserPublicId?: string | null;
+  ownerName?: string | null;
 }
 
 export interface StrategicRiskKpiLinkDto {
@@ -3786,6 +3788,40 @@ export interface SaveStrategicRiskPayload {
   isActive: boolean;
   reason: string;
   rowVersion?: string | null;
+  ownerUserPublicId?: string | null;
+}
+
+export interface StrategicRiskAssessmentDto {
+  publicId: string; strategicRiskPublicId: string; riskReference?: string | null; riskTitle: string;
+  assessedAt: string; inherentLikelihood: number; inherentImpact: number; inherentScore: number;
+  residualLikelihood: number; residualImpact: number; residualScore: number;
+  controlAssessment?: string | null; assessedByUserPublicId: string; assessedByName: string; createdAt: string;
+}
+
+export interface StrategicRiskTreatmentDto {
+  publicId: string; strategicRiskPublicId: string; riskReference?: string | null; riskTitle: string;
+  title: string; description?: string | null; ownerUserPublicId?: string | null; ownerName?: string | null;
+  dueAt: string; status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'; progressPercent: number;
+  createdAt: string; updatedAt?: string | null; rowVersion: string;
+}
+
+export interface StrategicRiskReviewDto {
+  publicId: string; strategicRiskPublicId: string; riskReference?: string | null; riskTitle: string;
+  reviewedAt: string; outcome?: string | null; nextReviewAt?: string | null;
+  reviewedByUserPublicId: string; reviewedByName: string; createdAt: string;
+}
+
+export interface StrategicRiskHeatmapDto {
+  cells: Array<{ likelihood: number; impact: number; count: number }>;
+  activeRisks: number; assessedRisks: number; unassessedRisks: number; openTreatments: number; overdueTreatments: number;
+}
+
+export interface StrategicRiskOwnerOptionDto { publicId: string; fullName: string; email: string }
+
+export interface SaveStrategicRiskTreatmentPayload {
+  strategicRiskPublicId: string; title: string; description?: string | null; ownerUserPublicId: string;
+  dueAt: string; status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'; progressPercent: number;
+  reason: string; rowVersion?: string | null;
 }
 
 export type C88CatalogueItemKind = 'Sector' | 'Outcome' | 'IndicatorType' | 'MunicipalCategory' | 'ReadinessTier' | 'ReportType' | 'ResponseType';
