@@ -164,8 +164,10 @@ export function OPMSSubmissionsList() {
   });
   const allSubmissions = useMemo(() => opmsSubmissions, [opmsSubmissions]);
   const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
+  const permissionSet = useMemo(() => new Set(permissions.map(permission => permission.toUpperCase())), [permissions]);
+  const canCreate = permissionSet.has('OPMS_SUBMISSION.CREATE');
+  const canEditActualPerformance = permissionSet.has('OPMS_SUBMISSION.ACTUALPERFORMANCE.UPDATE');
   const canExport = useMemo(() => {
-    const permissionSet = new Set(permissions.map(permission => permission.toUpperCase()));
     return [
       'OPMS_REPORT.EXPORT',
       'OPMS_KPI.READ',
@@ -173,7 +175,7 @@ export function OPMSSubmissionsList() {
       'OPMS_SUBMISSION.ACTUALPERFORMANCE.READ',
       'OPMS_SUBMISSION.VARIANCE.READ',
     ].every(permission => permissionSet.has(permission));
-  }, [permissions]);
+  }, [permissionSet]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -228,6 +230,11 @@ export function OPMSSubmissionsList() {
   );
 
   const handleCreateSubmission = async () => {
+    if (!canCreate) {
+      setShowCreateModal(false);
+      pushToast('error', 'Your current permissions do not allow OPMS submission creation');
+      return;
+    }
     const validationErrors = validateSubmissionSetup(form);
     setFormErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) return;
@@ -423,7 +430,7 @@ export function OPMSSubmissionsList() {
             </div>
             <div className="flex gap-1">
               {canExport ? <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />} loading={isExporting} onClick={() => { void handleExport(); }}>Export</Button> : null}
-              <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button>
+              {canCreate ? <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button> : null}
             </div>
           </div>
           <Card>
@@ -449,7 +456,7 @@ export function OPMSSubmissionsList() {
               emptyMessage={isLoading ? 'Loading OPMS submissions...' : 'No OPMS submissions found'}
             />
           </Card>
-          <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New OPMS Submission" size="lg">
+          <Modal isOpen={showCreateModal && canCreate} onClose={() => setShowCreateModal(false)} title="New OPMS Submission" size="lg">
             <div className="space-y-5">
               <FormHero
                 eyebrow="Submission Management"
@@ -476,7 +483,9 @@ export function OPMSSubmissionsList() {
                       setFormErrors(prev => ({ ...prev, reportingPeriodPublicId: undefined }));
                     }} error={formErrors.reportingPeriodPublicId} />
                   </FormRow>
-                  <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
+                  {canEditActualPerformance
+                    ? <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
+                    : <p className="text-xs text-secondary-500">Actual Performance is protected by member-level security and can be captured by an authorized editor.</p>}
                 </FormPanel>
               </div>
             </div>
@@ -514,8 +523,10 @@ export function IPMSSubmissionsList() {
   });
   const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
   const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
+  const permissionSet = useMemo(() => new Set(permissions.map(permission => permission.toUpperCase())), [permissions]);
+  const canCreate = permissionSet.has('IPMS_SUBMISSION.CREATE');
+  const canEditActualPerformance = permissionSet.has('IPMS_SUBMISSION.ACTUALPERFORMANCE.UPDATE');
   const canExport = useMemo(() => {
-    const permissionSet = new Set(permissions.map(permission => permission.toUpperCase()));
     return [
       'IPMS_REPORT.EXPORT',
       'IPMS_KPI.READ',
@@ -523,7 +534,7 @@ export function IPMSSubmissionsList() {
       'IPMS_SUBMISSION.ACTUALPERFORMANCE.READ',
       'IPMS_SUBMISSION.VARIANCE.READ',
     ].every(permission => permissionSet.has(permission));
-  }, [permissions]);
+  }, [permissionSet]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -578,6 +589,11 @@ export function IPMSSubmissionsList() {
   );
 
   const handleCreateSubmission = async () => {
+    if (!canCreate) {
+      setShowCreateModal(false);
+      pushToast('error', 'Your current permissions do not allow IPMS submission creation');
+      return;
+    }
     const validationErrors = validateSubmissionSetup(form);
     setFormErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) return;
@@ -773,7 +789,7 @@ export function IPMSSubmissionsList() {
             </div>
             <div className="flex gap-1">
               {canExport ? <Button variant="outline" size="sm" icon={<Download className="w-3.5 h-3.5" />} loading={isExporting} onClick={() => { void handleExport(); }}>Export</Button> : null}
-              <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button>
+              {canCreate ? <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => { resetForm(); setShowCreateModal(true); }}>New Submission</Button> : null}
             </div>
           </div>
           <Card>
@@ -799,7 +815,7 @@ export function IPMSSubmissionsList() {
               emptyMessage={isLoading ? 'Loading IPMS submissions...' : 'No IPMS submissions found'}
             />
           </Card>
-          <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="New IPMS Submission" size="lg">
+          <Modal isOpen={showCreateModal && canCreate} onClose={() => setShowCreateModal(false)} title="New IPMS Submission" size="lg">
             <div className="space-y-5">
               <FormHero
                 eyebrow="Submission Management"
@@ -826,7 +842,9 @@ export function IPMSSubmissionsList() {
                       setFormErrors(prev => ({ ...prev, reportingPeriodPublicId: undefined }));
                     }} error={formErrors.reportingPeriodPublicId} />
                   </FormRow>
-                  <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
+                  {canEditActualPerformance
+                    ? <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
+                    : <p className="text-xs text-secondary-500">Actual Performance is protected by member-level security and can be captured by an authorized editor.</p>}
                 </FormPanel>
               </div>
             </div>

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { OPMSSubmissionsList } from './OPMSSubmissions';
 
 const pushToast = vi.hoisted(() => vi.fn());
+const app = vi.hoisted(() => ({ permissions: [] as string[] }));
 const api = vi.hoisted(() => ({
   createOpmsSubmission: vi.fn(),
   getOpmsSubmissionsPage: vi.fn(),
@@ -9,7 +10,7 @@ const api = vi.hoisted(() => ({
   getOpmsTargetOptions: vi.fn(),
 }));
 
-vi.mock('../../context/AppContext', () => ({ useApp: () => ({ pushToast }) }));
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ permissions: app.permissions, pushToast }) }));
 vi.mock('../../api/api', async importOriginal => ({
   ...(await importOriginal<typeof import('../../api/api')>()),
   ...api,
@@ -21,6 +22,7 @@ vi.mock('../layout/AppShell', () => ({
 describe('OPMS submission creation validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    app.permissions = ['OPMS_SUBMISSION.CREATE', 'OPMS_SUBMISSION.ActualPerformance.UPDATE'];
     api.getOpmsSubmissionsPage.mockResolvedValue({
       success: true,
       data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
@@ -116,5 +118,39 @@ describe('OPMS submission creation validation', () => {
     const cells = within(row).getAllByRole('cell');
     expect(cells[4]).toHaveTextContent('-2');
     expect(cells[4]).not.toHaveTextContent('-2%');
+  });
+
+  it('allows a create-authorized user to start a blank draft without exposing a denied Actual Performance member', async () => {
+    app.permissions = ['OPMS_SUBMISSION.CREATE'];
+
+    render(<OPMSSubmissionsList />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New Submission' }));
+    expect(await screen.findByText(/Actual Performance is protected by member-level security/i)).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Actual Performance' })).not.toBeInTheDocument();
+    await screen.findByRole('option', { name: 'KPI-001 · Road maintenance · Infrastructure' });
+    fireEvent.change(screen.getByRole('combobox', { name: /^Target/ }), { target: { value: 'public-1' } });
+    fireEvent.change(await screen.findByRole('combobox', { name: /Reporting period/ }), { target: { value: 'period-q1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(api.createOpmsSubmission).toHaveBeenCalledWith(expect.objectContaining({
+      opmsTargetPublicId: 'public-1',
+      reportingPeriodPublicId: 'period-q1',
+      actualPerformance: null,
+    })));
+  });
+
+  it('closes an open create workspace when the effective CREATE permission is revoked', async () => {
+    const { rerender } = render(<OPMSSubmissionsList />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New Submission' }));
+    expect(screen.getByText('Create OPMS submission')).toBeInTheDocument();
+
+    app.permissions = ['OPMS_SUBMISSION.READ'];
+    rerender(<OPMSSubmissionsList />);
+
+    expect(screen.queryByRole('button', { name: 'New Submission' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Create OPMS submission')).not.toBeInTheDocument();
+    expect(api.createOpmsSubmission).not.toHaveBeenCalled();
   });
 });

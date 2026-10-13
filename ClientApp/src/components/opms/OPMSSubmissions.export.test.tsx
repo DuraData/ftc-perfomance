@@ -74,4 +74,16 @@ describe('performance submission register exports', () => {
     expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
     expect(api.downloadPerformanceReportCsv).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['OPMS', OPMSSubmissionsList],
+    ['IPMS', IPMSSubmissionsList],
+  ] as const)('does not expose the %s create control without the exact submission CREATE permission', async (kind, Component) => {
+    app.permissions = [`${kind}_SUBMISSION.READ`];
+
+    render(<Component />);
+
+    await waitFor(() => expect(kind === 'OPMS' ? api.getOpmsSubmissionsPage : api.getIpmsSubmissionsPage).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'New Submission' })).not.toBeInTheDocument();
+  });
 });
