@@ -685,13 +685,13 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasOne(version => version.OpmsTargetTemplate)
             .WithMany(template => template.Versions)
             .HasForeignKey(version => version.OpmsTargetTemplateId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<IpmsTargetTemplateVersion>()
             .HasOne(version => version.IpmsTargetTemplate)
             .WithMany(template => template.Versions)
             .HasForeignKey(version => version.IpmsTargetTemplateId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<OpmsTarget>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<OpmsTarget>().Property(item => item.ReasonForWithdrawal).HasMaxLength(1000);

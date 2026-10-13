@@ -14841,7 +14841,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.IpmsTargetTemplate", "IpmsTargetTemplate")
                         .WithMany("Versions")
                         .HasForeignKey("IpmsTargetTemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("IpmsTargetTemplate");
@@ -16082,7 +16082,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.OpmsTargetTemplate", "OpmsTargetTemplate")
                         .WithMany("Versions")
                         .HasForeignKey("OpmsTargetTemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("OpmsTargetTemplate");
