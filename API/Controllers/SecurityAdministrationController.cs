@@ -812,7 +812,9 @@ public sealed class SecurityAdministrationController : ControllerBase
         var actor = await GetCurrentUserAsync();
         if (actor == null) return Unauthorized(new ApiResponse<RoleSecurityConfigurationDto>(false, null, "User not found"));
         if (!await CanAdministerRoleAsync(actor, role)) return Forbid();
-        var permissionRows = await _context.RolePermissions.AsNoTracking().Where(item => item.RoleId == role.Id && item.IsActive)
+        var now = DateTime.UtcNow;
+        var permissionRows = await _context.RolePermissions.AsNoTracking().Where(item => item.RoleId == role.Id && item.IsActive
+                && item.EffectiveFrom <= now && (!item.EffectiveTo.HasValue || item.EffectiveTo > now))
             .Include(item => item.Permission)
             .OrderBy(item => item.Permission.Code)
             .ToArrayAsync();
@@ -847,30 +849,28 @@ public sealed class SecurityAdministrationController : ControllerBase
             return BadRequest(new ApiResponse<bool>(false, false, "One or more scope values are invalid"));
 
         var now = DateTime.UtcNow;
-        var current = await _context.RolePermissions.Where(item => item.RoleId == role.Id).ToListAsync();
-        var oldValue = current.Where(item => item.IsActive).Select(item => new { item.PermissionId, item.IsAllowed, Scope = item.ScopeType == null ? null : item.ScopeType.ToString() }).ToArray();
+        var current = await _context.RolePermissions
+            .Where(item => item.RoleId == role.Id && item.IsActive && !item.EffectiveTo.HasValue)
+            .ToListAsync();
+        var oldValue = current.Select(item => new { item.PublicId, item.PermissionId, item.IsAllowed, Scope = item.ScopeType == null ? null : item.ScopeType.ToString(), item.EffectiveFrom }).ToArray();
         foreach (var row in current)
         {
             row.IsActive = false;
-            row.EffectiveTo = now;
+            row.EffectiveTo = row.EffectiveFrom > now ? row.EffectiveFrom : now;
         }
         foreach (var item in request.Permissions)
         {
             var definition = definitions[item.PermissionCode];
-            var existing = current.FirstOrDefault(row => row.PermissionId == definition.Id);
             ScopeType? scope = string.IsNullOrWhiteSpace(item.ScopeType) ? null : Enum.Parse<ScopeType>(item.ScopeType, true);
-            if (existing == null)
+            _context.RolePermissions.Add(new RolePermission
             {
-                _context.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = definition.Id, IsAllowed = item.State.Equals("ALLOW", StringComparison.OrdinalIgnoreCase), ScopeType = scope, IsActive = true, EffectiveFrom = now });
-            }
-            else
-            {
-                existing.IsAllowed = item.State.Equals("ALLOW", StringComparison.OrdinalIgnoreCase);
-                existing.ScopeType = scope;
-                existing.IsActive = true;
-                existing.EffectiveFrom = now;
-                existing.EffectiveTo = null;
-            }
+                RoleId = role.Id,
+                PermissionId = definition.Id,
+                IsAllowed = item.State.Equals("ALLOW", StringComparison.OrdinalIgnoreCase),
+                ScopeType = scope,
+                IsActive = true,
+                EffectiveFrom = now
+            });
         }
         role.UpdatedAt = now;
         _context.AuditTrails.Add(new AuditTrail

@@ -10397,11 +10397,11 @@ namespace FTCERP.Host.Migrations
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.RolePermission", b =>
                 {
-                    b.Property<string>("RoleId")
-                        .HasColumnType("nvarchar(450)");
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
 
-                    b.Property<int>("PermissionId")
-                        .HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
                     b.Property<DateTime>("EffectiveFrom")
                         .HasColumnType("datetime2");
@@ -10415,6 +10415,16 @@ namespace FTCERP.Host.Migrations
                     b.Property<bool>("IsAllowed")
                         .HasColumnType("bit");
 
+                    b.Property<int>("PermissionId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RoleId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -10424,9 +10434,14 @@ namespace FTCERP.Host.Migrations
                     b.Property<int?>("ScopeType")
                         .HasColumnType("int");
 
-                    b.HasKey("RoleId", "PermissionId");
+                    b.HasKey("Id");
 
                     b.HasIndex("PermissionId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("RoleId", "PermissionId", "EffectiveFrom");
 
                     b.ToTable("RolePermissions");
                 });

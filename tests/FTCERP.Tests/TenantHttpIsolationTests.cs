@@ -190,8 +190,19 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
         await using var scope = _factory.Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var rolePermission = await context.RolePermissions.SingleAsync(item =>
-            item.RoleId == _ids.TenantARoleId && item.PermissionId == _ids.OpmsReadPermissionId);
-        rolePermission.IsAllowed = isAllowed;
+            item.RoleId == _ids.TenantARoleId && item.PermissionId == _ids.OpmsReadPermissionId && item.IsActive);
+        var now = DateTime.UtcNow;
+        rolePermission.IsActive = false;
+        rolePermission.EffectiveTo = now;
+        context.RolePermissions.Add(new RolePermission
+        {
+            RoleId = rolePermission.RoleId,
+            PermissionId = rolePermission.PermissionId,
+            IsAllowed = isAllowed,
+            ScopeType = rolePermission.ScopeType,
+            IsActive = true,
+            EffectiveFrom = now
+        });
         await context.SaveChangesAsync();
     }
 

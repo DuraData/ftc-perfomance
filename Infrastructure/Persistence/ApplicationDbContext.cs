@@ -563,7 +563,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
         // Configure RolePermission
         builder.Entity<RolePermission>()
-            .HasKey(rp => new { rp.RoleId, rp.PermissionId });
+            .HasKey(rp => rp.Id);
+        builder.Entity<RolePermission>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<RolePermission>().HasIndex(item => new { item.RoleId, item.PermissionId, item.EffectiveFrom });
         ConfigureRowVersion(builder.Entity<RolePermission>().Property(item => item.RowVersion));
         builder.Entity<RolePermission>()
             .HasOne(rp => rp.Role)
@@ -2335,6 +2337,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
     private void EnforceAppendOnlyRecords()
     {
+        EnforceRolePermissionHistory();
         EnforceSecurityRegistryHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
@@ -3139,6 +3142,38 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || entry.OriginalValues.GetValue<DateTime?>(nameof(TechnicalIndicatorDescription.EffectiveTo)).HasValue
                 || !entry.CurrentValues.GetValue<DateTime?>(nameof(TechnicalIndicatorDescription.EffectiveTo)).HasValue)
                 throw new InvalidOperationException("Published TID versions are append-only; only the current version may be closed by a successor.");
+        }
+    }
+
+    private void EnforceRolePermissionHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries<RolePermission>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                var row = entry.Entity;
+                if (row.PublicId == Guid.Empty || string.IsNullOrWhiteSpace(row.RoleId) || row.PermissionId <= 0
+                    || row.EffectiveFrom == default || row.EffectiveFrom > DateTime.UtcNow.AddMinutes(5)
+                    || row.EffectiveTo.HasValue && row.EffectiveTo < row.EffectiveFrom
+                    || !row.IsActive && !row.EffectiveTo.HasValue)
+                    throw new InvalidOperationException("Role-permission versions require stable identity, role, permission and an ordered effective interval.");
+                continue;
+            }
+
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Role-permission history cannot be hard deleted; close the effective version instead.");
+            if (entry.State != EntityState.Modified) continue;
+
+            EnsureOnlyProperties(entry,
+                [nameof(RolePermission.IsActive), nameof(RolePermission.EffectiveTo), nameof(RolePermission.RowVersion)],
+                "Role-permission identity, grant state, scope and effective start are immutable; create a successor version instead.");
+            if (!entry.OriginalValues.GetValue<bool>(nameof(RolePermission.IsActive))
+                || entry.CurrentValues.GetValue<bool>(nameof(RolePermission.IsActive))
+                || entry.OriginalValues.GetValue<DateTime?>(nameof(RolePermission.EffectiveTo)).HasValue
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(RolePermission.EffectiveTo)).HasValue
+                || entry.CurrentValues.GetValue<DateTime?>(nameof(RolePermission.EffectiveTo))
+                    < entry.OriginalValues.GetValue<DateTime>(nameof(RolePermission.EffectiveFrom)))
+                throw new InvalidOperationException("A role-permission version may only close once with an ordered effective end.");
         }
     }
 
