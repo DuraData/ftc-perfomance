@@ -202,9 +202,9 @@ public sealed class IpmsTargetOpmsLinkGovernanceTests
     {
         var municipality = new Municipality { Code = $"IOL-{Guid.NewGuid():N}"[..20], Name = "IPMS Link Governance" };
         var actor = IdpTestFixture.CreateUser($"ipms-link-actor-{Guid.NewGuid():N}");
+        actor.Municipality = municipality;
         context.AddRange(municipality, actor);
         await context.SaveChangesAsync();
-        actor.MunicipalityId = municipality.Id;
         var first = new OpmsTarget { MunicipalityId = municipality.Id, IndicatorNumber = "OPMS-LINK-1", TargetName = "First OPMS", KpiDescription = "First link target" };
         var second = new OpmsTarget { MunicipalityId = municipality.Id, IndicatorNumber = "OPMS-LINK-2", TargetName = "Second OPMS", KpiDescription = "Second link target" };
         var ipms = new IpmsTarget { MunicipalityId = municipality.Id, IndicatorNumber = "IPMS-LINK", TargetName = "Linked IPMS", KpiDescription = "Append-preserved link" };

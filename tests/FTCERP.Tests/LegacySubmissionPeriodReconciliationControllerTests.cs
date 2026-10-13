@@ -176,9 +176,9 @@ public sealed class LegacySubmissionPeriodReconciliationControllerTests
             Code = "FY2040", Name = "2040/41", FiscalYear = financialYear.Code,
             StartDate = financialYear.StartDate, EndDate = financialYear.EndDate
         };
+        administrator.Municipality = municipality;
         context.AddRange(municipality, administrator, financialYear, legacyYear);
         await context.SaveChangesAsync();
-        administrator.MunicipalityId = municipality.Id;
         var municipalityYear = new MunicipalityFinancialYear
         {
             MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id,

@@ -136,13 +136,13 @@ public sealed class LegacyTenantOwnershipReconciliationControllerTests
             var municipalityA = new Municipality { Code = "TEN-A", Name = "Tenant A" };
             var municipalityB = new Municipality { Code = "TEN-B", Name = "Tenant B" };
             var actor = IdpTestFixture.CreateUser("tenant-root-admin");
+            actor.Municipality = municipalityA;
             var ready = new Department { Code = "READY", Name = "Ready department" };
             var ambiguous = new Department { Code = "AMB", Name = "Ambiguous department" };
             var blocked = new Department { Code = "BLOCK", Name = "Blocked department" };
             var foreign = new Department { Code = "FOREIGN", Name = "Foreign department" };
             context.AddRange(municipalityA, municipalityB, actor, ready, ambiguous, blocked, foreign);
             await context.SaveChangesAsync();
-            actor.MunicipalityId = municipalityA.Id;
             context.Positions.AddRange(
                 new Position { MunicipalityId = municipalityA.Id, DepartmentId = ready.Id, Code = "READY-P", Name = "Ready position" },
                 new Position { MunicipalityId = municipalityA.Id, DepartmentId = ambiguous.Id, Code = "AMB-A", Name = "Ambiguous A" },

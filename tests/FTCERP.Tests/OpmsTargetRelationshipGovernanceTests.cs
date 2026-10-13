@@ -133,9 +133,8 @@ public sealed class OpmsTargetRelationshipGovernanceTests
     {
         var municipality = new Municipality { Code = $"REL-{Guid.NewGuid():N}"[..20], Name = "Relationship Governance" };
         var actor = IdpTestFixture.CreateUser($"relationship-actor-{Guid.NewGuid():N}");
+        actor.Municipality = municipality;
         context.AddRange(municipality, actor);
-        await context.SaveChangesAsync();
-        actor.MunicipalityId = municipality.Id;
         await context.SaveChangesAsync();
 
         var department = new Department { MunicipalityId = municipality.Id, Code = "GOV", Name = "Governance", IsActive = true };

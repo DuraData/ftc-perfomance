@@ -242,12 +242,12 @@ public sealed class LegacyRatingReconciliationControllerTests
         {
             Code = "2038/39", Name = "2038/39", StartDate = new(2038, 7, 1), EndDate = new(2039, 6, 30)
         };
+        administrator.Municipality = municipality;
+        actor.Municipality = municipality;
+        otherActor.Municipality = municipality;
         context.AddRange(municipality, administrator, actor, otherActor, financialYear);
         await context.SaveChangesAsync();
         onMunicipalityCreated?.Invoke(municipality.Id);
-        administrator.MunicipalityId = municipality.Id;
-        actor.MunicipalityId = municipality.Id;
-        otherActor.MunicipalityId = municipality.Id;
 
         var year = new MunicipalityFinancialYear
         {

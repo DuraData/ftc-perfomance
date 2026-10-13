@@ -12,11 +12,11 @@ public sealed class WorkflowConfigurationControllerTests
         var municipality = new Municipality { Code = "WF-MEMBER", Name = "Workflow Member Municipality" };
         var user = IdpTestFixture.CreateUser("workflow-actor");
         var submitter = IdpTestFixture.CreateUser("different-submitter");
+        user.Municipality = municipality;
+        submitter.Municipality = municipality;
         var financialYear = new FinancialYear { Code = "2036/37", Name = "2036/37", StartDate = new(2036, 7, 1), EndDate = new(2037, 6, 30) };
         context.AddRange(municipality, user, submitter, financialYear);
         await context.SaveChangesAsync();
-        user.MunicipalityId = municipality.Id;
-        submitter.MunicipalityId = municipality.Id;
         var year = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id, FinancialYear = financialYear, EffectiveFrom = financialYear.StartDate };
         var target = new OpmsTarget { MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "WF-MEMBER-KPI", TargetName = "Workflow member target", KpiDescription = "Workflow member target", AnnualTargetDescription = "Target", PerformanceObjective = "Objective" };
         var scheme = new RatingScheme { MunicipalityId = municipality.Id, Code = "WF-MEMBER-RATING", Name = "Workflow member rating" };
@@ -187,9 +187,9 @@ public sealed class WorkflowConfigurationControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var municipality = new Municipality { Code = "RFI-PAGE", Name = "RFI Page Municipality" };
         var user = IdpTestFixture.CreateUser("rfi-reader");
+        user.Municipality = municipality;
         context.AddRange(municipality, user);
         await context.SaveChangesAsync();
-        user.MunicipalityId = municipality.Id;
         var financialYear = new FinancialYear { Code = "2032/33", Name = "2032/33", StartDate = new(2032, 7, 1), EndDate = new(2033, 6, 30) };
         context.FinancialYears.Add(financialYear);
         await context.SaveChangesAsync();
@@ -423,9 +423,9 @@ public sealed class WorkflowConfigurationControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var municipality = new Municipality { Code = "WF-EVIDENCE", Name = "Workflow Evidence Municipality" };
         var user = IdpTestFixture.CreateUser("workflow-reader");
+        user.Municipality = municipality;
         context.AddRange(municipality, user);
         await context.SaveChangesAsync();
-        user.MunicipalityId = municipality.Id;
         var financialYear = new FinancialYear { Code = "2033/34", Name = "2033/34", StartDate = new(2033, 7, 1), EndDate = new(2034, 6, 30) };
         context.FinancialYears.Add(financialYear);
         await context.SaveChangesAsync();

@@ -2343,6 +2343,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceSecurityRegistryHistory();
         EnforcePermissionProjectionHistory();
         EnforceMunicipalityRootHistory();
+        EnforceApplicationUserRootHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
@@ -3482,6 +3483,152 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         }
         value = default;
         return false;
+    }
+
+    private void EnforceApplicationUserRootHistory()
+    {
+        if (ChangeTracker.Entries<ApplicationUser>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Application-user security-root history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<ApplicationUser>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var changed = entry.Properties.Where(property => property.IsModified
+                    && property.Metadata.Name != nameof(ApplicationUser.RowVersion)
+                    && ApplicationUserValueChanged(property.OriginalValue, property.CurrentValue))
+                .Select(property => property.Metadata.Name)
+                .ToHashSet(StringComparer.Ordinal);
+            if (changed.Count == 0) continue;
+
+            var runtimeFields = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(ApplicationUser.PasswordHash), nameof(ApplicationUser.SecurityStamp), nameof(ApplicationUser.ConcurrencyStamp),
+                nameof(ApplicationUser.AccessFailedCount), nameof(ApplicationUser.LockoutEnd), nameof(ApplicationUser.LastLoginAt)
+            };
+            var profileFields = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(ApplicationUser.FirstName), nameof(ApplicationUser.LastName), nameof(ApplicationUser.PhoneNumber), nameof(ApplicationUser.IsActive)
+            };
+            var metadataFields = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(ApplicationUser.UpdatedAt), nameof(ApplicationUser.UpdatedBy)
+            };
+            var recognized = runtimeFields.Concat(profileFields).Concat(metadataFields)
+                .Append(nameof(ApplicationUser.MustChangePassword)).Append(nameof(ApplicationUser.TwoFactorEnabled))
+                .ToHashSet(StringComparer.Ordinal);
+            if (!changed.IsSubsetOf(recognized))
+                throw new InvalidOperationException("Application-user public identity, tenant, login identity, organisation and creation evidence are immutable.");
+
+            if (changed.Contains(nameof(ApplicationUser.LastLoginAt)))
+            {
+                var before = entry.OriginalValues.GetValue<DateTime?>(nameof(ApplicationUser.LastLoginAt));
+                var after = entry.CurrentValues.GetValue<DateTime?>(nameof(ApplicationUser.LastLoginAt));
+                if (!after.HasValue || before.HasValue && after <= before)
+                    throw new InvalidOperationException("Application-user last-login evidence may advance only monotonically.");
+            }
+
+            var governedProfileFields = changed.Where(profileFields.Contains).ToArray();
+            var requiresAdministrationAudit = governedProfileFields.Length > 0 || changed.Any(metadataFields.Contains);
+            if (requiresAdministrationAudit)
+            {
+                var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                    && candidate.Entity.EntityName == nameof(ApplicationUser)
+                    && candidate.Entity.EntityId == entry.Entity.PublicId.ToString()
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Action)
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && (!changed.Contains(nameof(ApplicationUser.UpdatedBy))
+                        || candidate.Entity.ChangedBy == entry.Entity.UpdatedBy)
+                    && (governedProfileFields.Length == 0
+                        || ApplicationUserSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, governedProfileFields)
+                            && ApplicationUserSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, governedProfileFields))).ToArray();
+                if (audits.Length != 1)
+                    throw new InvalidOperationException("Application-user profile, lifecycle and administration changes require one exact same-transaction reasoned audit.");
+            }
+
+            if (changed.Contains(nameof(ApplicationUser.MustChangePassword)))
+            {
+                var before = entry.OriginalValues.GetValue<bool>(nameof(ApplicationUser.MustChangePassword));
+                var after = entry.CurrentValues.GetValue<bool>(nameof(ApplicationUser.MustChangePassword));
+                var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                    && candidate.Entity.EntityName == "UserAuthentication"
+                    && candidate.Entity.EntityId == entry.Entity.Id
+                    && candidate.Entity.Action is "PasswordChange" or "PasswordResetCompleted"
+                    && candidate.Entity.ChangedBy == entry.Entity.Id
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && ApplicationUserBooleanSnapshotMatches(candidate.Entity.NewValue, nameof(ApplicationUser.MustChangePassword), after)).ToArray();
+                if (!before || after || audits.Length != 1)
+                    throw new InvalidOperationException("Application-user password-remediation state may clear only beside its exact authentication audit.");
+            }
+
+            if (changed.Contains(nameof(ApplicationUser.TwoFactorEnabled)))
+            {
+                var after = entry.CurrentValues.GetValue<bool>(nameof(ApplicationUser.TwoFactorEnabled));
+                var action = after ? "MfaEnable" : "MfaDisable";
+                var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                    && candidate.Entity.EntityName == "UserAuthentication"
+                    && candidate.Entity.EntityId == entry.Entity.Id
+                    && candidate.Entity.Action == action
+                    && candidate.Entity.ChangedBy == entry.Entity.Id
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && ApplicationUserBooleanSnapshotMatches(candidate.Entity.NewValue, nameof(ApplicationUser.TwoFactorEnabled), after)).ToArray();
+                if (audits.Length != 1)
+                    throw new InvalidOperationException("Application-user MFA state may change only beside its exact authentication audit.");
+            }
+        }
+    }
+
+    private static bool ApplicationUserValueChanged(object? before, object? after) =>
+        before is byte[] beforeBytes && after is byte[] afterBytes
+            ? !beforeBytes.SequenceEqual(afterBytes)
+            : !Equals(before, after);
+
+    private static bool ApplicationUserSnapshotMatches(string? json, PropertyValues values, IEnumerable<string> fields)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            foreach (var field in fields)
+            {
+                if (!TryGetJsonProperty(document.RootElement, field, out var actual)) return false;
+                var expected = values[field];
+                if (expected == null)
+                {
+                    if (actual.ValueKind != System.Text.Json.JsonValueKind.Null) return false;
+                }
+                else if (expected is bool boolean)
+                {
+                    if (actual.ValueKind is not (System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
+                        || actual.GetBoolean() != boolean) return false;
+                }
+                else if (actual.ValueKind != System.Text.Json.JsonValueKind.String
+                    || !string.Equals(actual.GetString(), Convert.ToString(expected, System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal))
+                    return false;
+            }
+            return true;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool ApplicationUserBooleanSnapshotMatches(string? json, string field, bool expected)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            return TryGetJsonProperty(document.RootElement, field, out var value)
+                && value.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                && value.GetBoolean() == expected;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
     }
 
     private void EnforcePerformancePeriodTargetHistory()

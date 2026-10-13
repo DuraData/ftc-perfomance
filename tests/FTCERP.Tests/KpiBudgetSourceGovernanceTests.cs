@@ -125,9 +125,9 @@ public sealed class KpiBudgetSourceGovernanceTests
     {
         var municipality = new Municipality { Code = $"BUD-{Guid.NewGuid():N}"[..20], Name = "Budget Governance" };
         var actor = IdpTestFixture.CreateUser($"budget-actor-{Guid.NewGuid():N}");
+        actor.Municipality = municipality;
         context.AddRange(municipality, actor);
         await context.SaveChangesAsync();
-        actor.MunicipalityId = municipality.Id;
         var source = new GovernedBudgetSource { MunicipalityId = municipality.Id, Code = "MIG", Name = "Infrastructure Grant" };
         var opmsTarget = new OpmsTarget { MunicipalityId = municipality.Id, IndicatorNumber = "OPMS-BUD", TargetName = "OPMS Budget", KpiDescription = "OPMS governed allocation" };
         var ipmsTarget = new IpmsTarget { MunicipalityId = municipality.Id, IndicatorNumber = "IPMS-BUD", TargetName = "IPMS Budget", KpiDescription = "IPMS governed allocation" };

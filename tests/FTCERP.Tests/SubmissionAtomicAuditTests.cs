@@ -34,9 +34,9 @@ public sealed class SubmissionAtomicAuditTests
             Municipality = municipality, AssignedUser = user, IndicatorNumber = "ATOMIC-IPMS",
             TargetName = "Atomic IPMS target", KpiDescription = "Atomic IPMS target"
         };
+        user.Municipality = municipality;
         context.AddRange(user, municipality, financialYear, municipalityYear, period, opmsTarget, ipmsTarget);
         await context.SaveChangesAsync();
-        user.MunicipalityId = municipality.Id;
         context.PerformancePeriodTargets.AddRange(
             new PerformancePeriodTarget
             {

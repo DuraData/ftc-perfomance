@@ -514,8 +514,7 @@ public sealed class OpmsImportControllerTests
     private static async Task<Setup> SeedAsync(ApplicationDbContext context)
     {
         var municipality = new Municipality { Code = "IMPORT", Name = "Import Municipality", IsActive = true };
-        var user = IdpTestFixture.CreateUser("opms-importer"); context.AddRange(municipality, user); await context.SaveChangesAsync();
-        user.MunicipalityId = municipality.Id;
+        var user = IdpTestFixture.CreateUser("opms-importer"); user.Municipality = municipality; context.AddRange(municipality, user); await context.SaveChangesAsync();
         var year = new FinancialYear { Code = "2026/27", Name = "2026/27", StartDate = new DateTime(2026, 7, 1), EndDate = new DateTime(2027, 6, 30), IsActive = true };
         var department = new Department { MunicipalityId = municipality.Id, Code = "TECH", Name = "Technical Services", IsActive = true };
         var legacy = new Period { Code = "FY26", Name = "2026/27", FiscalYear = year.Code, StartDate = year.StartDate, EndDate = year.EndDate, IsActive = true };

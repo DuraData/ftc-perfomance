@@ -617,7 +617,6 @@ public sealed class NormalizedTargetWriteCutoverTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
-        seed.User.MunicipalityId = seed.Municipality.Id;
         var secondAssignee = IdpTestFixture.CreateUser($"relationship-assignee-{Guid.NewGuid():N}");
         secondAssignee.MunicipalityId = seed.Municipality.Id;
         var department = new Department { MunicipalityId = seed.Municipality.Id, Code = "REL", Name = "Relationship Governance" };
@@ -886,6 +885,7 @@ public sealed class NormalizedTargetWriteCutoverTests
     {
         var municipality = new Municipality { Code = "NORM", Name = "Normalized Municipality" };
         var user = IdpTestFixture.CreateUser("normalized-user");
+        user.Municipality = municipality;
         var financialYear = new FinancialYear { Code = "2026/27", Name = "2026/27", StartDate = new DateTime(2026, 7, 1), EndDate = new DateTime(2027, 6, 30), IsActive = true };
         var legacyPeriod = new Period { Code = "FY", Name = "2026/27", FiscalYear = financialYear.Code, StartDate = financialYear.StartDate, EndDate = financialYear.EndDate, IsActive = true };
         context.AddRange(municipality, user, financialYear, legacyPeriod);

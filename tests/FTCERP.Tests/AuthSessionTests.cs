@@ -114,7 +114,7 @@ public sealed class AuthSessionTests
         profile.Email.Should().Be(user.Email);
         profile.UserName.Should().Be(user.UserName);
         userManager.Verify(manager => manager.UpdateAsync(user), Times.Once);
-        (await context.AuditTrails.SingleAsync(item => item.EntityId == user.Id && item.Action == "ProfileUpdate")).ChangedBy.Should().Be(user.Id);
+        (await context.AuditTrails.SingleAsync(item => item.EntityId == user.PublicId.ToString() && item.Action == "ProfileUpdate")).ChangedBy.Should().Be(user.Id);
     }
 
     [Fact]

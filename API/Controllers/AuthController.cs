@@ -162,6 +162,7 @@ public class AuthController : ControllerBase
         }
 
         user.MustChangePassword = false;
+        AddAuthenticationAudit(user, "PasswordResetCompleted", new { user.MustChangePassword }, "User completed a governed password reset.");
         var updated = await _userManager.UpdateAsync(user);
         if (!updated.Succeeded)
         {
@@ -170,7 +171,6 @@ public class AuthController : ControllerBase
         }
         await _userManager.UpdateSecurityStampAsync(user);
         await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "Password reset");
-        AddAuthenticationAudit(user, "PasswordResetCompleted", null);
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
         ClearSessionCookies();
@@ -305,6 +305,7 @@ public class AuthController : ControllerBase
             return BadRequest(new ApiResponse<bool>(false, false, "Password could not be changed.", changed.Errors.Select(error => error.Description).ToArray()));
         }
         user.MustChangePassword = false;
+        AddAuthenticationAudit(user, "PasswordChange", new { user.MustChangePassword }, "User completed a governed password change.");
         var updated = await _userManager.UpdateAsync(user);
         if (!updated.Succeeded)
         {
@@ -312,7 +313,6 @@ public class AuthController : ControllerBase
             return BadRequest(new ApiResponse<bool>(false, false, "Password state could not be updated.", updated.Errors.Select(error => error.Description).ToArray()));
         }
         await _userManager.UpdateSecurityStampAsync(user);
-        AddAuthenticationAudit(user, "PasswordChange", null);
         await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "Password changed");
         await transaction.CommitAsync();
         ClearSessionCookies();
@@ -365,11 +365,11 @@ public class AuthController : ControllerBase
             return BadRequest(new ApiResponse<MfaEnableResponse>(false, null, "The authenticator code is invalid."));
         }
 
+        AddAuthenticationAudit(user, "MfaEnable", new { TwoFactorEnabled = true }, "User enabled authenticator MFA.");
         var enabled = await _userManager.SetTwoFactorEnabledAsync(user, true);
         if (!enabled.Succeeded) return BadRequest(new ApiResponse<MfaEnableResponse>(false, null, "MFA could not be enabled.", enabled.Errors.Select(error => error.Description).ToArray()));
         var recoveryCodes = (await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10))?.ToArray() ?? [];
         await _userManager.UpdateSecurityStampAsync(user);
-        AddAuthenticationAudit(user, "MfaEnable", new { RecoveryCodeCount = recoveryCodes.Length });
         await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "MFA enabled");
         ClearSessionCookies();
         return Ok(new ApiResponse<MfaEnableResponse>(true, new MfaEnableResponse(recoveryCodes), "MFA enabled. Save the recovery codes and sign in again."));
@@ -389,11 +389,11 @@ public class AuthController : ControllerBase
             : await _userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, AuthenticationCodeNormalizer.Authenticator(request.Code));
         if (!secondFactorValid) return BadRequest(new ApiResponse<bool>(false, false, "The authentication code is invalid."));
 
+        AddAuthenticationAudit(user, "MfaDisable", new { TwoFactorEnabled = false }, "User disabled authenticator MFA.");
         var disabled = await _userManager.SetTwoFactorEnabledAsync(user, false);
         if (!disabled.Succeeded) return BadRequest(new ApiResponse<bool>(false, false, "MFA could not be disabled.", disabled.Errors.Select(error => error.Description).ToArray()));
         await _userManager.ResetAuthenticatorKeyAsync(user);
         await _userManager.UpdateSecurityStampAsync(user);
-        AddAuthenticationAudit(user, "MfaDisable", null);
         await _jwtService.RevokeAllSessionsAsync(user.Id, HttpContext.Connection.RemoteIpAddress?.ToString(), "MFA disabled");
         ClearSessionCookies();
         return Ok(new ApiResponse<bool>(true, true, "MFA disabled. Sign in again."));
@@ -436,11 +436,12 @@ public class AuthController : ControllerBase
         user.PhoneNumber = phoneNumber;
         user.UpdatedAt = DateTime.UtcNow;
         user.UpdatedBy = user.Id;
+        AddApplicationUserAudit(user, "ProfileUpdate", before,
+            new { user.FirstName, user.LastName, user.PhoneNumber }, "User updated their own profile.");
         var updated = await _userManager.UpdateAsync(user);
         if (!updated.Succeeded)
             return BadRequest(new ApiResponse<UserProfileResponse>(false, null, "Profile could not be updated.", updated.Errors.Select(error => error.Description).ToArray()));
 
-        AddAuthenticationAudit(user, "ProfileUpdate", new { Before = before, After = new { user.FirstName, user.LastName, user.PhoneNumber } });
         await _context.SaveChangesAsync();
         var profile = new UserProfileResponse(
             user.PublicId, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
@@ -476,7 +477,7 @@ public class AuthController : ControllerBase
         return string.IsNullOrWhiteSpace(userId) ? null : await _userManager.FindByIdAsync(userId);
     }
 
-    private void AddAuthenticationAudit(ApplicationUser user, string action, object? value)
+    private void AddAuthenticationAudit(ApplicationUser user, string action, object? value, string reason = "Authentication security event")
     {
         _context.AuditTrails.Add(new AuditTrail
         {
@@ -489,6 +490,26 @@ public class AuthController : ControllerBase
             ChangedAt = DateTime.UtcNow,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
             CorrelationId = HttpContext.TraceIdentifier,
+            Reason = reason,
+            UserAgent = Request.Headers.UserAgent.ToString()
+        });
+    }
+
+    private void AddApplicationUserAudit(ApplicationUser user, string action, object? oldValue, object? newValue, string reason)
+    {
+        _context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = user.MunicipalityId,
+            EntityName = nameof(ApplicationUser),
+            EntityId = user.PublicId.ToString(),
+            Action = action,
+            OldValue = oldValue == null ? null : JsonSerializer.Serialize(oldValue),
+            NewValue = newValue == null ? null : JsonSerializer.Serialize(newValue),
+            ChangedBy = user.Id,
+            ChangedAt = DateTime.UtcNow,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            CorrelationId = HttpContext.TraceIdentifier,
+            Reason = reason,
             UserAgent = Request.Headers.UserAgent.ToString()
         });
     }

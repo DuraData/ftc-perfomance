@@ -19,11 +19,10 @@ public sealed class WorkflowQueueTests
         };
         var user = IdpTestFixture.CreateUser("queue-user", "Queue", "Owner");
         var other = IdpTestFixture.CreateUser("other-user", "Other", "Submitter");
+        user.Municipality = municipality;
+        other.Municipality = municipality;
         context.AddRange(municipality, financialYear, user, other);
         await context.SaveChangesAsync();
-
-        user.MunicipalityId = municipality.Id;
-        other.MunicipalityId = municipality.Id;
         var municipalityYear = new MunicipalityFinancialYear
         {
             MunicipalityId = municipality.Id,

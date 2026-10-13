@@ -11,9 +11,9 @@ public sealed class GovernedWithdrawalTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var municipality = new Municipality { Code = "DUE-MEMBER", Name = "Due Date Municipality" };
         var user = IdpTestFixture.CreateUser("due-date-user");
+        user.Municipality = municipality;
         context.AddRange(municipality, user);
         await context.SaveChangesAsync();
-        user.MunicipalityId = municipality.Id;
         var originalDueDate = DateTime.UtcNow.Date.AddDays(5);
         var opmsTarget = new OpmsTarget
         {
@@ -132,13 +132,13 @@ public sealed class GovernedWithdrawalTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var municipality = new Municipality { Code = "DUE-CANONICAL", Name = "Canonical due-date municipality" };
         var user = IdpTestFixture.CreateUser("canonical-due-date-user");
+        user.Municipality = municipality;
         var financialYear = new FinancialYear
         {
             Code = "2039/40", Name = "2039/2040", StartDate = new(2039, 7, 1), EndDate = new(2040, 6, 30)
         };
         context.AddRange(municipality, user, financialYear);
         await context.SaveChangesAsync();
-        user.MunicipalityId = municipality.Id;
         var municipalityYear = new MunicipalityFinancialYear
         {
             MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id, EffectiveFrom = financialYear.StartDate
@@ -232,9 +232,9 @@ public sealed class GovernedWithdrawalTests
         var user = IdpTestFixture.CreateUser("due-history-user");
         user.FirstName = "History";
         user.LastName = "Approver";
+        user.Municipality = municipality;
         context.AddRange(municipality, user);
         await context.SaveChangesAsync();
-        user.MunicipalityId = municipality.Id;
         var target = new OpmsTarget
         {
             MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "DUE-HISTORY-OPMS",
@@ -354,9 +354,9 @@ public sealed class GovernedWithdrawalTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var municipality = new Municipality { Code = "WD-SUB", Name = "Submission Withdrawal Municipality" };
         var user = IdpTestFixture.CreateUser("submission-withdraw-user");
+        user.Municipality = municipality;
         context.AddRange(municipality, user);
         await context.SaveChangesAsync();
-        user.MunicipalityId = municipality.Id;
         var opmsTarget = new OpmsTarget
         {
             MunicipalityId = municipality.Id, AssignedUserId = user.Id, IndicatorNumber = "WD-OPMS",
