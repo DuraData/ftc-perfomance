@@ -2901,8 +2901,33 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             || ChangeTracker.Entries<IdpBudgetSnapshot>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<IdpCollaborationComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("IDP change, budget-snapshot, and collaboration-comment history is append-only.");
-        if (ChangeTracker.Entries<IdpTaskAssignment>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("IDP task history cannot be hard deleted.");
+        if (ChangeTracker.Entries<IdpAnnualTarget>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<IdpAlignmentLink>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<IdpCommunitySession>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<IdpCommunityNeed>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<IdpWardInput>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<IdpStakeholderEngagement>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            || ChangeTracker.Entries<IdpRiskLink>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("IDP annual-target, alignment, participation, stakeholder, and risk-link records are append-only.");
+        foreach (var entry in ChangeTracker.Entries<IdpTaskAssignment>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("IDP task history cannot be hard deleted.");
+            EnsureOnlyProperties(entry,
+                [nameof(IdpTaskAssignment.IsCompleted), nameof(IdpTaskAssignment.CompletedAt), nameof(IdpTaskAssignment.RowVersion)],
+                "IDP task identity, assignment, content and due-date evidence are immutable.");
+            var originalCompleted = entry.OriginalValues.GetValue<bool>(nameof(IdpTaskAssignment.IsCompleted));
+            var currentCompleted = entry.CurrentValues.GetValue<bool>(nameof(IdpTaskAssignment.IsCompleted));
+            var originalCompletedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(IdpTaskAssignment.CompletedAt));
+            var currentCompletedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(IdpTaskAssignment.CompletedAt));
+            if (originalCompleted == currentCompleted
+                || currentCompleted && !currentCompletedAt.HasValue
+                || !currentCompleted && currentCompletedAt.HasValue
+                || originalCompleted && !originalCompletedAt.HasValue)
+                throw new InvalidOperationException("IDP task completion must be a complete state transition.");
+            RequireGovernanceAudit("IdpTask", entry.Entity.PublicId.ToString(), _tenantContext?.MunicipalityId,
+                currentCompleted ? "Complete" : "Reopen", requireOldValue: true);
+        }
         if (ChangeTracker.Entries<OpmsImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("OPMS import reconciliation rows are append-only.");
         if (ChangeTracker.Entries<LegacySubmissionValueArchive>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

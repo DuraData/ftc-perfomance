@@ -55,7 +55,7 @@ public class IdpSecondaryMemberSecurityTests
         var graph = await SeedGraphAsync(context, actor, assignee);
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var observed = new List<(string Code, AccessScopeContext? Scope)>();
-        var controller = Controller(context, actor, allowed, assignee, observed: observed);
+        var controller = Controller(context, actor, allowed, assignee, observed: observed, realWorkflow: true);
 
         var kpiRequest = new CreateIdpKpiRequest(
             graph.Project.PublicId, "KPI-PROTECTED-1", "Protected KPI", "Protected KPI detail", "Count",

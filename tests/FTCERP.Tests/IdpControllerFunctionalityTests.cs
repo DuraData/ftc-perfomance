@@ -362,11 +362,11 @@ public class IdpControllerFunctionalityTests
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(actor, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync(new AccessDecisionResult(true, "test", [], [], []));
-        var workflow = new Mock<IWorkflowGovernanceService>();
+        var workflow = new WorkflowGovernanceService(context);
         var controller = IdpTestFixture.CreateController(
             context,
             IdpTestFixture.CreateUserManagerMock(actor).Object,
-            workflow.Object,
+            workflow,
             actor.Id,
             tenant,
             access.Object);
@@ -1142,7 +1142,7 @@ public class IdpControllerFunctionalityTests
         context.IdpPlans.Add(plan);
         await context.SaveChangesAsync();
 
-        var workflow = new Mock<IWorkflowGovernanceService>();
+        var workflow = new WorkflowGovernanceService(context);
         var usersById = new Dictionary<string, ApplicationUser>
         {
             [creator.Id] = creator,
@@ -1153,7 +1153,7 @@ public class IdpControllerFunctionalityTests
         var taskAccess = new Mock<IAccessControlService>();
         taskAccess.Setup(item => item.CheckPermissionAsync(creator, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync(new AccessDecisionResult(true, "test", [], [], []));
-        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow.Object, creator.Id, accessControl: taskAccess.Object);
+        var controller = IdpTestFixture.CreateController(context, userManager.Object, workflow, creator.Id, accessControl: taskAccess.Object);
 
         var createResult = await controller.CreateTask(new CreateIdpTaskRequest(
             plan.PublicId,
@@ -1173,13 +1173,8 @@ public class IdpControllerFunctionalityTests
         createPayload.AssignedToUserPublicId.Should().Be(assignee.PublicId);
         createPayload.RowVersion.Should().Be(Convert.ToBase64String(task.RowVersion));
 
-        workflow.Verify(w => w.CreateNotificationAsync(
-            assignee.Id,
-            NotificationType.Submission,
-            It.IsAny<string>(),
-            It.IsAny<string>(),
-            "IdpTask",
-            task.PublicId.ToString()), Times.Once);
+        (await context.Notifications.SingleAsync(item => item.UserId == assignee.Id && item.EntityName == "IdpTask"
+            && item.EntityId == task.PublicId.ToString())).Title.Should().Be("IDP task assigned");
 
         task.PublicId.Should().NotBeEmpty();
         task.RowVersion.Should().NotBeEmpty();
@@ -1195,12 +1190,30 @@ public class IdpControllerFunctionalityTests
         updated.IsCompleted.Should().BeTrue();
         updated.CompletedAt.Should().NotBeNull();
         updated.RowVersion.Should().NotEqual(Convert.FromBase64String(originalVersion));
-        workflow.Verify(service => service.WriteAuditTrailAsync(
-            "IdpTask", task.PublicId.ToString(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), creator.Id, It.IsAny<string?>()),
-            Times.Exactly(2));
+        var taskAudits = await context.AuditTrails.Where(item => item.EntityName == "IdpTask" && item.EntityId == task.PublicId.ToString())
+            .OrderBy(item => item.ChangedAt).ToArrayAsync();
+        taskAudits.Select(item => item.Action).Should().Equal("Create", "Complete");
+        taskAudits[1].Reason.Should().Be("Reviewed and accepted");
+        taskAudits[1].OldValue.Should().NotBeNull();
+        taskAudits[1].NewValue.Should().NotBeNull();
+
+        var completedVersion = Convert.ToBase64String(updated.RowVersion);
+        var completedVersionBytes = updated.RowVersion.ToArray();
+        var reopenResult = await controller.CompleteTaskByPublicId(task.PublicId,
+            new CompleteIdpTaskRequest(false, completedVersion, "Returned for further work"));
+        reopenResult.Result.Should().BeOfType<OkObjectResult>();
+
+        var reopened = await context.IdpTaskAssignments.SingleAsync();
+        reopened.IsCompleted.Should().BeFalse();
+        reopened.CompletedAt.Should().BeNull();
+        reopened.RowVersion.Should().NotEqual(completedVersionBytes);
+        taskAudits = await context.AuditTrails.Where(item => item.EntityName == "IdpTask" && item.EntityId == task.PublicId.ToString())
+            .OrderBy(item => item.Id).ToArrayAsync();
+        taskAudits.Select(item => item.Action).Should().Equal("Create", "Complete", "Reopen");
+        taskAudits[2].Reason.Should().Be("Returned for further work");
 
         var staleResult = await controller.CompleteTaskByPublicId(task.PublicId,
-            new CompleteIdpTaskRequest(false, originalVersion, "Returned for further work"));
+            new CompleteIdpTaskRequest(true, originalVersion, "Attempt with a stale version"));
         staleResult.Result.Should().BeOfType<ConflictObjectResult>();
     }
 

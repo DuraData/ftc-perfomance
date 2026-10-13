@@ -1269,9 +1269,10 @@ public class IdpController : ControllerBase
         };
 
         _context.IdpAnnualTargets.Add(entity);
+        _workflowGovernanceService.QueueAuditTrail("IdpAnnualTarget", entity.PublicId.ToString(), "Create", null,
+            ToAnnualTargetResponse(entity, kpi.PublicId, IdpAnnualTargetMemberAccess.Full), user.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext));
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpAnnualTarget", entity.PublicId.ToString(), "Create", null,
-            ToAnnualTargetResponse(entity, kpi.PublicId, IdpAnnualTargetMemberAccess.Full));
 
         return Ok(new ApiResponse<IdpAnnualTargetResponse>(true, ToAnnualTargetResponse(entity, kpi.PublicId,
             await GetAnnualTargetMemberAccessAsync(user, Scope(kpiId: kpi.PublicId, projectId: kpi.ProjectPublicId)))));
@@ -1310,10 +1311,10 @@ public class IdpController : ControllerBase
         };
 
         _context.IdpAlignmentLinks.Add(entity);
-        await _context.SaveChangesAsync();
         var fullResponse = ToAlignmentResponse(entity, objective.PublicId, includeNotes: true);
-        await WriteIdpAudit(user.Id, "IdpAlignmentLink", entity.PublicId.ToString(), "Create", null,
-            fullResponse);
+        _workflowGovernanceService.QueueAuditTrail("IdpAlignmentLink", entity.PublicId.ToString(), "Create", null,
+            fullResponse, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _context.SaveChangesAsync();
 
         var includeNotes = await CanAccessMemberAsync(user, "IDP_ALIGNMENT", "Notes", SecurityOperation.Read, scope);
         return Ok(new ApiResponse<IdpAlignmentLinkResponse>(true,
@@ -1388,10 +1389,10 @@ public class IdpController : ControllerBase
         };
 
         _context.IdpCommunitySessions.Add(entity);
+        _workflowGovernanceService.QueueAuditTrail("IdpCommunitySession", entity.PublicId.ToString(), "Create", null,
+            ToCommunitySessionResponse(entity, plan.PublicId, wardPublicId, wardName, IdpParticipationMemberAccess.Full),
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await _context.SaveChangesAsync();
-
-        await WriteIdpAudit(user.Id, "IdpCommunitySession", entity.PublicId.ToString(), "Create", null,
-            ToCommunitySessionResponse(entity, plan.PublicId, wardPublicId, wardName, IdpParticipationMemberAccess.Full));
 
         return Ok(new ApiResponse<IdpCommunitySessionResponse>(true,
             ToCommunitySessionResponse(entity, plan.PublicId, wardPublicId, wardName,
@@ -1438,9 +1439,10 @@ public class IdpController : ControllerBase
         };
 
         _context.IdpCommunityNeeds.Add(entity);
+        _workflowGovernanceService.QueueAuditTrail("IdpCommunityNeed", entity.PublicId.ToString(), "Create", null,
+            ToCommunityNeedResponse(entity, session.PublicId, IdpParticipationMemberAccess.Full), user.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext));
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpCommunityNeed", entity.PublicId.ToString(), "Create", null,
-            ToCommunityNeedResponse(entity, session.PublicId, IdpParticipationMemberAccess.Full));
 
         return Ok(new ApiResponse<IdpCommunityNeedResponse>(true, ToCommunityNeedResponse(entity, session.PublicId,
             await GetParticipationMemberAccessAsync(user, scope))));
@@ -1491,9 +1493,10 @@ public class IdpController : ControllerBase
         };
 
         _context.IdpWardInputs.Add(entity);
+        _workflowGovernanceService.QueueAuditTrail("IdpWardInput", entity.PublicId.ToString(), "Create", null,
+            ToWardInputResponse(entity, plan.PublicId, ward.PublicId, ward.Name, IdpParticipationMemberAccess.Full),
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
         await _context.SaveChangesAsync();
-        await WriteIdpAudit(user.Id, "IdpWardInput", entity.PublicId.ToString(), "Create", null,
-            ToWardInputResponse(entity, plan.PublicId, ward.PublicId, ward.Name, IdpParticipationMemberAccess.Full));
 
         return Ok(new ApiResponse<IdpWardInputResponse>(true,
             ToWardInputResponse(entity, plan.PublicId, ward.PublicId, ward.Name,
@@ -1592,10 +1595,11 @@ public class IdpController : ControllerBase
         };
 
         _context.IdpStakeholderEngagements.Add(entity);
-        await _context.SaveChangesAsync();
         entity.IdpCommunitySession = session;
-        await WriteIdpAudit(user.Id, "IdpStakeholderEngagement", entity.PublicId.ToString(), "Create", null,
-            new { entity.PublicId, SessionPublicId = session.PublicId, entity.StakeholderType, entity.StakeholderName });
+        _workflowGovernanceService.QueueAuditTrail("IdpStakeholderEngagement", entity.PublicId.ToString(), "Create", null,
+            new { entity.PublicId, SessionPublicId = session.PublicId, entity.StakeholderType, entity.StakeholderName },
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _context.SaveChangesAsync();
 
         var canReadContactPerson = await CanAccessStakeholderMemberAsync(user, "ContactPerson", SecurityOperation.Read);
         var canReadContactEmail = await CanAccessStakeholderMemberAsync(user, "ContactEmail", SecurityOperation.Read);
@@ -1681,9 +1685,10 @@ public class IdpController : ControllerBase
         };
 
         _context.IdpRiskLinks.Add(entity);
-        await _context.SaveChangesAsync();
         var fullResponse = ToRiskResponse(entity, objective?.PublicId, project?.PublicId, kpi?.PublicId, includeMitigationPlan: true);
-        await WriteIdpAudit(user.Id, "IdpRiskLink", entity.PublicId.ToString(), "Create", null, fullResponse);
+        _workflowGovernanceService.QueueAuditTrail("IdpRiskLink", entity.PublicId.ToString(), "Create", null, fullResponse,
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _context.SaveChangesAsync();
 
         var includeMitigationPlan = await CanAccessMemberAsync(user, "IDP_RISK_LINK", "MitigationPlan", SecurityOperation.Read, scope);
         return Ok(new ApiResponse<IdpRiskLinkResponse>(true,
@@ -2067,18 +2072,17 @@ public class IdpController : ControllerBase
         };
 
         _context.IdpTaskAssignments.Add(entity);
-        await _context.SaveChangesAsync();
-
-        await _workflowGovernanceService.CreateNotificationAsync(
+        _workflowGovernanceService.QueueNotification(
             assignee.Id,
             NotificationType.Submission,
             "IDP task assigned",
             "You were assigned an IDP collaboration task.",
             "IdpTask",
             entity.PublicId.ToString());
-
-        await WriteIdpAudit(user.Id, "IdpTask", entity.PublicId.ToString(), "Create", null,
-            ToTaskResponse(entity, plan.PublicId, request.IdpPlanVersionPublicId, assignee, user, IdpCollaborationMemberAccess.Full));
+        _workflowGovernanceService.QueueAuditTrail("IdpTask", entity.PublicId.ToString(), "Create", null,
+            ToTaskResponse(entity, plan.PublicId, request.IdpPlanVersionPublicId, assignee, user, IdpCollaborationMemberAccess.Full),
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        await _context.SaveChangesAsync();
         return Ok(new ApiResponse<IdpTaskResponse>(true,
             ToTaskResponse(entity, plan.PublicId, request.IdpPlanVersionPublicId, assignee, user, await GetCollaborationMemberAccessAsync(user, scope))));
     }
@@ -2119,9 +2123,14 @@ public class IdpController : ControllerBase
             return BadRequest(new ApiResponse<IdpTaskResponse>(false, null, "A valid RowVersion is required."));
         }
 
-        var before = ToTaskResponse(entity, entity.IdpPlan.PublicId, entity.IdpPlanVersion?.PublicId, null, null, IdpCollaborationMemberAccess.Full);
+        if (entity.IsCompleted == request.IsCompleted)
+            return Conflict(new ApiResponse<IdpTaskResponse>(false, null,
+                request.IsCompleted ? "The task is already completed." : "The task is already open."));
+        var before = new { entity.IsCompleted, entity.CompletedAt };
         entity.IsCompleted = request.IsCompleted;
         entity.CompletedAt = request.IsCompleted ? DateTime.UtcNow : null;
+        _workflowGovernanceService.QueueAuditTrail("IdpTask", entity.PublicId.ToString(), request.IsCompleted ? "Complete" : "Reopen",
+            before, new { entity.IsCompleted, entity.CompletedAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason);
         try
         {
             await _context.SaveChangesAsync();
@@ -2135,8 +2144,6 @@ public class IdpController : ControllerBase
         var assigner = await _userManager.FindByIdAsync(entity.AssignedByUserId);
 
         var fullResponse = ToTaskResponse(entity, entity.IdpPlan.PublicId, entity.IdpPlanVersion?.PublicId, assignee, assigner, IdpCollaborationMemberAccess.Full);
-        await WriteIdpAudit(user.Id, "IdpTask", entity.PublicId.ToString(), request.IsCompleted ? "Complete" : "Reopen",
-            new { Task = before, Reason = request.Reason.Trim() }, fullResponse);
         var memberAccess = await GetCollaborationMemberAccessAsync(user, Scope(targetId: entity.IdpPlan.PublicId, taskId: entity.PublicId));
         return Ok(new ApiResponse<IdpTaskResponse>(true, ToTaskResponse(entity, entity.IdpPlan.PublicId, entity.IdpPlanVersion?.PublicId, assignee, assigner, memberAccess)));
     }

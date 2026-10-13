@@ -63,6 +63,17 @@ public class IdpSecondaryGovernanceTests
         new IdpCollaborationComment()
     };
 
+    public static TheoryData<object> AppendPreservedOperationalRecords => new()
+    {
+        new IdpAnnualTarget(),
+        new IdpAlignmentLink(),
+        new IdpCommunitySession(),
+        new IdpCommunityNeed(),
+        new IdpWardInput(),
+        new IdpStakeholderEngagement(),
+        new IdpRiskLink()
+    };
+
     [Theory]
     [MemberData(nameof(AppendOnlyRecords))]
     public async Task Idp_history_records_cannot_be_rewritten(object entity)
@@ -84,5 +95,100 @@ public class IdpSecondaryGovernanceTests
         await FluentActions.Invoking(() => context.SaveChangesAsync())
             .Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*IDP task history cannot be hard deleted*");
+    }
+
+    [Theory]
+    [MemberData(nameof(AppendPreservedOperationalRecords))]
+    public async Task Idp_secondary_operational_records_cannot_be_rewritten(object entity)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(entity).State = EntityState.Modified;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*IDP annual-target, alignment, participation, stakeholder, and risk-link records are append-only*");
+    }
+
+    [Theory]
+    [MemberData(nameof(AppendPreservedOperationalRecords))]
+    public async Task Idp_secondary_operational_records_cannot_be_hard_deleted(object entity)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Entry(entity).State = EntityState.Deleted;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*IDP annual-target, alignment, participation, stakeholder, and risk-link records are append-only*");
+    }
+
+    [Fact]
+    public async Task Idp_task_completion_requires_an_exact_atomic_audit_and_preserves_task_evidence()
+    {
+        const long municipalityId = 8201;
+        var actor = IdpTestFixture.CreateUser("idp-task-governance");
+        actor.MunicipalityId = municipalityId;
+        var tenant = IdpTestFixture.Tenant(municipalityId, actor.Id);
+        await using var context = IdpTestFixture.CreateRelationalContext(tenant);
+        context.Municipalities.Add(new Municipality
+        {
+            Id = municipalityId,
+            Code = "IDP-TASK-GOV",
+            Name = "Governed municipality"
+        });
+        context.Users.Add(actor);
+        var plan = new IdpPlan
+        {
+            MunicipalityId = municipalityId,
+            MunicipalityName = "Governed municipality",
+            PlanCode = "IDP-GOVERNED-TASK",
+            PlanTitle = "Governed task plan",
+            StartFinancialYear = 2026,
+            EndFinancialYear = 2031,
+            CreatedByUserId = actor.Id
+        };
+        context.IdpPlans.Add(plan);
+        await context.SaveChangesAsync();
+        var task = new IdpTaskAssignment
+        {
+            IdpPlanId = plan.Id,
+            Title = "Review plan",
+            Description = "Review the plan evidence",
+            AssignedToUserId = actor.Id,
+            AssignedByUserId = actor.Id,
+            DueDate = DateTime.UtcNow.AddDays(3)
+        };
+        context.IdpTaskAssignments.Add(task);
+        await context.SaveChangesAsync();
+
+        task.IsCompleted = true;
+        task.CompletedAt = DateTime.UtcNow;
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*IdpTask changes require same-transaction reasoned before/after audit evidence*");
+
+        context.ChangeTracker.Clear();
+        task = await context.IdpTaskAssignments.SingleAsync(item => item.PublicId == task.PublicId);
+        var before = new { task.IsCompleted, task.CompletedAt };
+        task.IsCompleted = true;
+        task.CompletedAt = DateTime.UtcNow;
+        new WorkflowGovernanceService(context, tenantContext: tenant).QueueAuditTrail(
+            "IdpTask", task.PublicId.ToString(), "Complete", before,
+            new { task.IsCompleted, task.CompletedAt }, actor.Id, null, "Reviewed and accepted");
+        await context.SaveChangesAsync();
+
+        var audit = await context.AuditTrails.SingleAsync(item => item.EntityName == "IdpTask"
+            && item.EntityId == task.PublicId.ToString());
+        audit.Action.Should().Be("Complete");
+        audit.Reason.Should().Be("Reviewed and accepted");
+        audit.OldValue.Should().NotBeNull();
+        audit.NewValue.Should().NotBeNull();
+
+        task.Title = "Rewritten title";
+        new WorkflowGovernanceService(context, tenantContext: tenant).QueueAuditTrail(
+            "IdpTask", task.PublicId.ToString(), "Complete", new { Title = "Review plan" },
+            new { task.Title }, actor.Id, null, "Attempted rewrite");
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*IDP task identity, assignment, content and due-date evidence are immutable*");
     }
 }
