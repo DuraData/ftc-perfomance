@@ -348,6 +348,133 @@ public class DynamicSecurityTests
     }
 
     [Fact]
+    public async Task KpiViewerAdministrationLifecycle_IsDynamicTenantSafeAuditedRevocableAndConcurrencyProtected()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Id = 7, Code = "VISUAL", Name = "Visual Municipality" };
+        var foreignMunicipality = new Municipality { Id = 8, Code = "FOREIGN", Name = "Foreign Municipality" };
+        var actor = IdpTestFixture.CreateUser("dynamic-security-admin", "Dynamic", "Administrator");
+        var viewer = IdpTestFixture.CreateUser("dynamic-kpi-viewer", "KPI", "Viewer");
+        var administratorRole = Role("dynamic-security-administrator", "DYNAMIC_SECURITY_ADMIN");
+        var permissionDefinitions = new[]
+        {
+            new Permission { Code = "SECURITY.SYSTEM_SCOPE", Module = "Security", Feature = "Role", Action = "System", Kind = SecurityPermissionKind.Action, IsActive = true },
+            new Permission { Code = "SECURITY.MANAGE_ROLES", Module = "Security", Feature = "Role", Action = "Manage", Kind = SecurityPermissionKind.Action, IsActive = true },
+            new Permission { Code = "SECURITY.MANAGE_PERMISSIONS", Module = "Security", Feature = "Permission", Action = "Manage", Kind = SecurityPermissionKind.Action, IsActive = true },
+            new Permission { Code = "SECURITY.ASSIGN_ROLES", Module = "Security", Feature = "Assignment", Action = "Manage", Kind = SecurityPermissionKind.Action, IsActive = true },
+            new Permission { Code = "SECURITY.VIEW", Module = "Security", Feature = "Role", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true },
+            new Permission { Code = "SECURITY.VIEW_EFFECTIVE", Module = "Security", Feature = "EffectiveAccess", Action = "View", Kind = SecurityPermissionKind.Action, IsActive = true },
+            new Permission { Code = "OPMS_KPI.READ", Module = "Resource", Feature = "OPMS_KPI", Action = "Read", Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_KPI", Operation = SecurityOperation.Read, IsActive = true },
+            new Permission { Code = "NAV.DASHBOARD", Module = "Navigation", Feature = "Dashboard", Action = "View", Kind = SecurityPermissionKind.Navigation, NavigationCode = "NAV.DASHBOARD", IsActive = true },
+            new Permission { Code = "NAV.SDBIP", Module = "Navigation", Feature = "SDBIP", Action = "View", Kind = SecurityPermissionKind.Navigation, NavigationCode = "NAV.SDBIP", IsActive = true }
+        };
+        context.AddRange(municipality, foreignMunicipality, actor, viewer, administratorRole);
+        context.Permissions.AddRange(permissionDefinitions);
+        await context.SaveChangesAsync();
+        context.SecurityUserRoleAssignments.Add(Assignment(actor, administratorRole));
+        context.RolePermissions.AddRange(permissionDefinitions.Select(permission => new RolePermission
+        {
+            RoleId = administratorRole.Id,
+            PermissionId = permission.Id,
+            IsAllowed = true,
+            IsActive = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-1)
+        }));
+        context.SecurityNavigationItems.AddRange(
+            new SecurityNavigationItem { Code = "NAV.DASHBOARD.ITEM", Name = "Dashboard", Route = "/dashboard", RequiredPermissionCode = "NAV.DASHBOARD", DisplayOrder = 1, IsActive = true },
+            new SecurityNavigationItem { Code = "NAV.SDBIP.ITEM", Name = "SDBIP", Route = "/opms/dashboard", RequiredPermissionCode = "NAV.SDBIP", DisplayOrder = 2, IsActive = true });
+        await context.SaveChangesAsync();
+
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(7);
+        tenant.SetupGet(item => item.IsSystem).Returns(true);
+        var users = new Dictionary<string, ApplicationUser> { [actor.Id] = actor, [viewer.Id] = viewer };
+        var userManager = IdpTestFixture.CreateUserManagerMock(actor, users);
+        var actorSecurity = CreateService(context, actor, tenant.Object);
+        var controller = new SecurityAdministrationController(context, actorSecurity, userManager.Object, tenant.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(actor.Id) } }
+        };
+
+        var viewerRoleResult = await controller.CreateRole(new CreateSecurityRoleRequest(
+            "VISUAL_KPI_VIEWER", "Visual KPI Viewer", "Read-only KPI dashboard verification role", null, null));
+        var viewerRole = viewerRoleResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<SecurityRoleDto>>().Subject.Data!;
+        viewerRole.MunicipalityPublicId.Should().Be(municipality.PublicId);
+        var originalViewerRoleVersion = viewerRole.RowVersion;
+
+        (await controller.PutRolePermissions(viewerRole.PublicId, new UpdateRoleSecurityRequest(viewerRole.RowVersion,
+        [
+            new("OPMS_KPI.READ", "ALLOW", nameof(ScopeType.InstitutionScope)),
+            new("NAV.DASHBOARD", "ALLOW", null),
+            new("NAV.SDBIP", "ALLOW", null)
+        ]))).Result.Should().BeOfType<OkObjectResult>();
+        (await controller.PutUserRoles(viewer.PublicId, new UpdateUserRoleSecurityRequest([], [
+            new(viewerRole.PublicId, municipality.PublicId, null, null, DateTime.UtcNow.AddMinutes(-1), null)
+        ]))).Result.Should().BeOfType<OkObjectResult>();
+
+        var viewerSecurity = CreateService(context, viewer, tenant.Object);
+        (await viewerSecurity.CheckPermissionAsync(viewer, "OPMS_KPI.READ", new AccessScopeContext(MunicipalityId: 7))).Allowed.Should().BeTrue();
+        (await viewerSecurity.CheckPermissionAsync(viewer, "OPMS_KPI.UPDATE", new AccessScopeContext(MunicipalityId: 7))).Allowed.Should().BeFalse();
+        (await viewerSecurity.GetAuthorizedNavigationAsync(viewer)).Select(item => item.Path)
+            .Should().BeEquivalentTo("/dashboard", "/opms/dashboard");
+
+        var foreignTenant = new Mock<ITenantContext>();
+        foreignTenant.SetupGet(item => item.MunicipalityId).Returns(8);
+        var foreignView = CreateService(context, viewer, foreignTenant.Object);
+        (await foreignView.CheckPermissionAsync(viewer, "OPMS_KPI.READ", new AccessScopeContext(MunicipalityId: 8))).Allowed.Should().BeFalse();
+        (await foreignView.GetAuthorizedNavigationAsync(viewer)).Should().BeEmpty();
+
+        var restrictionRoleResult = await controller.CreateRole(new CreateSecurityRoleRequest(
+            "VISUAL_KPI_RESTRICTED", "Visual KPI Restricted", "Explicit deny precedence verification role", null, null));
+        var restrictionRole = restrictionRoleResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<SecurityRoleDto>>().Subject.Data!;
+        (await controller.PutRolePermissions(restrictionRole.PublicId, new UpdateRoleSecurityRequest(restrictionRole.RowVersion,
+        [
+            new("OPMS_KPI.READ", "DENY", nameof(ScopeType.InstitutionScope))
+        ]))).Result.Should().BeOfType<OkObjectResult>();
+
+        var firstAssignmentResult = await controller.GetUserRoles(viewer.PublicId);
+        var firstAssignmentConfiguration = firstAssignmentResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<UserRoleSecurityConfigurationDto>>().Subject.Data!;
+        (await controller.PutUserRoles(viewer.PublicId, new UpdateUserRoleSecurityRequest(
+            firstAssignmentConfiguration.Assignments.Select(item => new ExpectedUserRoleAssignment(item.PublicId, item.RowVersion)).ToArray(),
+            [
+                new(viewerRole.PublicId, municipality.PublicId, null, null, DateTime.UtcNow.AddMinutes(-1), null),
+                new(restrictionRole.PublicId, municipality.PublicId, null, null, DateTime.UtcNow.AddMinutes(-1), null)
+            ]))).Result.Should().BeOfType<OkObjectResult>();
+        (await viewerSecurity.CheckPermissionAsync(viewer, "OPMS_KPI.READ", new AccessScopeContext(MunicipalityId: 7))).Allowed.Should().BeFalse();
+        (await viewerSecurity.GetAuthorizedNavigationAsync(viewer)).Select(item => item.Path)
+            .Should().BeEquivalentTo(["/dashboard", "/opms/dashboard"], "navigation remains independently governed by its own grants");
+
+        var currentViewerConfigurationResult = await controller.GetRolePermissions(viewerRole.PublicId);
+        var currentViewerConfiguration = currentViewerConfigurationResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<RoleSecurityConfigurationDto>>().Subject.Data!;
+        (await controller.PutRolePermissions(viewerRole.PublicId, new UpdateRoleSecurityRequest(currentViewerConfiguration.RoleRowVersion, [])))
+            .Result.Should().BeOfType<OkObjectResult>();
+        (await viewerSecurity.GetAuthorizedNavigationAsync(viewer)).Should().BeEmpty();
+        (await viewerSecurity.CheckPermissionAsync(viewer, "OPMS_KPI.READ", new AccessScopeContext(MunicipalityId: 7))).Allowed.Should().BeFalse();
+
+        var currentAssignmentsResult = await controller.GetUserRoles(viewer.PublicId);
+        var currentAssignments = currentAssignmentsResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<UserRoleSecurityConfigurationDto>>().Subject.Data!;
+        (await controller.PutUserRoles(viewer.PublicId, new UpdateUserRoleSecurityRequest(
+            currentAssignments.Assignments.Select(item => new ExpectedUserRoleAssignment(item.PublicId, item.RowVersion)).ToArray(), [])))
+            .Result.Should().BeOfType<OkObjectResult>();
+        (await viewerSecurity.GetEffectiveAccessAsync(viewer)).Roles.Should().BeEmpty();
+
+        (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityRole" && item.Action == "Create")).Should().Be(2);
+        (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityRolePermissions" && item.Action == "ReplacePermissions")).Should().Be(3);
+        (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityUserRoleAssignment" && item.Action == "ReplaceRoleAssignments")).Should().Be(3);
+
+        var staleUpdate = await controller.PutRolePermissions(viewerRole.PublicId, new UpdateRoleSecurityRequest(originalViewerRoleVersion,
+        [
+            new("OPMS_KPI.READ", "ALLOW", nameof(ScopeType.InstitutionScope))
+        ]));
+        staleUpdate.Result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
     public async Task NoApplicablePermission_IsDeniedByDefault()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -816,12 +943,12 @@ public class DynamicSecurityTests
         typeof(UpdateUserRoleAssignment).GetProperty("UnitId").Should().BeNull();
     }
 
-    private static AccessControlService CreateService(ApplicationDbContext context, ApplicationUser user)
+    private static AccessControlService CreateService(ApplicationDbContext context, ApplicationUser user, ITenantContext? tenantContext = null)
     {
         var userManager = IdpTestFixture.CreateUserManagerMock(user);
         var roleStore = new Mock<IRoleStore<ApplicationRole>>();
         var roleManager = new Mock<RoleManager<ApplicationRole>>(roleStore.Object, null!, null!, null!, null!);
-        return new AccessControlService(context, userManager.Object, roleManager.Object);
+        return new AccessControlService(context, userManager.Object, roleManager.Object, tenantContext);
     }
 
     private static ApplicationRole Role(string id, string code) => new() { Id = id, Name = code, NormalizedName = code, RoleCode = code, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
