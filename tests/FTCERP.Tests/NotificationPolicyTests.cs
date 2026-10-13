@@ -11,6 +11,51 @@ namespace FTCERP.Tests;
 public sealed class NotificationPolicyTests
 {
     [Fact]
+    public async Task Self_service_preferences_create_and_update_with_exact_atomic_audit()
+    {
+        long? tenantId = null;
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(() => tenantId);
+        tenant.SetupGet(item => item.IsSystem).Returns(false);
+        await using var context = IdpTestFixture.CreateRelationalContext(tenant.Object);
+        var municipality = new Municipality { Code = "PREF-API", Name = "Preference API" };
+        var user = IdpTestFixture.CreateUser("preference-api-user");
+        user.Municipality = municipality;
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+        tenantId = municipality.Id;
+        var controller = new NotificationPoliciesController(context, tenant.Object,
+            new Mock<INotificationPolicyService>().Object, new WorkflowGovernanceService(context, null, tenant.Object),
+            IdpTestFixture.CreateUserManagerMock(user).Object, new Mock<IAccessControlService>().Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) }
+            }
+        };
+
+        var createdResult = await controller.SaveMyPreferences(new SaveNotificationPreferenceRequest(true, false, true, false, null));
+        var created = createdResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<NotificationPreferenceDto>>().Subject.Data!;
+        created.RowVersion.Should().NotBeNullOrWhiteSpace();
+
+        var updatedResult = await controller.SaveMyPreferences(new SaveNotificationPreferenceRequest(false, true, false, true, created.RowVersion));
+        var updated = updatedResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ApiResponse<NotificationPreferenceDto>>().Subject.Data!;
+        updated.EmailEnabled.Should().BeFalse();
+        updated.SmsEnabled.Should().BeTrue();
+        updated.DailyDigestEnabled.Should().BeFalse();
+        updated.WeeklySummaryEnabled.Should().BeTrue();
+        updated.RowVersion.Should().NotBe(created.RowVersion);
+
+        var audits = await context.AuditTrails.Where(item => item.EntityName == nameof(NotificationPreference))
+            .OrderBy(item => item.ChangedAt).ToArrayAsync();
+        audits.Select(item => item.Action).Should().Equal("Create", "Update");
+        audits.Should().OnlyContain(item => item.MunicipalityId == municipality.Id
+            && item.ChangedBy == user.Id && !string.IsNullOrWhiteSpace(item.Reason));
+    }
+
+    [Fact]
     public void AdministrationEndpoints_RequireDynamicWorkflowConfigurationPermission()
     {
         foreach (var methodName in new[] { nameof(NotificationPoliciesController.GetPage), nameof(NotificationPoliciesController.GetAll), nameof(NotificationPoliciesController.GetHolidaysPage), nameof(NotificationPoliciesController.GetHolidays), nameof(NotificationPoliciesController.CreateDraft), nameof(NotificationPoliciesController.Activate), nameof(NotificationPoliciesController.CopyToFinancialYear), nameof(NotificationPoliciesController.SetDeliveryState), nameof(NotificationPoliciesController.QueueTest), nameof(NotificationPoliciesController.RunDue), nameof(NotificationPoliciesController.AddHoliday) })

@@ -153,7 +153,18 @@ public sealed class NotificationOutboxWorkerTests
             var context = seedScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var user = IdpTestFixture.CreateUser("preference-user"); user.PhoneNumber = "+27110000001";
             context.Users.Add(user);
-            context.NotificationPreferences.Add(new NotificationPreference { MunicipalityId = 7, UserId = user.Id, SmsEnabled = false });
+            var preference = new NotificationPreference { MunicipalityId = 7, UserId = user.Id, SmsEnabled = false };
+            context.NotificationPreferences.Add(preference);
+            context.AuditTrails.Add(new AuditTrail
+            {
+                MunicipalityId = 7, EntityName = nameof(NotificationPreference), EntityId = preference.PublicId.ToString(),
+                Action = "Create", ChangedBy = user.Id, Reason = "Test optional delivery preference",
+                NewValue = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    preference.EmailEnabled, preference.SmsEnabled, preference.DailyDigestEnabled,
+                    preference.WeeklySummaryEnabled
+                })
+            });
             context.BusinessEventOutbox.AddRange(
                 new BusinessEventOutbox { MunicipalityId = 7, EventType = "Notification.Optional", AggregateType = "Test", AggregateId = "optional", Payload = "{\"recipients\":[\"preference-user\"],\"channels\":[\"SMS\"],\"mandatory\":false}" },
                 new BusinessEventOutbox { MunicipalityId = 7, EventType = "Notification.Mandatory", AggregateType = "Test", AggregateId = "mandatory", Payload = "{\"recipients\":[\"preference-user\"],\"channels\":[\"SMS\"],\"mandatory\":true}" });

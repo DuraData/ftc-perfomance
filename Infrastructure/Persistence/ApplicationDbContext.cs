@@ -2295,6 +2295,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     {
         EnforceSecurityRegistryHistory();
         EnforcePerformancePeriodTargetHistory();
+        EnforceNotificationPreferenceHistory();
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
@@ -3182,6 +3183,70 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
         _ => value.ToString()
     };
+
+    private void EnforceNotificationPreferenceHistory()
+    {
+        if (ChangeTracker.Entries<NotificationPreference>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Notification-preference history cannot be hard deleted; save an audited preference update instead.");
+
+        foreach (var entry in ChangeTracker.Entries<NotificationPreference>().Where(entry => entry.State == EntityState.Added))
+            RequireNotificationPreferenceAudit(entry, "Create", requireOldSnapshot: false);
+
+        foreach (var entry in ChangeTracker.Entries<NotificationPreference>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(NotificationPreference.EmailEnabled), nameof(NotificationPreference.SmsEnabled),
+                    nameof(NotificationPreference.DailyDigestEnabled), nameof(NotificationPreference.WeeklySummaryEnabled),
+                    nameof(NotificationPreference.UpdatedAt), nameof(NotificationPreference.RowVersion)],
+                "Notification-preference public identity, tenant and owning user are immutable.");
+            if (entry.Entity.UpdatedAt <= entry.OriginalValues.GetValue<DateTime>(nameof(NotificationPreference.UpdatedAt)))
+                throw new InvalidOperationException("Notification-preference update evidence must advance monotonically.");
+            RequireNotificationPreferenceAudit(entry, "Update", requireOldSnapshot: true);
+        }
+    }
+
+    private void RequireNotificationPreferenceAudit(EntityEntry<NotificationPreference> entry, string action, bool requireOldSnapshot)
+    {
+        var matches = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == nameof(NotificationPreference)
+            && candidate.Entity.EntityId == entry.Entity.PublicId.ToString()
+            && candidate.Entity.Action == action
+            && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+            && candidate.Entity.ChangedBy == entry.Entity.UserId
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && NotificationPreferenceSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues)
+            && (!requireOldSnapshot || NotificationPreferenceSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues))
+            && (requireOldSnapshot || candidate.Entity.OldValue == null)).ToArray();
+        if (matches.Length != 1)
+            throw new InvalidOperationException($"NotificationPreference {action} requires one exact same-transaction reasoned before/after audit record.");
+    }
+
+    private static bool NotificationPreferenceSnapshotMatches(string? json, PropertyValues values)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            var root = document.RootElement;
+            return root.ValueKind == System.Text.Json.JsonValueKind.Object
+                && root.TryGetProperty(nameof(NotificationPreference.EmailEnabled), out var email)
+                && email.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                && email.GetBoolean() == values.GetValue<bool>(nameof(NotificationPreference.EmailEnabled))
+                && root.TryGetProperty(nameof(NotificationPreference.SmsEnabled), out var sms)
+                && sms.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                && sms.GetBoolean() == values.GetValue<bool>(nameof(NotificationPreference.SmsEnabled))
+                && root.TryGetProperty(nameof(NotificationPreference.DailyDigestEnabled), out var daily)
+                && daily.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                && daily.GetBoolean() == values.GetValue<bool>(nameof(NotificationPreference.DailyDigestEnabled))
+                && root.TryGetProperty(nameof(NotificationPreference.WeeklySummaryEnabled), out var weekly)
+                && weekly.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                && weekly.GetBoolean() == values.GetValue<bool>(nameof(NotificationPreference.WeeklySummaryEnabled));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
 
     private void RejectRewrites<TEntity>(string message) where TEntity : class
     {
