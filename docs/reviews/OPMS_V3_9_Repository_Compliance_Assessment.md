@@ -4040,6 +4040,8 @@ Migration `20261013022601_V39ControlledLegacyTenantOwnershipReconciliation` addi
 
 Complete Release regression passes **736 backend tests with 1 explicit SQL Server-only skip and 0 failures** and **375/375 frontend tests across 79 files**. TypeScript, ESLint and accessibility **2/2** pass; Release compilation reports **0 warnings and 0 errors**; Vite transforms **2,113 modules**, and the enforced **78-chunk/402.1-KiB** bundle budget passes. Backend and frontend dependency audits report no vulnerabilities. With the Production/SQL Server provider selected, EF reports no model drift and emits a **695,182-byte** idempotent migration chain containing the new migration; SQL Server and SQLite incremental scripts and the local-only recovery safety contract pass. The 2026-10-13 browser attempt was rejected by the saved localhost-control preference, so the expanded Data Cutover screen remains visually unverified and no PASS is inferred. No Docker process, cloud resource or paid resource was created. R-01 remains partial until production-shaped execution, exception sign-off and the subsequent mandatory-column cutover are complete.
 
+Implementation commit `039d96d49e8b586739d34210a8cff6332d254b84` was pushed directly to both `codex/dev` and `main`. GitHub Actions run `38338211610` verified that exact revision: the `verify` job completed successfully in **4m33s**, all **18/18** quality/security steps passed, and check-run `115103042511` exposed no annotations.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
