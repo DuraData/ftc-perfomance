@@ -88,7 +88,7 @@ interface SubmissionWorkspaceProps {
   /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
   onDisposeAttachment?: (attachmentId: string, approvalReference: string, reason: string, rowVersion: string) => void;
   onWorkflowAction?: (
-    action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
+    action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit',
     payload: { comment?: string; score?: number },
   ) => void;
   onExtendDueDate?: (payload: { extendedDueDate: string; reason: string }) => void;
@@ -640,14 +640,11 @@ export function SubmissionWorkspace({
     && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`);
   const canAudit = currentSubmission.status === 'reviewed'
     && security.canExecute(`${submissionType}_WORKFLOW.INTERNAL_AUDIT`);
-  const canScore = ['approved', 'reviewed'].includes(currentSubmission.status)
-    && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`)
-    && canEditWorkflowRating;
   const canExtendDueDate = currentSubmission.status !== 'completed'
     && security.canExecute(`${submissionType}_SUBMISSION.EXTEND_DUE_DATE`)
     && security.canEditField(resourceCode, 'DueDate')
     && security.canEditField(resourceCode, 'DueDateExtensionReason');
-  const hasWorkflowAction = canSubmit || canVerify || canVerifyReject || canApprove || canReject || canReview || canAudit || canScore;
+  const hasWorkflowAction = canSubmit || canVerify || canVerifyReject || canApprove || canReject || canReview || canAudit;
   const canEditActual = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'ActualPerformance');
   const canReadVariance = security.canReadField(resourceCode, 'Variance');
   const canReadVarianceReason = security.canReadField(resourceCode, 'VarianceReason');
@@ -770,9 +767,8 @@ export function SubmissionWorkspace({
     refreshEvidence();
   };
 
-  const triggerWorkflowAction = (action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score') => {
+  const triggerWorkflowAction = (action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit') => {
     const parsedScore = canEditWorkflowRating && workflowScore.trim() !== '' ? Number(workflowScore) : undefined;
-    if (action === 'score' && (parsedScore === undefined || Number.isNaN(parsedScore))) return;
     onWorkflowAction?.(action, {
       comment: canEditWorkflowComment ? workflowComment || undefined : undefined,
       score: parsedScore !== undefined && !Number.isNaN(parsedScore) ? parsedScore : undefined,
@@ -1285,9 +1281,6 @@ export function SubmissionWorkspace({
             </Button>}
             {canAudit && <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('audit')}>
               Audit
-            </Button>}
-            {canScore && <Button variant="outline" size="sm" disabled={workflowBusy || workflowScore.trim() === ''} onClick={() => triggerWorkflowAction('score')}>
-              Save Score
             </Button>}
             {canExtendDueDate && <Button
               variant="outline"

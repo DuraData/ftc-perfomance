@@ -67,14 +67,14 @@ public sealed class SubmissionAtomicAuditTests
         var ipms = IpmsController(context, user, access.Object, governance, values);
 
         var createdOpms = Data(await opms.CreateSubmission(new SaveOpmsSubmissionRequest(
-            opmsTarget.PublicId, period.PublicId, "12", null, "Initial OPMS reason", "Initial OPMS measure", 2, "Document")));
+            opmsTarget.PublicId, period.PublicId, "12", null, "Initial OPMS reason", "Initial OPMS measure", "Document")));
         var createdIpms = Data(await ipms.CreateSubmission(new SaveIpmsSubmissionRequest(
-            ipmsTarget.PublicId, period.PublicId, "13", null, "Initial IPMS reason", "Initial IPMS measure", 3, "Document")));
+            ipmsTarget.PublicId, period.PublicId, "13", null, "Initial IPMS reason", "Initial IPMS measure", "Document")));
 
         Data(await opms.UpdateSubmission(createdOpms.PublicId.ToString(), new SaveOpmsSubmissionRequest(
-            opmsTarget.PublicId, period.PublicId, "14", null, "Updated OPMS reason", "Updated OPMS measure", 4, "Register")));
+            opmsTarget.PublicId, period.PublicId, "14", null, "Updated OPMS reason", "Updated OPMS measure", "Register")));
         Data(await ipms.UpdateSubmission(createdIpms.PublicId.ToString(), new SaveIpmsSubmissionRequest(
-            ipmsTarget.PublicId, period.PublicId, "15", null, "Updated IPMS reason", "Updated IPMS measure", 5, "Register")));
+            ipmsTarget.PublicId, period.PublicId, "15", null, "Updated IPMS reason", "Updated IPMS measure", "Register")));
 
         var audits = await context.AuditTrails
             .Where(item => item.EntityName == nameof(OpmsSubmission) || item.EntityName == nameof(IpmsSubmission))

@@ -2412,7 +2412,7 @@ export const getOpmsDueDateExtensionHistoryPage = (id: string, query: RegisterPa
 
 export async function applyOpmsSubmissionWorkflowAction(
   id: string,
-  action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
+  action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit',
   payload: SubmissionWorkflowActionPayload,
 ): Promise<ApiResponse<OPMSSubmission>> {
   const response = await post<OpmsSubmissionDto>(`/v1/opms-submissions/${id}/${action}`, payload);
@@ -2523,7 +2523,7 @@ export const getIpmsDueDateExtensionHistoryPage = (id: string, query: RegisterPa
 
 export async function applyIpmsSubmissionWorkflowAction(
   id: string,
-  action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit' | 'score',
+  action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit',
   payload: SubmissionWorkflowActionPayload,
 ): Promise<ApiResponse<IPMSSubmission>> {
   const response = await post<IpmsSubmissionDto>(`/v1/ipms-submissions/${id}/${action}`, payload);

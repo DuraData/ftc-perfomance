@@ -251,7 +251,6 @@ public class IpmsSubmissionsController : ControllerBase
             Variance = resolved.Calculation?.Variance,
             VarianceReason = request.VarianceReason?.Trim(),
             CorrectiveMeasure = request.CorrectiveMeasure?.Trim(),
-            SubmitterScore = request.SubmitterScore,
             PoeType = request.PoeType?.Trim(),
             SubmittedByUserId = user.Id,
             CreatedBy = user.Id,
@@ -305,7 +304,6 @@ public class IpmsSubmissionsController : ControllerBase
         entity.Variance = resolved.Calculation?.Variance;
         entity.VarianceReason = request.VarianceReason?.Trim();
         entity.CorrectiveMeasure = request.CorrectiveMeasure?.Trim();
-        entity.SubmitterScore = request.SubmitterScore;
         entity.PoeType = request.PoeType?.Trim();
         entity.UpdatedBy = user.Id;
         entity.UpdatedOn = DateTime.UtcNow;
@@ -976,50 +974,10 @@ public class IpmsSubmissionsController : ControllerBase
         ApplyWorkflowAction(id, "IPMS_WORKFLOW.INTERNAL_AUDIT", "audited", "Audit", NotificationType.InternalAuditRfi, request);
 
     [HttpPost("{id:guid}/score")]
-    public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Score(string id, [FromBody] SubmissionWorkflowActionRequest request)
-    {
-        if (request.Score == null) return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "Score is required"));
-
-        var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized(new ApiResponse<IpmsSubmissionResponse>(false, null, "User not found"));
-        id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
-        if (id.Length == 0) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
-
-        var entity = await _context.IpmsSubmissions.Include(item => item.IpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
-        if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
-        if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "The IPMS submission must be reconciled to a municipality before governance history can be recorded."));
-        if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission cannot be scored."));
-
-        if (string.Equals(SubmissionBaseStates.Normalize(entity.BaseState), SubmissionBaseStates.InProgress, StringComparison.OrdinalIgnoreCase))
-        {
-            return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "Scoring is not allowed while the submission is still in draft state."));
-        }
-
-        var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_WORKFLOW.PMS_REVIEW", BuildScope(entity));
-        if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, decision.Reason));
-        var memberDenial = await WorkflowActionMemberPermissionDenialAsync(user, BuildScope(entity), "score", request);
-        if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, memberDenial));
-
-        var score = new SubmissionScore
-        {
-            MunicipalityId = entity.MunicipalityId,
-            SubmissionKind = SubmissionKind.Ipms,
-            SubmissionId = id,
-            Score = request.Score.Value,
-            Notes = request.Comment,
-            ScoredByUserId = user.Id,
-            ScoredAt = DateTime.UtcNow
-        };
-        _context.SubmissionScores.Add(score);
-        _workflowGovernanceService.QueueAuditTrail("IpmsSubmission", id, "Score", null,
-            new { score.Score, score.Notes, score.ScoredAt }, user.Id,
-            PerformanceApiSupport.GetIpAddress(HttpContext),
-            string.IsNullOrWhiteSpace(request.Comment) ? "Submission score recorded." : request.Comment.Trim());
-        await _context.SaveChangesAsync();
-
-        var response = await FindSubmissionAsync(id) ?? entity;
-        return Ok(new ApiResponse<IpmsSubmissionResponse>(true, await ToAuthorizedResponseAsync(response, user)));
-    }
+    [ApiExplorerSettings(IgnoreApi = true)]
+    public ActionResult<ApiResponse<IpmsSubmissionResponse>> Score(string id) =>
+        StatusCode(StatusCodes.Status410Gone, new ApiResponse<IpmsSubmissionResponse>(false, null,
+            "Standalone scoring is retired. Record a rating through the applicable configured workflow transition."));
 
     [HttpPost("{id:guid}/extend-due-date")]
     public async Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> ExtendDueDate(string id, [FromBody] DueDateExtensionRequest request)
@@ -1156,7 +1114,6 @@ public class IpmsSubmissionsController : ControllerBase
             entity.VerifiedAt = DateTime.UtcNow;
             entity.VerifierComments = request.Comment;
             entity.VerifierComment = request.Comment;
-            entity.VerifierScore = request.Score;
             entity.VerifierStatus = string.Equals(status, "verified", StringComparison.OrdinalIgnoreCase) ? "Verified" : "Rejected";
             entity.SubmitterStatus = string.Equals(status, "verified", StringComparison.OrdinalIgnoreCase) ? "Verified" : "Needs Rework";
         }
@@ -1166,7 +1123,6 @@ public class IpmsSubmissionsController : ControllerBase
             entity.ApprovedAt = DateTime.UtcNow;
             entity.ApproverComments = request.Comment;
             entity.ApproverComment = request.Comment;
-            entity.ApproverScore = request.Score;
             entity.ApproverStatus = string.Equals(status, "approved", StringComparison.OrdinalIgnoreCase) ? "Approved" : "Rejected";
             entity.SubmitterStatus = string.Equals(status, "approved", StringComparison.OrdinalIgnoreCase) ? "Approved" : "Needs Rework";
         }
@@ -1177,7 +1133,6 @@ public class IpmsSubmissionsController : ControllerBase
             entity.AuditorComments = request.Comment;
             entity.AuditorComment = request.Comment;
             entity.AuditorRecommendation = request.Recommendation;
-            entity.AuditorScore = request.Score;
             entity.AuditorResponseDueDate = request.ResponseDueDate;
             entity.AuditorStatus = "Audited";
             entity.SubmitterStatus = "Respond To Audit";
@@ -1189,7 +1144,6 @@ public class IpmsSubmissionsController : ControllerBase
             entity.PmsComments = request.Comment;
             entity.PmsComment = request.Comment;
             entity.PmsRecommendation = request.Recommendation;
-            entity.PmsScore = request.Score;
             entity.PmsResponseDueDate = request.ResponseDueDate;
             entity.PmsRfiComment = request.RfiComment;
             entity.PmsStatus = "Reviewed";

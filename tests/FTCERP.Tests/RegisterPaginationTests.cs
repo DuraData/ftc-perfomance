@@ -106,8 +106,8 @@ public sealed class RegisterPaginationTests
             dependencies.Inspection, dependencies.Scanner, dependencies.Suggestions)
         { ControllerContext = ControllerContext(user.Id) };
 
-        var opmsResult = await opms.CreateSubmission(new SaveOpmsSubmissionRequest(Guid.Empty, Guid.NewGuid(), null, null, null, null, null, null));
-        var ipmsResult = await ipms.CreateSubmission(new SaveIpmsSubmissionRequest(Guid.Empty, Guid.NewGuid(), null, null, null, null, null, null));
+        var opmsResult = await opms.CreateSubmission(new SaveOpmsSubmissionRequest(Guid.Empty, Guid.NewGuid(), null, null, null, null, null));
+        var ipmsResult = await ipms.CreateSubmission(new SaveIpmsSubmissionRequest(Guid.Empty, Guid.NewGuid(), null, null, null, null, null));
 
         opmsResult.Result.Should().BeOfType<BadRequestObjectResult>().Which.Value
             .Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Which.Message.Should().Be("OPMS target is required.");
@@ -155,7 +155,7 @@ public sealed class RegisterPaginationTests
         response.CorrectiveMeasure.Should().BeNull();
 
         var update = await controller.UpdateSubmission(submission.PublicId.ToString(), new SaveOpmsSubmissionRequest(
-            target.PublicId, Guid.NewGuid(), "50", null, "Original reason", "Changed without permission", null, null));
+            target.PublicId, Guid.NewGuid(), "50", null, "Original reason", "Changed without permission", null));
         var denied = update.Result.Should().BeOfType<ObjectResult>().Subject;
         denied.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         denied.Value.Should().BeOfType<ApiResponse<OpmsSubmissionResponse>>().Which.Message.Should().Contain("Corrective Measure");

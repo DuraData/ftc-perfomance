@@ -3021,7 +3021,6 @@ export interface SaveOpmsSubmissionPayload {
   actualExpenditure?: number | null;
   varianceReason?: string | null;
   correctiveMeasure?: string | null;
-  submitterScore?: number | null;
   poeType?: string | null;
   dueDate?: string | null;
   extendedDueDate?: string | null;
@@ -3034,7 +3033,6 @@ export interface SaveIpmsSubmissionPayload {
   actualExpenditure?: number | null;
   varianceReason?: string | null;
   correctiveMeasure?: string | null;
-  submitterScore?: number | null;
   poeType?: string | null;
   dueDate?: string | null;
   extendedDueDate?: string | null;

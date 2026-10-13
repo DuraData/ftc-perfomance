@@ -236,7 +236,6 @@ public record SaveOpmsSubmissionRequest(
     decimal? ActualExpenditure,
     string? VarianceReason,
     string? CorrectiveMeasure,
-    decimal? SubmitterScore,
     string? PoeType,
     DateTime? DueDate = null,
     DateTime? ExtendedDueDate = null);
@@ -248,7 +247,6 @@ public record SaveIpmsSubmissionRequest(
     decimal? ActualExpenditure,
     string? VarianceReason,
     string? CorrectiveMeasure,
-    decimal? SubmitterScore,
     string? PoeType,
     DateTime? DueDate = null,
     DateTime? ExtendedDueDate = null);
