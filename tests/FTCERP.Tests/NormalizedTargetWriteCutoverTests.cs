@@ -543,6 +543,84 @@ public sealed class NormalizedTargetWriteCutoverTests
         Assert.Contains("selected municipality", Assert.IsType<ApiResponse<OpmsTargetResponse>>(foreignWardBadRequest.Value).Message);
     }
 
+    [Fact]
+    public async Task Relationship_only_updates_require_a_reason_append_history_and_advance_target_concurrency()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var seed = await SeedAsync(context);
+        seed.User.MunicipalityId = seed.Municipality.Id;
+        var secondAssignee = IdpTestFixture.CreateUser($"relationship-assignee-{Guid.NewGuid():N}");
+        secondAssignee.MunicipalityId = seed.Municipality.Id;
+        var department = new Department { MunicipalityId = seed.Municipality.Id, Code = "REL", Name = "Relationship Governance" };
+        var firstWard = new Ward { MunicipalityId = seed.Municipality.Id, Code = "W01", Name = "Ward 1", IsActive = true };
+        var secondWard = new Ward { MunicipalityId = seed.Municipality.Id, Code = "W02", Name = "Ward 2", IsActive = true };
+        context.AddRange(secondAssignee, department, firstWard, secondWard);
+        await context.SaveChangesAsync();
+        var firstVote = new VoteNumber { MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYearId = seed.MunicipalityYear.Id, DepartmentId = department.Id, Code = "V01", Number = "001", Name = "First vote", IsActive = true };
+        var secondVote = new VoteNumber { MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYearId = seed.MunicipalityYear.Id, DepartmentId = department.Id, Code = "V02", Number = "002", Name = "Second vote", IsActive = true };
+        context.AddRange(firstVote, secondVote);
+        await context.SaveChangesAsync();
+
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var createRequest = Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications) with
+        {
+            WardPublicIds = [firstWard.PublicId],
+            AdditionalAssigneePublicIds = [seed.User.PublicId],
+            VoteNumberPublicIds = [firstVote.PublicId]
+        };
+        var created = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>((await controller.CreateTarget(createRequest)).Result).Value).Data!;
+
+        var replacement = createRequest with
+        {
+            RowVersion = created.RowVersion,
+            WardPublicIds = [secondWard.PublicId],
+            AdditionalAssigneePublicIds = [secondAssignee.PublicId],
+            VoteNumberPublicIds = [secondVote.PublicId]
+        };
+        var missingReason = await controller.UpdateTarget(created.PublicId, replacement);
+        var badRequest = Assert.IsType<BadRequestObjectResult>(missingReason.Result);
+        Assert.Contains("relationship change reason", Assert.IsType<ApiResponse<OpmsTargetResponse>>(badRequest.Value).Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(await context.OpmsTargetWards.Where(row => row.IsActive).ToArrayAsync());
+
+        var changed = await controller.UpdateTarget(created.PublicId, replacement with { RelationshipChangeReason = "Approved service-delivery responsibility change" });
+        var changedResponse = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(changed.Result).Value).Data!;
+        Assert.NotEqual(created.RowVersion, changedResponse.RowVersion);
+        Assert.Equal([secondWard.PublicId], changedResponse.WardPublicIds);
+        Assert.Equal([secondAssignee.PublicId], changedResponse.AdditionalAssigneePublicIds);
+        Assert.Equal([secondVote.PublicId], changedResponse.VoteNumberPublicIds);
+
+        context.ChangeTracker.Clear();
+        var wardHistory = await context.OpmsTargetWards.OrderBy(row => row.LinkedAt).ToArrayAsync();
+        var assigneeHistory = await context.OpmsTargetAdditionalAssignees.OrderBy(row => row.LinkedAt).ToArrayAsync();
+        var voteHistory = await context.OpmsTargetVoteNumbers.OrderBy(row => row.LinkedAt).ToArrayAsync();
+        Assert.Equal(2, wardHistory.Length);
+        Assert.Equal(2, assigneeHistory.Length);
+        Assert.Equal(2, voteHistory.Length);
+        Assert.All(new IOpmsTargetRelationship[] { wardHistory[0], assigneeHistory[0], voteHistory[0] }, row =>
+        {
+            Assert.False(row.IsActive);
+            Assert.Equal(seed.User.Id, row.UnlinkedByUserId);
+            Assert.Equal("Approved service-delivery responsibility change", row.UnlinkReason);
+            Assert.NotNull(row.UnlinkedAt);
+        });
+        Assert.All(new IOpmsTargetRelationship[] { wardHistory[1], assigneeHistory[1], voteHistory[1] }, row =>
+        {
+            Assert.True(row.IsActive);
+            Assert.Equal(seed.User.Id, row.LinkedByUserId);
+        });
+
+        var relinked = await controller.UpdateTarget(created.PublicId, createRequest with
+        {
+            RowVersion = changedResponse.RowVersion,
+            RelationshipChangeReason = "Approved restoration of the original responsibility"
+        });
+        var relinkedResponse = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(relinked.Result).Value).Data!;
+        Assert.Equal([firstWard.PublicId], relinkedResponse.WardPublicIds);
+        Assert.Equal(3, await context.OpmsTargetWards.CountAsync());
+        Assert.Equal(3, await context.OpmsTargetAdditionalAssignees.CountAsync());
+        Assert.Equal(3, await context.OpmsTargetVoteNumbers.CountAsync());
+    }
+
     private static OpmsTargetsController Controller(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId,
         ISet<string>? deniedPermissions = null, bool persistGovernance = false)
     {

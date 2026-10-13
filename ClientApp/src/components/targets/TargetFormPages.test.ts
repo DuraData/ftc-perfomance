@@ -20,7 +20,7 @@ describe('TargetFormPages helpers', () => {
   });
 
   it('serializes relationship editors as typed arrays rather than CSV fields', () => {
-    const payload = buildOpmsPayload({ municipalityFinancialYearPublicId: 'year-public-id', sourceTemplateId: 'template-public-id', departmentId: 'department-public-id', unitId: 'unit-public-id', wardIds: 'ward-1, ward-2,ward-2', additionalAssigneeIds: 'user-a,user-b,user-a', voteNumberIds: 'vote-10,vote-11', nationalKpaPublicId: 'national-1', municipalKpaPublicId: 'municipal-1', backToBasicsPillarPublicId: 'pillar-1', strategicGoalPublicId: 'goal-1', strategicInterventionPublicId: 'intervention-1', strategicObjectivePublicId: 'objective-1', performanceObjectivePublicId: 'performance-1', budgetTypePublicId: 'type-1', budgetSources: [{ budgetSourcePublicId: 'source-1', amount: '125.50' }, { budgetSourcePublicId: 'source-2', amount: '' }], kpiUnitOfMeasurePublicId: 'unit-master-1' } as never);
+    const payload = buildOpmsPayload({ municipalityFinancialYearPublicId: 'year-public-id', sourceTemplateId: 'template-public-id', departmentId: 'department-public-id', unitId: 'unit-public-id', wardIds: 'ward-1, ward-2,ward-2', additionalAssigneeIds: 'user-a,user-b,user-a', voteNumberIds: 'vote-10,vote-11', relationshipChangeReason: '  Approved responsibility change  ', nationalKpaPublicId: 'national-1', municipalKpaPublicId: 'municipal-1', backToBasicsPillarPublicId: 'pillar-1', strategicGoalPublicId: 'goal-1', strategicInterventionPublicId: 'intervention-1', strategicObjectivePublicId: 'objective-1', performanceObjectivePublicId: 'performance-1', budgetTypePublicId: 'type-1', budgetSources: [{ budgetSourcePublicId: 'source-1', amount: '125.50' }, { budgetSourcePublicId: 'source-2', amount: '' }], kpiUnitOfMeasurePublicId: 'unit-master-1' } as never);
     expect(payload).not.toHaveProperty('departmentId');
     expect(payload).not.toHaveProperty('unitId');
     expect(payload).not.toHaveProperty('periodId');
@@ -32,6 +32,7 @@ describe('TargetFormPages helpers', () => {
     expect(payload.wardPublicIds).toEqual(['ward-1', 'ward-2']);
     expect(payload.additionalAssigneePublicIds).toEqual(['user-a', 'user-b']);
     expect(payload.voteNumberPublicIds).toEqual(['vote-10', 'vote-11']);
+    expect(payload.relationshipChangeReason).toBe('Approved responsibility change');
     expect(payload.budgetTypePublicId).toBe('type-1');
     expect(payload.budgetSources).toEqual([{ budgetSourcePublicId: 'source-1', amount: 125.5 }, { budgetSourcePublicId: 'source-2', amount: null }]);
     expect(payload.kpiUnitOfMeasurePublicId).toBe('unit-master-1');

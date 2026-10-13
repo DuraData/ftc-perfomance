@@ -285,7 +285,8 @@ public class OpmsTargetsController : ControllerBase
         BudgetClassificationResolver.Apply(entity, budgetClassification);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
         PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
-        ApplyMappings(entity, request, mappings, userReferences.AdditionalAssigneeIds);
+        var createdAt = DateTime.UtcNow;
+        ApplyMappings(entity, request, mappings, userReferences.AdditionalAssigneeIds, user.Id, createdAt);
 
         _context.OpmsTargets.Add(entity);
         TargetPeriodCutover.AddNewRows(_context, periodPlan, _tenantContext.MunicipalityId!.Value, user.Id, entity.Id, null);
@@ -332,7 +333,8 @@ public class OpmsTargetsController : ControllerBase
         if (organization.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, organization.Error));
         var periodPlan = await TargetPeriodCutover.BuildPlanAsync(_context, _unitEngine, entity.MunicipalityId, request.MunicipalityFinancialYearPublicId, request.PeriodTargets);
         if (!periodPlan.IsValid) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, periodPlan.Error));
-        var mappings = await ResolveMappingsAsync(request, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId, entity.VoteNumbers.Select(item => item.VoteNumberId).ToHashSet());
+        var mappings = await ResolveMappingsAsync(request, periodPlan.Rows[0].ReportingPeriod.MunicipalityFinancialYearId,
+            entity.VoteNumbers.Where(item => item.IsActive).Select(item => item.VoteNumberId).ToHashSet());
         if (!mappings.Succeeded) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, mappings.Error));
         var userReferences = await ResolveUserReferencesAsync(request);
         if (userReferences.Error != null) return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, userReferences.Error));
@@ -389,10 +391,16 @@ public class OpmsTargetsController : ControllerBase
         BudgetClassificationResolver.Apply(entity, budgetClassification);
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
         PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
-        _context.OpmsTargetWards.RemoveRange(entity.Wards);
-        _context.OpmsTargetAdditionalAssignees.RemoveRange(entity.AdditionalAssignees);
-        _context.OpmsTargetVoteNumbers.RemoveRange(entity.VoteNumbers);
-        ApplyMappings(entity, request, mappings, userReferences.AdditionalAssigneeIds);
+        var mappingChanged = HasMappingChanges(entity, request, mappings, userReferences.AdditionalAssigneeIds);
+        var relationshipReason = request.RelationshipChangeReason?.Trim();
+        if (mappingChanged && string.IsNullOrWhiteSpace(relationshipReason))
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "A relationship change reason is required when wards, additional assignees, or vote numbers change."));
+        if (relationshipReason?.Length > 2000)
+            return BadRequest(new ApiResponse<OpmsTargetResponse>(false, null, "The relationship change reason cannot exceed 2000 characters."));
+        var updatedAt = DateTime.UtcNow;
+        if (mappingChanged)
+            ApplyMappingChanges(entity, request, mappings, userReferences.AdditionalAssigneeIds, user.Id, relationshipReason!, updatedAt);
+        entity.UpdatedAt = updatedAt;
         _workflowGovernanceService.QueueAuditTrail("OpmsTarget", entity.Id, "Edit", before,
             new { entity.PublicId, Request = request }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "OPMS target updated.");
         try { await _context.SaveChangesAsync(); }
@@ -804,13 +812,57 @@ public class OpmsTargetsController : ControllerBase
         return (request.AssignedUserPublicId.HasValue ? users[request.AssignedUserPublicId.Value] : null, users, null);
     }
 
-    private void ApplyMappings(OpmsTarget target, SaveOpmsTargetRequest request, ResolvedTargetMappings mappings, IReadOnlyDictionary<Guid, string> userIdsByPublicId)
+    private void ApplyMappings(OpmsTarget target, SaveOpmsTargetRequest request, ResolvedTargetMappings mappings,
+        IReadOnlyDictionary<Guid, string> userIdsByPublicId, string actorUserId, DateTime linkedAt)
     {
         var tenantId = _tenantContext.MunicipalityId;
-        target.Wards = mappings.WardIds.Select(id => new OpmsTargetWard { MunicipalityId = tenantId, OpmsTargetId = target.Id, WardId = id }).ToList();
+        target.Wards = mappings.WardIds.Select(id => new OpmsTargetWard
+            { MunicipalityId = tenantId, OpmsTargetId = target.Id, WardId = id, LinkedByUserId = actorUserId, LinkedAt = linkedAt }).ToList();
         target.AdditionalAssignees = request.AdditionalAssigneePublicIds.Distinct()
-            .Select(publicId => new OpmsTargetAdditionalAssignee { MunicipalityId = tenantId, OpmsTargetId = target.Id, UserId = userIdsByPublicId[publicId] }).ToList();
-        target.VoteNumbers = mappings.VoteIds.Select(id => new OpmsTargetVoteNumber { MunicipalityId = tenantId, OpmsTargetId = target.Id, VoteNumberId = id }).ToList();
+            .Select(publicId => new OpmsTargetAdditionalAssignee
+                { MunicipalityId = tenantId, OpmsTargetId = target.Id, UserId = userIdsByPublicId[publicId], LinkedByUserId = actorUserId, LinkedAt = linkedAt }).ToList();
+        target.VoteNumbers = mappings.VoteIds.Select(id => new OpmsTargetVoteNumber
+            { MunicipalityId = tenantId, OpmsTargetId = target.Id, VoteNumberId = id, LinkedByUserId = actorUserId, LinkedAt = linkedAt }).ToList();
+    }
+
+    private static bool HasMappingChanges(OpmsTarget target, SaveOpmsTargetRequest request, ResolvedTargetMappings mappings,
+        IReadOnlyDictionary<Guid, string> userIdsByPublicId)
+    {
+        var desiredAssignees = request.AdditionalAssigneePublicIds.Distinct().Select(publicId => userIdsByPublicId[publicId]).ToHashSet(StringComparer.Ordinal);
+        return !target.Wards.Where(item => item.IsActive).Select(item => item.WardId).ToHashSet().SetEquals(mappings.WardIds)
+            || !target.VoteNumbers.Where(item => item.IsActive).Select(item => item.VoteNumberId).ToHashSet().SetEquals(mappings.VoteIds)
+            || !target.AdditionalAssignees.Where(item => item.IsActive).Select(item => item.UserId).ToHashSet(StringComparer.Ordinal).SetEquals(desiredAssignees);
+    }
+
+    private void ApplyMappingChanges(OpmsTarget target, SaveOpmsTargetRequest request, ResolvedTargetMappings mappings,
+        IReadOnlyDictionary<Guid, string> userIdsByPublicId, string actorUserId, string reason, DateTime changedAt)
+    {
+        var tenantId = _tenantContext.MunicipalityId;
+        var desiredWards = mappings.WardIds.ToHashSet();
+        var activeWards = target.Wards.Where(item => item.IsActive).ToArray();
+        foreach (var row in activeWards.Where(item => !desiredWards.Contains(item.WardId))) Unlink(row, actorUserId, reason, changedAt);
+        foreach (var wardId in desiredWards.Except(activeWards.Select(item => item.WardId)))
+            target.Wards.Add(new OpmsTargetWard { MunicipalityId = tenantId, OpmsTargetId = target.Id, WardId = wardId, LinkedByUserId = actorUserId, LinkedAt = changedAt });
+
+        var desiredAssignees = request.AdditionalAssigneePublicIds.Distinct().Select(publicId => userIdsByPublicId[publicId]).ToHashSet(StringComparer.Ordinal);
+        var activeAssignees = target.AdditionalAssignees.Where(item => item.IsActive).ToArray();
+        foreach (var row in activeAssignees.Where(item => !desiredAssignees.Contains(item.UserId))) Unlink(row, actorUserId, reason, changedAt);
+        foreach (var userId in desiredAssignees.Except(activeAssignees.Select(item => item.UserId), StringComparer.Ordinal))
+            target.AdditionalAssignees.Add(new OpmsTargetAdditionalAssignee { MunicipalityId = tenantId, OpmsTargetId = target.Id, UserId = userId, LinkedByUserId = actorUserId, LinkedAt = changedAt });
+
+        var desiredVotes = mappings.VoteIds.ToHashSet();
+        var activeVotes = target.VoteNumbers.Where(item => item.IsActive).ToArray();
+        foreach (var row in activeVotes.Where(item => !desiredVotes.Contains(item.VoteNumberId))) Unlink(row, actorUserId, reason, changedAt);
+        foreach (var voteId in desiredVotes.Except(activeVotes.Select(item => item.VoteNumberId)))
+            target.VoteNumbers.Add(new OpmsTargetVoteNumber { MunicipalityId = tenantId, OpmsTargetId = target.Id, VoteNumberId = voteId, LinkedByUserId = actorUserId, LinkedAt = changedAt });
+    }
+
+    private static void Unlink(IOpmsTargetRelationship relationship, string actorUserId, string reason, DateTime changedAt)
+    {
+        relationship.IsActive = false;
+        relationship.UnlinkedAt = changedAt;
+        relationship.UnlinkedByUserId = actorUserId;
+        relationship.UnlinkReason = reason;
     }
 
     private static AccessScopeContext BuildScope(OpmsTarget target) =>

@@ -130,6 +130,7 @@ public partial class OpmsTarget
     public decimal? RevisedAnnualTarget { get; set; }
     public decimal? RevisedAnnualBudget { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
     public byte[] RowVersion { get; set; } = [];
 
     public Municipality? Municipality { get; set; }
@@ -150,7 +151,22 @@ public partial class OpmsTarget
         public ICollection<TechnicalIndicatorDescription> TechnicalIndicatorDescriptions { get; set; } = new List<TechnicalIndicatorDescription>();
 }
 
-public class OpmsTargetWard
+public interface IOpmsTargetRelationship
+{
+    long Id { get; set; }
+    Guid PublicId { get; set; }
+    long? MunicipalityId { get; set; }
+    string OpmsTargetId { get; set; }
+    DateTime LinkedAt { get; set; }
+    string? LinkedByUserId { get; set; }
+    bool IsActive { get; set; }
+    DateTime? UnlinkedAt { get; set; }
+    string? UnlinkedByUserId { get; set; }
+    string? UnlinkReason { get; set; }
+    byte[] RowVersion { get; set; }
+}
+
+public class OpmsTargetWard : IOpmsTargetRelationship
 {
     public long Id { get; set; }
     public Guid PublicId { get; set; } = Guid.NewGuid();
@@ -158,12 +174,20 @@ public class OpmsTargetWard
     public string OpmsTargetId { get; set; } = string.Empty;
     public int WardId { get; set; }
     public DateTime LinkedAt { get; set; } = DateTime.UtcNow;
+    public string? LinkedByUserId { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime? UnlinkedAt { get; set; }
+    public string? UnlinkedByUserId { get; set; }
+    public string? UnlinkReason { get; set; }
+    public byte[] RowVersion { get; set; } = [];
     public Municipality? Municipality { get; set; }
     public OpmsTarget Target { get; set; } = null!;
     public Ward Ward { get; set; } = null!;
+    public ApplicationUser? LinkedByUser { get; set; }
+    public ApplicationUser? UnlinkedByUser { get; set; }
 }
 
-public class OpmsTargetAdditionalAssignee
+public class OpmsTargetAdditionalAssignee : IOpmsTargetRelationship
 {
     public long Id { get; set; }
     public Guid PublicId { get; set; } = Guid.NewGuid();
@@ -171,12 +195,20 @@ public class OpmsTargetAdditionalAssignee
     public string OpmsTargetId { get; set; } = string.Empty;
     public string UserId { get; set; } = string.Empty;
     public DateTime LinkedAt { get; set; } = DateTime.UtcNow;
+    public string? LinkedByUserId { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime? UnlinkedAt { get; set; }
+    public string? UnlinkedByUserId { get; set; }
+    public string? UnlinkReason { get; set; }
+    public byte[] RowVersion { get; set; } = [];
     public Municipality? Municipality { get; set; }
     public OpmsTarget Target { get; set; } = null!;
     public ApplicationUser User { get; set; } = null!;
+    public ApplicationUser? LinkedByUser { get; set; }
+    public ApplicationUser? UnlinkedByUser { get; set; }
 }
 
-public class OpmsTargetVoteNumber
+public class OpmsTargetVoteNumber : IOpmsTargetRelationship
 {
     public long Id { get; set; }
     public Guid PublicId { get; set; } = Guid.NewGuid();
@@ -184,9 +216,17 @@ public class OpmsTargetVoteNumber
     public string OpmsTargetId { get; set; } = string.Empty;
     public int VoteNumberId { get; set; }
     public DateTime LinkedAt { get; set; } = DateTime.UtcNow;
+    public string? LinkedByUserId { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime? UnlinkedAt { get; set; }
+    public string? UnlinkedByUserId { get; set; }
+    public string? UnlinkReason { get; set; }
+    public byte[] RowVersion { get; set; } = [];
     public Municipality? Municipality { get; set; }
     public OpmsTarget Target { get; set; } = null!;
     public VoteNumber VoteNumber { get; set; } = null!;
+    public ApplicationUser? LinkedByUser { get; set; }
+    public ApplicationUser? UnlinkedByUser { get; set; }
 }
 
 public partial class IpmsTarget

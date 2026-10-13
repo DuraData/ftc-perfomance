@@ -7892,6 +7892,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<int?>("UnitOfMeasureId")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<decimal>("Weight")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -7977,8 +7980,14 @@ namespace FTCERP.Host.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("LinkedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("LinkedByUserId")
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<long?>("MunicipalityId")
                         .HasColumnType("bigint");
@@ -7990,23 +7999,47 @@ namespace FTCERP.Host.Migrations
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("UnlinkReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("UnlinkedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UnlinkedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("LinkedByUserId");
+
                     b.HasIndex("MunicipalityId");
 
                     b.HasIndex("PublicId")
                         .IsUnique();
 
+                    b.HasIndex("UnlinkedByUserId");
+
                     b.HasIndex("UserId");
 
                     b.HasIndex("OpmsTargetId", "UserId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsActive] = 1");
 
-                    b.ToTable("OpmsTargetAdditionalAssignees");
+                    b.ToTable("OpmsTargetAdditionalAssignees", t =>
+                        {
+                            t.HasCheckConstraint("CK_OpmsTargetAdditionalAssignees_UnlinkLifecycle", "([IsActive] = 1 AND [UnlinkedAt] IS NULL AND [UnlinkedByUserId] IS NULL AND [UnlinkReason] IS NULL) OR ([IsActive] = 0 AND [UnlinkedAt] IS NOT NULL AND [UnlinkedByUserId] IS NOT NULL AND [UnlinkReason] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.OpmsTargetTemplate", b =>
@@ -8206,8 +8239,14 @@ namespace FTCERP.Host.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("LinkedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("LinkedByUserId")
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<long?>("MunicipalityId")
                         .HasColumnType("bigint");
@@ -8219,22 +8258,46 @@ namespace FTCERP.Host.Migrations
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("UnlinkReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("UnlinkedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UnlinkedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<int>("VoteNumberId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("LinkedByUserId");
 
                     b.HasIndex("MunicipalityId");
 
                     b.HasIndex("PublicId")
                         .IsUnique();
 
+                    b.HasIndex("UnlinkedByUserId");
+
                     b.HasIndex("VoteNumberId");
 
                     b.HasIndex("OpmsTargetId", "VoteNumberId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsActive] = 1");
 
-                    b.ToTable("OpmsTargetVoteNumbers");
+                    b.ToTable("OpmsTargetVoteNumbers", t =>
+                        {
+                            t.HasCheckConstraint("CK_OpmsTargetVoteNumbers_UnlinkLifecycle", "([IsActive] = 1 AND [UnlinkedAt] IS NULL AND [UnlinkedByUserId] IS NULL AND [UnlinkReason] IS NULL) OR ([IsActive] = 0 AND [UnlinkedAt] IS NOT NULL AND [UnlinkedByUserId] IS NOT NULL AND [UnlinkReason] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.OpmsTargetWard", b =>
@@ -8245,8 +8308,14 @@ namespace FTCERP.Host.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("LinkedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("LinkedByUserId")
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<long?>("MunicipalityId")
                         .HasColumnType("bigint");
@@ -8258,22 +8327,46 @@ namespace FTCERP.Host.Migrations
                     b.Property<Guid>("PublicId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("UnlinkReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("UnlinkedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UnlinkedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<int>("WardId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("LinkedByUserId");
 
                     b.HasIndex("MunicipalityId");
 
                     b.HasIndex("PublicId")
                         .IsUnique();
 
+                    b.HasIndex("UnlinkedByUserId");
+
                     b.HasIndex("WardId");
 
                     b.HasIndex("OpmsTargetId", "WardId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsActive] = 1");
 
-                    b.ToTable("OpmsTargetWards");
+                    b.ToTable("OpmsTargetWards", t =>
+                        {
+                            t.HasCheckConstraint("CK_OpmsTargetWards_UnlinkLifecycle", "([IsActive] = 1 AND [UnlinkedAt] IS NULL AND [UnlinkedByUserId] IS NULL AND [UnlinkReason] IS NULL) OR ([IsActive] = 0 AND [UnlinkedAt] IS NOT NULL AND [UnlinkedByUserId] IS NOT NULL AND [UnlinkReason] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.OpmsUnitDefinition", b =>
@@ -15742,6 +15835,11 @@ namespace FTCERP.Host.Migrations
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.OpmsTargetAdditionalAssignee", b =>
                 {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "LinkedByUser")
+                        .WithMany()
+                        .HasForeignKey("LinkedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
                         .WithMany()
                         .HasForeignKey("MunicipalityId")
@@ -15753,15 +15851,24 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "UnlinkedByUser")
+                        .WithMany()
+                        .HasForeignKey("UnlinkedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("LinkedByUser");
+
                     b.Navigation("Municipality");
 
                     b.Navigation("Target");
+
+                    b.Navigation("UnlinkedByUser");
 
                     b.Navigation("User");
                 });
@@ -15779,6 +15886,11 @@ namespace FTCERP.Host.Migrations
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.OpmsTargetVoteNumber", b =>
                 {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "LinkedByUser")
+                        .WithMany()
+                        .HasForeignKey("LinkedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
                         .WithMany()
                         .HasForeignKey("MunicipalityId")
@@ -15790,21 +15902,35 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "UnlinkedByUser")
+                        .WithMany()
+                        .HasForeignKey("UnlinkedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.VoteNumber", "VoteNumber")
                         .WithMany()
                         .HasForeignKey("VoteNumberId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("LinkedByUser");
+
                     b.Navigation("Municipality");
 
                     b.Navigation("Target");
+
+                    b.Navigation("UnlinkedByUser");
 
                     b.Navigation("VoteNumber");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.OpmsTargetWard", b =>
                 {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "LinkedByUser")
+                        .WithMany()
+                        .HasForeignKey("LinkedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
                         .WithMany()
                         .HasForeignKey("MunicipalityId")
@@ -15816,15 +15942,24 @@ namespace FTCERP.Host.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "UnlinkedByUser")
+                        .WithMany()
+                        .HasForeignKey("UnlinkedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FTCERP.Host.Domain.Entities.Ward", "Ward")
                         .WithMany()
                         .HasForeignKey("WardId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("LinkedByUser");
+
                     b.Navigation("Municipality");
 
                     b.Navigation("Target");
+
+                    b.Navigation("UnlinkedByUser");
 
                     b.Navigation("Ward");
                 });

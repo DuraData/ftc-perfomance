@@ -134,6 +134,7 @@ public sealed record SaveOpmsTargetRequest
     public Guid[] WardPublicIds { get; init; } = [];
     public Guid[] AdditionalAssigneePublicIds { get; init; } = [];
     public Guid[] VoteNumberPublicIds { get; init; } = [];
+    public string? RelationshipChangeReason { get; init; }
     public string IndicatorNumber { get; init; } = string.Empty;
     public string NationalKpa { get; init; } = string.Empty;
     public string MunicipalKpa { get; init; } = string.Empty;

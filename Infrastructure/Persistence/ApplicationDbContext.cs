@@ -704,20 +704,35 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .HasPrincipalKey(item => new { item.Id, item.MunicipalityId })
             .OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetWard>().HasIndex(item => item.PublicId).IsUnique();
-        builder.Entity<OpmsTargetWard>().HasIndex(item => new { item.OpmsTargetId, item.WardId }).IsUnique();
+        builder.Entity<OpmsTargetWard>().HasIndex(item => new { item.OpmsTargetId, item.WardId }).IsUnique().HasFilter("[IsActive] = 1");
+        builder.Entity<OpmsTargetWard>().Property(item => item.UnlinkReason).HasMaxLength(2000);
+        builder.Entity<OpmsTargetWard>().ToTable(table => table.HasCheckConstraint("CK_OpmsTargetWards_UnlinkLifecycle", "([IsActive] = 1 AND [UnlinkedAt] IS NULL AND [UnlinkedByUserId] IS NULL AND [UnlinkReason] IS NULL) OR ([IsActive] = 0 AND [UnlinkedAt] IS NOT NULL AND [UnlinkedByUserId] IS NOT NULL AND [UnlinkReason] IS NOT NULL)"));
+        ConfigureRowVersion(builder.Entity<OpmsTargetWard>().Property(item => item.RowVersion));
         builder.Entity<OpmsTargetWard>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetWard>().HasOne(item => item.Target).WithMany(item => item.Wards).HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetWard>().HasOne(item => item.Ward).WithMany().HasForeignKey(item => item.WardId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetWard>().HasOne(item => item.LinkedByUser).WithMany().HasForeignKey(item => item.LinkedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetWard>().HasOne(item => item.UnlinkedByUser).WithMany().HasForeignKey(item => item.UnlinkedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetAdditionalAssignee>().HasIndex(item => item.PublicId).IsUnique();
-        builder.Entity<OpmsTargetAdditionalAssignee>().HasIndex(item => new { item.OpmsTargetId, item.UserId }).IsUnique();
+        builder.Entity<OpmsTargetAdditionalAssignee>().HasIndex(item => new { item.OpmsTargetId, item.UserId }).IsUnique().HasFilter("[IsActive] = 1");
+        builder.Entity<OpmsTargetAdditionalAssignee>().Property(item => item.UnlinkReason).HasMaxLength(2000);
+        builder.Entity<OpmsTargetAdditionalAssignee>().ToTable(table => table.HasCheckConstraint("CK_OpmsTargetAdditionalAssignees_UnlinkLifecycle", "([IsActive] = 1 AND [UnlinkedAt] IS NULL AND [UnlinkedByUserId] IS NULL AND [UnlinkReason] IS NULL) OR ([IsActive] = 0 AND [UnlinkedAt] IS NOT NULL AND [UnlinkedByUserId] IS NOT NULL AND [UnlinkReason] IS NOT NULL)"));
+        ConfigureRowVersion(builder.Entity<OpmsTargetAdditionalAssignee>().Property(item => item.RowVersion));
         builder.Entity<OpmsTargetAdditionalAssignee>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetAdditionalAssignee>().HasOne(item => item.Target).WithMany(item => item.AdditionalAssignees).HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetAdditionalAssignee>().HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetAdditionalAssignee>().HasOne(item => item.LinkedByUser).WithMany().HasForeignKey(item => item.LinkedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetAdditionalAssignee>().HasOne(item => item.UnlinkedByUser).WithMany().HasForeignKey(item => item.UnlinkedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetVoteNumber>().HasIndex(item => item.PublicId).IsUnique();
-        builder.Entity<OpmsTargetVoteNumber>().HasIndex(item => new { item.OpmsTargetId, item.VoteNumberId }).IsUnique();
+        builder.Entity<OpmsTargetVoteNumber>().HasIndex(item => new { item.OpmsTargetId, item.VoteNumberId }).IsUnique().HasFilter("[IsActive] = 1");
+        builder.Entity<OpmsTargetVoteNumber>().Property(item => item.UnlinkReason).HasMaxLength(2000);
+        builder.Entity<OpmsTargetVoteNumber>().ToTable(table => table.HasCheckConstraint("CK_OpmsTargetVoteNumbers_UnlinkLifecycle", "([IsActive] = 1 AND [UnlinkedAt] IS NULL AND [UnlinkedByUserId] IS NULL AND [UnlinkReason] IS NULL) OR ([IsActive] = 0 AND [UnlinkedAt] IS NOT NULL AND [UnlinkedByUserId] IS NOT NULL AND [UnlinkReason] IS NOT NULL)"));
+        ConfigureRowVersion(builder.Entity<OpmsTargetVoteNumber>().Property(item => item.RowVersion));
         builder.Entity<OpmsTargetVoteNumber>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetVoteNumber>().HasOne(item => item.Target).WithMany(item => item.VoteNumbers).HasForeignKey(item => item.OpmsTargetId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsTargetVoteNumber>().HasOne(item => item.VoteNumber).WithMany().HasForeignKey(item => item.VoteNumberId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetVoteNumber>().HasOne(item => item.LinkedByUser).WithMany().HasForeignKey(item => item.LinkedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<OpmsTargetVoteNumber>().HasOne(item => item.UnlinkedByUser).WithMany().HasForeignKey(item => item.UnlinkedByUserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IpmsTarget>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<IpmsTarget>().Property(item => item.ReasonForWithdrawal).HasMaxLength(1000);
         builder.Entity<IpmsTarget>().ToTable(table => table.HasCheckConstraint(
@@ -2297,6 +2312,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationPreferenceHistory();
         EnforceRefreshTokenHistory();
+        EnforceOpmsTargetRelationshipHistory<OpmsTargetWard>();
+        EnforceOpmsTargetRelationshipHistory<OpmsTargetAdditionalAssignee>();
+        EnforceOpmsTargetRelationshipHistory<OpmsTargetVoteNumber>();
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
@@ -3316,6 +3334,51 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             }
 
             throw new InvalidOperationException("Refresh-session identity, token digest, user, session, expiry, security stamp, authentication method and creation evidence are immutable.");
+        }
+    }
+
+    private void EnforceOpmsTargetRelationshipHistory<TEntity>() where TEntity : class, IOpmsTargetRelationship
+    {
+        foreach (var entry in ChangeTracker.Entries<TEntity>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                var row = entry.Entity;
+                if (row.PublicId == Guid.Empty || string.IsNullOrWhiteSpace(row.OpmsTargetId)
+                    || !row.MunicipalityId.HasValue || row.MunicipalityId <= 0
+                    || string.IsNullOrWhiteSpace(row.LinkedByUserId)
+                    || row.LinkedAt == default || row.LinkedAt > DateTime.UtcNow.AddMinutes(5)
+                    || !row.IsActive || row.UnlinkedAt.HasValue
+                    || row.UnlinkedByUserId != null || row.UnlinkReason != null)
+                    throw new InvalidOperationException("A target relationship requires immutable tenant, target, actor and link-time provenance without fabricated unlink evidence.");
+                continue;
+            }
+
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Target relationship history cannot be hard deleted; record a reasoned unlink transition instead.");
+            if (entry.State != EntityState.Modified) continue;
+
+            EnsureOnlyProperties(entry,
+                [nameof(IOpmsTargetRelationship.IsActive), nameof(IOpmsTargetRelationship.UnlinkedAt),
+                    nameof(IOpmsTargetRelationship.UnlinkedByUserId), nameof(IOpmsTargetRelationship.UnlinkReason),
+                    nameof(IOpmsTargetRelationship.RowVersion)],
+                "Target relationship identity, tenant, target, linked record, actor and link-time provenance are immutable.");
+            var originalActive = entry.OriginalValues.GetValue<bool>(nameof(IOpmsTargetRelationship.IsActive));
+            var currentActive = entry.CurrentValues.GetValue<bool>(nameof(IOpmsTargetRelationship.IsActive));
+            var originalUnlinkedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(IOpmsTargetRelationship.UnlinkedAt));
+            var currentUnlinkedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(IOpmsTargetRelationship.UnlinkedAt));
+            var originalUnlinkedBy = entry.OriginalValues.GetValue<string?>(nameof(IOpmsTargetRelationship.UnlinkedByUserId));
+            var currentUnlinkedBy = entry.CurrentValues.GetValue<string?>(nameof(IOpmsTargetRelationship.UnlinkedByUserId));
+            var originalReason = entry.OriginalValues.GetValue<string?>(nameof(IOpmsTargetRelationship.UnlinkReason));
+            var currentReason = entry.CurrentValues.GetValue<string?>(nameof(IOpmsTargetRelationship.UnlinkReason));
+            if (!originalActive || currentActive || originalUnlinkedAt.HasValue
+                || originalUnlinkedBy != null || originalReason != null
+                || !currentUnlinkedAt.HasValue
+                || currentUnlinkedAt < entry.OriginalValues.GetValue<DateTime>(nameof(IOpmsTargetRelationship.LinkedAt))
+                || currentUnlinkedAt > DateTime.UtcNow.AddMinutes(5)
+                || string.IsNullOrWhiteSpace(currentUnlinkedBy)
+                || string.IsNullOrWhiteSpace(currentReason) || currentReason.Length > 2000)
+                throw new InvalidOperationException("A target relationship may transition exactly once from active to inactive with an ordered timestamp, actor and substantive reason.");
         }
     }
 

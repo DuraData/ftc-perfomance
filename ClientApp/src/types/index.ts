@@ -3007,6 +3007,7 @@ export interface SaveOpmsTargetPayload {
   wardPublicIds?: string[];
   additionalAssigneePublicIds?: string[];
   voteNumberPublicIds?: string[];
+  relationshipChangeReason?: string | null;
   indicatorNumber: string;
   originalOrderNumber?: number;
   nationalKpa: string;

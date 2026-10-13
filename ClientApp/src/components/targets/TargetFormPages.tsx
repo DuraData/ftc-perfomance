@@ -142,6 +142,7 @@ type OpmsFormState = {
   wardIds: string;
   additionalAssigneeIds: string;
   voteNumberIds: string;
+  relationshipChangeReason: string;
   indicatorNumber: string;
   nationalKPA: string;
   municipalKPA: string;
@@ -333,6 +334,7 @@ function createDefaultOpmsFormState(): OpmsFormState {
     wardIds: '',
     additionalAssigneeIds: '',
     voteNumberIds: '',
+    relationshipChangeReason: '',
     indicatorNumber: '',
     nationalKPA: '',
     municipalKPA: '',
@@ -507,6 +509,7 @@ function opmsFormFromTarget(target: OPMSTarget): OpmsFormState {
     wardIds: (target.wardPublicIds ?? []).join(','),
     additionalAssigneeIds: (target.additionalAssigneePublicIds ?? target.additionalAssignees.map(item => item.id)).join(','),
     voteNumberIds: (target.voteNumberPublicIds ?? target.voteNumbers.map(item => item.id)).join(','),
+    relationshipChangeReason: '',
     indicatorNumber: target.indicatorNumber,
     nationalKPA: target.nationalKPA,
     municipalKPA: target.municipalKPA,
@@ -822,6 +825,7 @@ export function buildOpmsPayload(form: OpmsFormState, configuration?: Performanc
     wardPublicIds: [...new Set(parseCsvIds(form.wardIds))],
     additionalAssigneePublicIds: [...new Set(parseCsvIds(form.additionalAssigneeIds))],
     voteNumberPublicIds: [...new Set(parseCsvIds(form.voteNumberIds))],
+    relationshipChangeReason: (form.relationshipChangeReason ?? '').trim() || null,
     indicatorNumber: form.indicatorNumber,
     nationalKpa: form.nationalKPA,
     municipalKpa: form.municipalKPA,
@@ -1438,6 +1442,16 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                 );
               })}
             </div>
+            {targetId ? (
+              <Textarea
+                label="Relationship change reason"
+                rows={3}
+                maxLength={2000}
+                value={form.relationshipChangeReason}
+                onChange={(event) => setForm(prev => ({ ...prev, relationshipChangeReason: event.target.value }))}
+                helpText="Required when wards, additional assignees, or vote numbers are added or removed."
+              />
+            ) : null}
           </FormPanel>
 
           <FormPanel title="Target Definition" description="Capture the full identity and strategic alignment of the OPMS target." icon={<Target className="h-5 w-5" />}>

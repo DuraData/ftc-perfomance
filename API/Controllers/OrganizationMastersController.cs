@@ -269,7 +269,7 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
         if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<WardMasterDto>("A valid row version is required."));
         var code = NormalizeCode(request.Code);
         if (await context.Wards.AnyAsync(x => x.Id != entity.Id && x.Code == code)) return Conflict(Fail<WardMasterDto>("Ward code already exists in this municipality."));
-        if (!request.IsActive && (await context.OpmsTargetWards.AnyAsync(x => x.WardId == entity.Id) || await context.IdpCommunitySessions.AnyAsync(x => x.WardId == entity.Id) || await context.IdpWardInputs.AnyAsync(x => x.WardId == entity.Id)))
+        if (!request.IsActive && (await context.OpmsTargetWards.AnyAsync(x => x.WardId == entity.Id && x.IsActive) || await context.IdpCommunitySessions.AnyAsync(x => x.WardId == entity.Id) || await context.IdpWardInputs.AnyAsync(x => x.WardId == entity.Id)))
             return Conflict(Fail<WardMasterDto>("Ward is referenced by performance or IDP records and cannot be deactivated."));
         var before = Snapshot(entity);
         entity.Code = code; entity.Name = request.Name.Trim(); entity.IsActive = request.IsActive; entity.EffectiveFrom = request.EffectiveFrom; entity.EffectiveTo = request.EffectiveTo;
@@ -351,7 +351,7 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
         if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<VoteNumberMasterDto>("A valid row version is required."));
         var code = NormalizeCode(request.Code);
         if (await context.VoteNumbers.AnyAsync(x => x.Id != entity.Id && x.MunicipalityFinancialYearId == year.Id && x.Code == code)) return Conflict(Fail<VoteNumberMasterDto>("Vote-number code already exists for this municipality financial year."));
-        if (!request.IsActive && await context.OpmsTargetVoteNumbers.AnyAsync(x => x.VoteNumberId == entity.Id)) return Conflict(Fail<VoteNumberMasterDto>("Vote number is referenced by a performance target and cannot be deactivated."));
+        if (!request.IsActive && await context.OpmsTargetVoteNumbers.AnyAsync(x => x.VoteNumberId == entity.Id && x.IsActive)) return Conflict(Fail<VoteNumberMasterDto>("Vote number is referenced by a performance target and cannot be deactivated."));
         var before = Snapshot(entity);
         entity.MunicipalityFinancialYearId = year.Id; entity.MunicipalityFinancialYear = year; entity.DepartmentId = department.Id; entity.Department = department; entity.Code = code; if (request.NumberSpecified) entity.Number = request.Number.Trim().ToUpperInvariant(); entity.Name = request.Name.Trim(); if (request.AmountSpecified) entity.Amount = request.Amount; entity.IsActive = request.IsActive; entity.EffectiveFrom = request.EffectiveFrom; entity.EffectiveTo = request.EffectiveTo;
         AddAudit(nameof(VoteNumber), entity.PublicId, "Update", before, Snapshot(entity), request.Reason);

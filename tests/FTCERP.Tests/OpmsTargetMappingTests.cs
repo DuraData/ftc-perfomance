@@ -74,12 +74,16 @@ public sealed class OpmsTargetMappingTests
         int voteId;
         Guid wardPublicId;
         Guid votePublicId;
+        string actorUserId;
         await using (var setup = new ApplicationDbContext(options, new SystemTenantContext()))
         {
             await setup.Database.EnsureCreatedAsync();
             var tenantA = new Municipality { Code = "MAP-A", Name = "Mapping A" };
             var municipalityB = new Municipality { Code = "MAP-B", Name = "Mapping B" };
             setup.AddRange(tenantA, municipalityB); await setup.SaveChangesAsync(); tenantAId = tenantA.Id; tenantBId = municipalityB.Id;
+            var actor = IdpTestFixture.CreateUser($"mapping-user-{Guid.NewGuid():N}");
+            actor.MunicipalityId = tenantAId;
+            setup.Users.Add(actor); await setup.SaveChangesAsync(); actorUserId = actor.Id;
             var department = new Department { MunicipalityId = tenantAId, Code = "FIN", Name = "Finance" };
             var ward = new Ward { MunicipalityId = tenantAId, Code = "W1", Name = "Ward 1", LegacyMunicipality = tenantA.Name, IsActive = true };
             setup.AddRange(department, ward); await setup.SaveChangesAsync(); wardId = ward.Id; wardPublicId = ward.PublicId;
@@ -91,11 +95,11 @@ public sealed class OpmsTargetMappingTests
         {
             var target = new OpmsTarget { IndicatorNumber = "1", TargetName = "Mapped target", KpiDescription = "Mapping", AnnualTargetDescription = "One", MunicipalityId = tenantAId };
             tenantA.OpmsTargets.Add(target);
-            tenantA.OpmsTargetWards.Add(new OpmsTargetWard { MunicipalityId = tenantAId, OpmsTargetId = target.Id, WardId = wardId });
-            tenantA.OpmsTargetVoteNumbers.Add(new OpmsTargetVoteNumber { MunicipalityId = tenantAId, OpmsTargetId = target.Id, VoteNumberId = voteId });
+            tenantA.OpmsTargetWards.Add(new OpmsTargetWard { MunicipalityId = tenantAId, OpmsTargetId = target.Id, WardId = wardId, LinkedByUserId = actorUserId });
+            tenantA.OpmsTargetVoteNumbers.Add(new OpmsTargetVoteNumber { MunicipalityId = tenantAId, OpmsTargetId = target.Id, VoteNumberId = voteId, LinkedByUserId = actorUserId });
             await tenantA.SaveChangesAsync();
 
-            tenantA.OpmsTargetWards.Add(new OpmsTargetWard { MunicipalityId = tenantAId, OpmsTargetId = target.Id, WardId = wardId });
+            tenantA.OpmsTargetWards.Add(new OpmsTargetWard { MunicipalityId = tenantAId, OpmsTargetId = target.Id, WardId = wardId, LinkedByUserId = actorUserId });
             await Assert.ThrowsAsync<DbUpdateException>(() => tenantA.SaveChangesAsync());
             tenantA.ChangeTracker.Clear();
             var loaded = await tenantA.OpmsTargets.Include(item => item.Wards).ThenInclude(item => item.Ward).Include(item => item.VoteNumbers).ThenInclude(item => item.VoteNumber).SingleAsync();

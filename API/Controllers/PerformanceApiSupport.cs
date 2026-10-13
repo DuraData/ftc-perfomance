@@ -256,9 +256,9 @@ public static class PerformanceApiSupport
             target.Unit?.Name,
             target.AssignedUser?.PublicId,
             target.AssignedUser != null ? target.AssignedUser.FullName : null,
-            target.Wards.Where(item => item.Ward != null).Select(item => item.Ward.PublicId).OrderBy(id => id).ToArray(),
-            target.AdditionalAssignees.Select(item => item.User.PublicId).OrderBy(id => id).ToArray(),
-            target.VoteNumbers.Where(item => item.VoteNumber != null).Select(item => item.VoteNumber.PublicId).OrderBy(id => id).ToArray(),
+            target.Wards.Where(item => item.IsActive && item.Ward != null).Select(item => item.Ward.PublicId).OrderBy(id => id).ToArray(),
+            target.AdditionalAssignees.Where(item => item.IsActive).Select(item => item.User.PublicId).OrderBy(id => id).ToArray(),
+            target.VoteNumbers.Where(item => item.IsActive && item.VoteNumber != null).Select(item => item.VoteNumber.PublicId).OrderBy(id => id).ToArray(),
             target.IndicatorNumber,
             target.NationalKpa,
             target.MunicipalKpa,
@@ -319,7 +319,7 @@ public static class PerformanceApiSupport
             KpiUnitOfMeasureName = target.KpiUnitOfMeasureMaster?.Name,
             KpiUnitOfMeasureSymbol = target.KpiUnitOfMeasureMaster?.Symbol,
             VoteNumbers = target.VoteNumbers
-                .Where(item => item.VoteNumber != null)
+                .Where(item => item.IsActive && item.VoteNumber != null)
                 .OrderBy(item => item.VoteNumber.Code)
                 .Select(item => new OpmsTargetVoteNumberResponse(item.VoteNumber.PublicId, item.VoteNumber.Code,
                     (voteAccess ?? VoteNumberMemberAccess.Full).Number ? item.VoteNumber.Number : null,
