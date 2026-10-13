@@ -20,12 +20,18 @@ public sealed class PerformanceDashboardTests
             OpmsTarget("returned", withdrawn: true),
             OpmsTarget("outside"));
         context.OpmsSubmissions.AddRange(
-            OpmsSubmission("approved-submission", "approved", "approved"),
-            OpmsSubmission("overdue-submission", "overdue", "submitted", DateTime.UtcNow.AddDays(-1)),
-            OpmsSubmission("approval-submission", "approval-queue", "verified"),
-            OpmsSubmission("returned-submission", "returned", "returned_for_info"),
-            OpmsSubmission("outside-submission", "outside", "approved"));
+            OpmsSubmission("approved-submission", "approved", "draft"),
+            OpmsSubmission("overdue-submission", "overdue", "completed", DateTime.UtcNow.AddDays(-1)),
+            OpmsSubmission("approval-submission", "approval-queue", "draft"),
+            OpmsSubmission("returned-submission", "returned", "completed"),
+            OpmsSubmission("outside-submission", "outside", "draft"));
         await context.SaveChangesAsync();
+        await SeedCanonicalWorkflowAsync(context, SubmissionKind.Opms,
+            ("approved-submission", WorkflowInstanceState.Active, "OPMS_WORKFLOW.PMS_REVIEW"),
+            ("overdue-submission", WorkflowInstanceState.Active, "OPMS_SUBMISSION.VERIFY"),
+            ("approval-submission", WorkflowInstanceState.Active, "OPMS_SUBMISSION.APPROVE"),
+            ("returned-submission", WorkflowInstanceState.Rework, null),
+            ("outside-submission", WorkflowInstanceState.Active, "OPMS_WORKFLOW.PMS_REVIEW"));
 
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
@@ -44,9 +50,9 @@ public sealed class PerformanceDashboardTests
             CompletedTargets: 1,
             OverdueTargets: 1,
             AtRiskTargets: 1,
-            OutstandingTargets: 1,
+            OutstandingTargets: 0,
             DraftSubmissions: 0,
-            SubmittedSubmissions: 1,
+            SubmittedSubmissions: 0,
             ReturnedSubmissions: 1,
             ApprovedSubmissions: 1,
             PendingVerification: 1,
@@ -97,18 +103,18 @@ public sealed class PerformanceDashboardTests
                 new PerformancePeriodTarget { MunicipalityId = municipality.Id, ReportingPeriodId = q2.Id, OpmsTargetId = target.Id, TargetValue = "20", CreatedByUserId = user.Id });
         }
 
-        var achievedSubmission = OpmsSubmission("opms-achieved-submission", "opms-achieved", "completed");
+        var achievedSubmission = OpmsSubmission("opms-achieved-submission", "opms-achieved", "draft");
         achievedSubmission.MunicipalityId = municipality.Id;
         achievedSubmission.ReportingPeriodId = q1.Id;
         achievedSubmission.BaseState = SubmissionBaseStates.Submitted;
-        var atRiskSubmission = OpmsSubmission("opms-at-risk-submission", "opms-at-risk", "verify_rejected");
+        var atRiskSubmission = OpmsSubmission("opms-at-risk-submission", "opms-at-risk", "completed");
         atRiskSubmission.MunicipalityId = municipality.Id;
         atRiskSubmission.ReportingPeriodId = q1.Id;
         atRiskSubmission.BaseState = SubmissionBaseStates.Submitted;
         var draftSubmission = OpmsSubmission("opms-draft-submission", "opms-draft", "draft");
         draftSubmission.MunicipalityId = municipality.Id;
         draftSubmission.ReportingPeriodId = q1.Id;
-        var verificationSubmission = OpmsSubmission("opms-verification-submission", "opms-verification", "submitted");
+        var verificationSubmission = OpmsSubmission("opms-verification-submission", "opms-verification", "draft");
         verificationSubmission.MunicipalityId = municipality.Id;
         verificationSubmission.ReportingPeriodId = q1.Id;
         verificationSubmission.BaseState = SubmissionBaseStates.Submitted;
@@ -129,10 +135,20 @@ public sealed class PerformanceDashboardTests
             MunicipalityId = municipality.Id, WorkflowDefinition = workflow, CurrentStage = verifyStage, SubmissionKind = SubmissionKind.Opms,
             SubmissionId = verificationSubmission.Id, State = WorkflowInstanceState.Active
         };
+        var achievedWorkflowInstance = new SubmissionWorkflowInstance
+        {
+            MunicipalityId = municipality.Id, WorkflowDefinition = workflow, SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = achievedSubmission.Id, State = WorkflowInstanceState.Completed, CompletedAt = now
+        };
+        var atRiskWorkflowInstance = new SubmissionWorkflowInstance
+        {
+            MunicipalityId = municipality.Id, WorkflowDefinition = workflow, SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = atRiskSubmission.Id, State = WorkflowInstanceState.Rework
+        };
         context.AddRange(
             new ReportingWindow { MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, SubmissionKind = SubmissionKind.Opms, OpensAt = now.AddDays(-2), ClosesAt = now.AddDays(2) },
             new ReportingWindow { MunicipalityId = municipality.Id, ReportingPeriodId = q2.Id, SubmissionKind = SubmissionKind.Opms, OpensAt = now.AddDays(30), ClosesAt = now.AddDays(60) },
-            workflow, verifyStage, workflowInstance);
+            workflow, verifyStage, workflowInstance, achievedWorkflowInstance, atRiskWorkflowInstance);
         await context.SaveChangesAsync();
 
         var access = new Mock<IAccessControlService>();
@@ -175,11 +191,15 @@ public sealed class PerformanceDashboardTests
             IpmsTarget("submitted"),
             IpmsTarget("outside"));
         context.IpmsSubmissions.AddRange(
-            IpmsSubmission("approved-submission", "achieved", "approved"),
-            IpmsSubmission("returned-submission", "at-risk", "verify_rejected"),
-            IpmsSubmission("submitted-submission", "submitted", "submitted"),
-            IpmsSubmission("outside-submission", "outside", "approved"));
+            IpmsSubmission("approved-submission", "achieved", "draft"),
+            IpmsSubmission("returned-submission", "at-risk", "completed"),
+            IpmsSubmission("submitted-submission", "submitted", "completed"),
+            IpmsSubmission("outside-submission", "outside", "draft"));
         await context.SaveChangesAsync();
+        await SeedCanonicalWorkflowAsync(context, SubmissionKind.Ipms,
+            ("approved-submission", WorkflowInstanceState.Active, "IPMS_WORKFLOW.PMS_REVIEW"),
+            ("returned-submission", WorkflowInstanceState.Rework, null),
+            ("outside-submission", WorkflowInstanceState.Active, "IPMS_WORKFLOW.PMS_REVIEW"));
 
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetQueryScopeAsync(user, "IPMS_KPI.READ"))
@@ -198,12 +218,12 @@ public sealed class PerformanceDashboardTests
             CompletedTargets: 1,
             OverdueTargets: 0,
             AtRiskTargets: 1,
-            OutstandingTargets: 2,
+            OutstandingTargets: 1,
             DraftSubmissions: 0,
             SubmittedSubmissions: 1,
             ReturnedSubmissions: 1,
             ApprovedSubmissions: 1,
-            PendingVerification: 1,
+            PendingVerification: 0,
             PendingApproval: 0), response.Data);
     }
 
@@ -251,18 +271,18 @@ public sealed class PerformanceDashboardTests
                 new PerformancePeriodTarget { MunicipalityId = municipality.Id, ReportingPeriodId = q2.Id, IpmsTargetId = target.Id, TargetValue = "20", CreatedByUserId = user.Id });
         }
 
-        var achievedSubmission = IpmsSubmission("achieved-submission", "achieved", "completed");
+        var achievedSubmission = IpmsSubmission("achieved-submission", "achieved", "draft");
         achievedSubmission.MunicipalityId = municipality.Id;
         achievedSubmission.ReportingPeriodId = q1.Id;
         achievedSubmission.BaseState = SubmissionBaseStates.Submitted;
-        var atRiskSubmission = IpmsSubmission("at-risk-submission", "at-risk", "verify_rejected");
+        var atRiskSubmission = IpmsSubmission("at-risk-submission", "at-risk", "completed");
         atRiskSubmission.MunicipalityId = municipality.Id;
         atRiskSubmission.ReportingPeriodId = q1.Id;
         atRiskSubmission.BaseState = SubmissionBaseStates.Submitted;
         var draftSubmission = IpmsSubmission("draft-submission", "draft", "draft");
         draftSubmission.MunicipalityId = municipality.Id;
         draftSubmission.ReportingPeriodId = q1.Id;
-        var verificationSubmission = IpmsSubmission("verification-submission", "verification", "submitted");
+        var verificationSubmission = IpmsSubmission("verification-submission", "verification", "draft");
         verificationSubmission.MunicipalityId = municipality.Id;
         verificationSubmission.ReportingPeriodId = q1.Id;
         verificationSubmission.BaseState = SubmissionBaseStates.Submitted;
@@ -283,10 +303,20 @@ public sealed class PerformanceDashboardTests
             MunicipalityId = municipality.Id, WorkflowDefinition = workflow, CurrentStage = verifyStage, SubmissionKind = SubmissionKind.Ipms,
             SubmissionId = verificationSubmission.Id, State = WorkflowInstanceState.Active
         };
+        var achievedWorkflowInstance = new SubmissionWorkflowInstance
+        {
+            MunicipalityId = municipality.Id, WorkflowDefinition = workflow, SubmissionKind = SubmissionKind.Ipms,
+            SubmissionId = achievedSubmission.Id, State = WorkflowInstanceState.Completed, CompletedAt = now
+        };
+        var atRiskWorkflowInstance = new SubmissionWorkflowInstance
+        {
+            MunicipalityId = municipality.Id, WorkflowDefinition = workflow, SubmissionKind = SubmissionKind.Ipms,
+            SubmissionId = atRiskSubmission.Id, State = WorkflowInstanceState.Rework
+        };
         context.AddRange(
             new ReportingWindow { MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, SubmissionKind = SubmissionKind.Ipms, OpensAt = now.AddDays(-2), ClosesAt = now.AddDays(2) },
             new ReportingWindow { MunicipalityId = municipality.Id, ReportingPeriodId = q2.Id, SubmissionKind = SubmissionKind.Ipms, OpensAt = now.AddDays(30), ClosesAt = now.AddDays(60) },
-            workflow, verifyStage, workflowInstance);
+            workflow, verifyStage, workflowInstance, achievedWorkflowInstance, atRiskWorkflowInstance);
         await context.SaveChangesAsync();
 
         var access = new Mock<IAccessControlService>();
@@ -327,6 +357,85 @@ public sealed class PerformanceDashboardTests
             }
         };
 
+    private static async Task SeedCanonicalWorkflowAsync(
+        FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context,
+        SubmissionKind kind,
+        params (string SubmissionId, WorkflowInstanceState State, string? ActionCode)[] states)
+    {
+        var prefix = kind == SubmissionKind.Opms ? "OPMS" : "IPMS";
+        var municipality = new Municipality { Code = $"{prefix}-SUMMARY", Name = $"{prefix} Summary Municipality" };
+        var financialYear = new FinancialYear
+        {
+            Code = "2035/36", Name = "2035/36", StartDate = new(2035, 7, 1), EndDate = new(2036, 6, 30)
+        };
+        context.AddRange(municipality, financialYear);
+        await context.SaveChangesAsync();
+        var municipalityYear = new MunicipalityFinancialYear
+        {
+            MunicipalityId = municipality.Id,
+            FinancialYearId = financialYear.Id,
+            EffectiveFrom = financialYear.StartDate
+        };
+        var definition = new WorkflowDefinition
+        {
+            MunicipalityId = municipality.Id,
+            MunicipalityFinancialYear = municipalityYear,
+            SubmissionKind = kind,
+            Code = $"{prefix}-SUMMARY",
+            Name = $"{prefix} summary workflow",
+            EffectiveFrom = financialYear.StartDate
+        };
+        var stages = states.Where(item => item.ActionCode != null)
+            .Select(item => item.ActionCode!)
+            .Distinct(StringComparer.Ordinal)
+            .Select((actionCode, index) => new WorkflowStageDefinition
+            {
+                MunicipalityId = municipality.Id,
+                Code = actionCode[(actionCode.LastIndexOf('.') + 1)..],
+                Name = actionCode,
+                Sequence = index + 1,
+                RequiredActionCode = actionCode,
+                RequiredPermissionCode = actionCode
+            })
+            .ToDictionary(item => item.RequiredActionCode, StringComparer.Ordinal);
+        foreach (var stage in stages.Values) definition.Stages.Add(stage);
+        context.AddRange(municipalityYear, definition);
+
+        if (kind == SubmissionKind.Opms)
+        {
+            var ids = states.Select(item => item.SubmissionId).ToArray();
+            foreach (var submission in await context.OpmsSubmissions.Where(item => ids.Contains(item.Id)).ToArrayAsync())
+            {
+                submission.MunicipalityId = municipality.Id;
+                submission.BaseState = SubmissionBaseStates.Submitted;
+            }
+        }
+        else
+        {
+            var ids = states.Select(item => item.SubmissionId).ToArray();
+            foreach (var submission in await context.IpmsSubmissions.Where(item => ids.Contains(item.Id)).ToArrayAsync())
+            {
+                submission.MunicipalityId = municipality.Id;
+                submission.BaseState = SubmissionBaseStates.Submitted;
+            }
+        }
+
+        foreach (var state in states)
+        {
+            context.SubmissionWorkflowInstances.Add(new SubmissionWorkflowInstance
+            {
+                MunicipalityId = municipality.Id,
+                WorkflowDefinition = definition,
+                CurrentStage = state.ActionCode == null ? null : stages[state.ActionCode],
+                SubmissionKind = kind,
+                SubmissionId = state.SubmissionId,
+                State = state.State,
+                CompletedAt = state.State == WorkflowInstanceState.Completed ? new DateTime(2035, 8, 1, 0, 0, 0, DateTimeKind.Utc) : null
+            });
+        }
+        await context.SaveChangesAsync();
+    }
+
     private static AccessQueryScopeResult Scope(string[] targetIds) =>
         new(true, false, [], [], [], targetIds, [], []);
 
@@ -358,6 +467,7 @@ public sealed class PerformanceDashboardTests
         OpmsTargetId = targetId,
         Quarter = "Q1",
         Status = status,
+        BaseState = status == "draft" ? SubmissionBaseStates.InProgress : SubmissionBaseStates.Submitted,
         DueDate = dueDate
     };
 
@@ -366,6 +476,7 @@ public sealed class PerformanceDashboardTests
         Id = id,
         IpmsTargetId = targetId,
         Quarter = "Q1",
-        Status = status
+        Status = status,
+        BaseState = status == "draft" ? SubmissionBaseStates.InProgress : SubmissionBaseStates.Submitted
     };
 }

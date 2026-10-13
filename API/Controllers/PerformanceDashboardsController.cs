@@ -88,38 +88,33 @@ public sealed class PerformanceDashboardsController(
             ? yearSubmissions
             : yearSubmissions.Where(item => item.ReportingPeriodId == selectedPeriodWindow.Period.Id
                 && targets.Select(target => target.Id).Contains(item.OpmsTargetId));
+        var selectedSubmissionRecords = ProjectOpmsSubmissions(selectedSubmissions);
+        var yearSubmissionRecords = ProjectOpmsSubmissions(yearSubmissions);
 
         var targetSummary = await targets.GroupBy(_ => 1).Select(group => new
         {
             Total = group.Count(),
             Active = group.Count(item => !item.IsWithdrawn)
         }).SingleOrDefaultAsync();
-        var submissionSummary = await Summarize(selectedSubmissions);
-        var achievedTargetIds = selectedSubmissions.Where(item => CompletedStatuses.Contains(item.Status))
-            .Select(item => item.OpmsTargetId).Distinct();
-        var atRiskTargetIds = selectedSubmissions.Where(item => AtRiskStatuses.Contains(item.Status))
-            .Select(item => item.OpmsTargetId).Distinct();
+        var submissionSummary = await Summarize(selectedSubmissionRecords);
+        var achievedTargetIds = selectedSubmissionRecords.Where(item => CompletedStatuses.Contains(item.Status))
+            .Select(item => item.TargetId).Distinct();
+        var atRiskTargetIds = selectedSubmissionRecords.Where(item => AtRiskStatuses.Contains(item.Status))
+            .Select(item => item.TargetId).Distinct();
         var achieved = await achievedTargetIds.CountAsync();
         var atRisk = await atRiskTargetIds.CountAsync();
-        var overdue = await selectedSubmissions.Where(item => item.DueDate < now && !CompletedStatuses.Contains(item.Status))
-            .Select(item => item.OpmsTargetId).Distinct().CountAsync();
-        var nonOutstanding = selectedYear == null
-            ? selectedSubmissions.Where(item => item.Status != "draft" && item.Status != "submitted").Select(item => item.OpmsTargetId).Distinct()
-            : selectedSubmissions.Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled).Select(item => item.OpmsTargetId).Distinct();
+        var overdue = await selectedSubmissionRecords.Where(item => item.DueDate < now && !CompletedStatuses.Contains(item.Status))
+            .Select(item => item.TargetId).Distinct().CountAsync();
+        var nonOutstanding = selectedSubmissionRecords
+            .Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled)
+            .Select(item => item.TargetId).Distinct();
         var outstanding = await targets.CountAsync(item => !item.IsWithdrawn && !nonOutstanding.Contains(item.Id));
 
-        var scopedSubmissionIds = selectedSubmissions.Select(item => item.Id);
+        var scopedSubmissionIds = selectedSubmissionRecords.Select(item => item.Id);
         var workflowInstances = context.SubmissionWorkflowInstances.AsNoTracking()
             .Where(item => item.SubmissionKind == SubmissionKind.Opms && scopedSubmissionIds.Contains(item.SubmissionId));
-        var workflowSubmissionIds = workflowInstances.Select(item => item.SubmissionId);
-        var pendingVerification = await workflowInstances.CountAsync(item => item.State != WorkflowInstanceState.Completed
-            && item.CurrentStage != null && item.CurrentStage.RequiredActionCode.Contains("VERIFY"));
-        pendingVerification += await selectedSubmissions.CountAsync(item => !workflowSubmissionIds.Contains(item.Id)
-            && (item.Status == "submitted" || item.Status == "pending_verification"));
-        var pendingApproval = await workflowInstances.CountAsync(item => item.State != WorkflowInstanceState.Completed
-            && item.CurrentStage != null && item.CurrentStage.RequiredActionCode.Contains("APPROV"));
-        pendingApproval += await selectedSubmissions.CountAsync(item => !workflowSubmissionIds.Contains(item.Id)
-            && (item.Status == "verified" || item.Status == "pending_approval"));
+        var pendingVerification = await selectedSubmissionRecords.CountAsync(item => item.Status == "pending_verification");
+        var pendingApproval = await selectedSubmissionRecords.CountAsync(item => item.Status == "pending_approval");
 
         var ratingLabels = await (from rating in context.SubmissionStageRatings.AsNoTracking()
             join instance in workflowInstances on rating.SubmissionWorkflowInstanceId equals instance.Id
@@ -172,15 +167,15 @@ public sealed class PerformanceDashboardsController(
                 .ToArrayAsync();
         var periodSubmissionCounts = periodIds.Length == 0
             ? []
-            : await yearSubmissions.Where(item => item.ReportingPeriodId.HasValue)
+            : await yearSubmissionRecords.Where(item => item.ReportingPeriodId.HasValue)
                 .GroupBy(item => item.ReportingPeriodId!.Value)
                 .Select(group => new
                 {
                     ReportingPeriodId = group.Key,
                     Count = group.Count(),
-                    Achieved = group.Where(item => CompletedStatuses.Contains(item.Status)).Select(item => item.OpmsTargetId).Distinct().Count(),
-                    AtRisk = group.Where(item => AtRiskStatuses.Contains(item.Status)).Select(item => item.OpmsTargetId).Distinct().Count(),
-                    NonOutstanding = group.Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled).Select(item => item.OpmsTargetId).Distinct().Count()
+                    Achieved = group.Where(item => CompletedStatuses.Contains(item.Status)).Select(item => item.TargetId).Distinct().Count(),
+                    AtRisk = group.Where(item => AtRiskStatuses.Contains(item.Status)).Select(item => item.TargetId).Distinct().Count(),
+                    NonOutstanding = group.Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled).Select(item => item.TargetId).Distinct().Count()
                 })
                 .ToArrayAsync();
         var periodBreakdown = periodWindows.Select(item =>
@@ -300,36 +295,31 @@ public sealed class PerformanceDashboardsController(
             ? yearSubmissions
             : yearSubmissions.Where(item => item.ReportingPeriodId == selectedPeriodWindow.Period.Id
                 && targets.Select(target => target.Id).Contains(item.IpmsTargetId));
+        var selectedSubmissionRecords = ProjectIpmsSubmissions(selectedSubmissions);
+        var yearSubmissionRecords = ProjectIpmsSubmissions(yearSubmissions);
 
         var targetSummary = await targets.GroupBy(_ => 1).Select(group => new
         {
             Total = group.Count(),
             Active = group.Count(item => !item.IsWithdrawn)
         }).SingleOrDefaultAsync();
-        var submissionSummary = await Summarize(selectedSubmissions);
-        var achievedTargetIds = selectedSubmissions.Where(item => CompletedStatuses.Contains(item.Status))
-            .Select(item => item.IpmsTargetId).Distinct();
-        var atRiskTargetIds = selectedSubmissions.Where(item => AtRiskStatuses.Contains(item.Status))
-            .Select(item => item.IpmsTargetId).Distinct();
+        var submissionSummary = await Summarize(selectedSubmissionRecords);
+        var achievedTargetIds = selectedSubmissionRecords.Where(item => CompletedStatuses.Contains(item.Status))
+            .Select(item => item.TargetId).Distinct();
+        var atRiskTargetIds = selectedSubmissionRecords.Where(item => AtRiskStatuses.Contains(item.Status))
+            .Select(item => item.TargetId).Distinct();
         var achieved = await achievedTargetIds.CountAsync();
         var atRisk = await atRiskTargetIds.CountAsync();
-        var nonOutstanding = selectedYear == null
-            ? selectedSubmissions.Where(item => item.Status != "draft" && item.Status != "submitted").Select(item => item.IpmsTargetId).Distinct()
-            : selectedSubmissions.Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled).Select(item => item.IpmsTargetId).Distinct();
+        var nonOutstanding = selectedSubmissionRecords
+            .Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled)
+            .Select(item => item.TargetId).Distinct();
         var outstanding = await targets.CountAsync(item => !item.IsWithdrawn && !nonOutstanding.Contains(item.Id));
 
-        var scopedSubmissionIds = selectedSubmissions.Select(item => item.Id);
+        var scopedSubmissionIds = selectedSubmissionRecords.Select(item => item.Id);
         var workflowInstances = context.SubmissionWorkflowInstances.AsNoTracking()
             .Where(item => item.SubmissionKind == SubmissionKind.Ipms && scopedSubmissionIds.Contains(item.SubmissionId));
-        var workflowSubmissionIds = workflowInstances.Select(item => item.SubmissionId);
-        var pendingVerification = await workflowInstances.CountAsync(item => item.State != WorkflowInstanceState.Completed
-            && item.CurrentStage != null && item.CurrentStage.RequiredActionCode.Contains("VERIFY"));
-        pendingVerification += await selectedSubmissions.CountAsync(item => !workflowSubmissionIds.Contains(item.Id)
-            && (item.Status == "submitted" || item.Status == "pending_verification"));
-        var pendingApproval = await workflowInstances.CountAsync(item => item.State != WorkflowInstanceState.Completed
-            && item.CurrentStage != null && item.CurrentStage.RequiredActionCode.Contains("APPROV"));
-        pendingApproval += await selectedSubmissions.CountAsync(item => !workflowSubmissionIds.Contains(item.Id)
-            && (item.Status == "verified" || item.Status == "pending_approval"));
+        var pendingVerification = await selectedSubmissionRecords.CountAsync(item => item.Status == "pending_verification");
+        var pendingApproval = await selectedSubmissionRecords.CountAsync(item => item.Status == "pending_approval");
 
         var ratingLabels = await (from rating in context.SubmissionStageRatings.AsNoTracking()
             join instance in workflowInstances on rating.SubmissionWorkflowInstanceId equals instance.Id
@@ -382,15 +372,15 @@ public sealed class PerformanceDashboardsController(
                 .ToArrayAsync();
         var periodSubmissionCounts = periodIds.Length == 0
             ? []
-            : await yearSubmissions.Where(item => item.ReportingPeriodId.HasValue)
+            : await yearSubmissionRecords.Where(item => item.ReportingPeriodId.HasValue)
                 .GroupBy(item => item.ReportingPeriodId!.Value)
                 .Select(group => new
                 {
                     ReportingPeriodId = group.Key,
                     Count = group.Count(),
-                    Achieved = group.Where(item => CompletedStatuses.Contains(item.Status)).Select(item => item.IpmsTargetId).Distinct().Count(),
-                    AtRisk = group.Where(item => AtRiskStatuses.Contains(item.Status)).Select(item => item.IpmsTargetId).Distinct().Count(),
-                    NonOutstanding = group.Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled).Select(item => item.IpmsTargetId).Distinct().Count()
+                    Achieved = group.Where(item => CompletedStatuses.Contains(item.Status)).Select(item => item.TargetId).Distinct().Count(),
+                    AtRisk = group.Where(item => AtRiskStatuses.Contains(item.Status)).Select(item => item.TargetId).Distinct().Count(),
+                    NonOutstanding = group.Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled).Select(item => item.TargetId).Distinct().Count()
                 })
                 .ToArrayAsync();
         var periodBreakdown = periodWindows.Select(item =>
@@ -439,7 +429,7 @@ public sealed class PerformanceDashboardsController(
     }
 
     private static readonly string[] CompletedStatuses = ["completed", "approved"];
-    private static readonly string[] AtRiskStatuses = ["returned_for_info", "rejected", "verify_rejected"];
+    private static readonly string[] AtRiskStatuses = ["returned_for_info"];
 
     private static string WindowState(ReportingWindow? window, DateTime now)
     {
@@ -487,27 +477,71 @@ public sealed class PerformanceDashboardsController(
             || scope.TargetIds.Contains(item.IpmsTargetId)
             || scope.KpiIds.Contains(item.IpmsTargetId));
 
-    private static async Task<SubmissionSummary> Summarize(IQueryable<OpmsSubmission> query) =>
+    private IQueryable<DashboardSubmissionRecord> ProjectOpmsSubmissions(IQueryable<OpmsSubmission> query) =>
+        query.Select(item => new DashboardSubmissionRecord
+        {
+            Id = item.Id,
+            TargetId = item.OpmsTargetId,
+            ReportingPeriodId = item.ReportingPeriodId,
+            BaseState = item.BaseState,
+            IsDisabled = item.IsDisabled,
+            DueDate = item.DueDate,
+            Status = context.SubmissionWorkflowInstances
+                .Where(instance => instance.SubmissionKind == SubmissionKind.Opms && instance.SubmissionId == item.Id)
+                .Select(instance => instance.State == WorkflowInstanceState.Completed ? "completed"
+                    : instance.State == WorkflowInstanceState.Cancelled ? "cancelled"
+                    : instance.State == WorkflowInstanceState.Rework ? "returned_for_info"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".VERIFY") ? "pending_verification"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".APPROVE") ? "pending_approval"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".PMS_REVIEW") ? "approved"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".INTERNAL_AUDIT") ? "reviewed"
+                    : "submitted")
+                .FirstOrDefault() ?? (item.BaseState == SubmissionBaseStates.InProgress ? "draft" : "submitted")
+        });
+
+    private IQueryable<DashboardSubmissionRecord> ProjectIpmsSubmissions(IQueryable<IpmsSubmission> query) =>
+        query.Select(item => new DashboardSubmissionRecord
+        {
+            Id = item.Id,
+            TargetId = item.IpmsTargetId,
+            ReportingPeriodId = item.ReportingPeriodId,
+            BaseState = item.BaseState,
+            IsDisabled = item.IsDisabled,
+            DueDate = item.DueDate,
+            Status = context.SubmissionWorkflowInstances
+                .Where(instance => instance.SubmissionKind == SubmissionKind.Ipms && instance.SubmissionId == item.Id)
+                .Select(instance => instance.State == WorkflowInstanceState.Completed ? "completed"
+                    : instance.State == WorkflowInstanceState.Cancelled ? "cancelled"
+                    : instance.State == WorkflowInstanceState.Rework ? "returned_for_info"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".VERIFY") ? "pending_verification"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".APPROVE") ? "pending_approval"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".PMS_REVIEW") ? "approved"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".INTERNAL_AUDIT") ? "reviewed"
+                    : "submitted")
+                .FirstOrDefault() ?? (item.BaseState == SubmissionBaseStates.InProgress ? "draft" : "submitted")
+        });
+
+    private static async Task<SubmissionSummary> Summarize(IQueryable<DashboardSubmissionRecord> query) =>
         await query.GroupBy(_ => 1).Select(group => new SubmissionSummary(
             group.Count(item => item.Status == "draft"),
             group.Count(item => item.Status == "submitted"),
-            group.Count(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected"),
+            group.Count(item => item.Status == "returned_for_info"),
             group.Count(item => item.Status == "approved" || item.Status == "completed"),
-            group.Count(item => item.Status == "submitted" || item.Status == "pending_verification"),
-            group.Count(item => item.Status == "verified" || item.Status == "pending_approval"),
-            group.Where(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected").Select(item => item.OpmsTargetId).Distinct().Count()))
+            group.Count(item => item.Status == "pending_verification"),
+            group.Count(item => item.Status == "pending_approval"),
+            group.Where(item => item.Status == "returned_for_info").Select(item => item.TargetId).Distinct().Count()))
             .SingleOrDefaultAsync() ?? SubmissionSummary.Empty;
 
-    private static async Task<SubmissionSummary> Summarize(IQueryable<IpmsSubmission> query) =>
-        await query.GroupBy(_ => 1).Select(group => new SubmissionSummary(
-            group.Count(item => item.Status == "draft"),
-            group.Count(item => item.Status == "submitted"),
-            group.Count(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected"),
-            group.Count(item => item.Status == "approved" || item.Status == "completed"),
-            group.Count(item => item.Status == "submitted" || item.Status == "pending_verification"),
-            group.Count(item => item.Status == "verified" || item.Status == "pending_approval"),
-            group.Where(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected").Select(item => item.IpmsTargetId).Distinct().Count()))
-            .SingleOrDefaultAsync() ?? SubmissionSummary.Empty;
+    private sealed class DashboardSubmissionRecord
+    {
+        public string Id { get; init; } = string.Empty;
+        public string TargetId { get; init; } = string.Empty;
+        public long? ReportingPeriodId { get; init; }
+        public string BaseState { get; init; } = SubmissionBaseStates.InProgress;
+        public bool IsDisabled { get; init; }
+        public DateTime? DueDate { get; init; }
+        public string Status { get; init; } = string.Empty;
+    }
 
     private sealed record SubmissionSummary(int Draft, int Submitted, int Returned, int Approved, int PendingVerification, int PendingApproval, int ReturnedTargets)
     {
