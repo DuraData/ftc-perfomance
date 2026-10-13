@@ -4,6 +4,19 @@ namespace FTCERP.Tests;
 
 public class DatabaseProviderConfigurationTests
 {
+    [Fact]
+    public void DesignTimeFactory_UsesSqlServerWithoutRuntimeConfigurationOrSecrets()
+    {
+        var factory = new ApplicationDbContextDesignTimeFactory();
+
+        using var context = factory.CreateDbContext([]);
+
+        context.Database.ProviderName.Should().Be("Microsoft.EntityFrameworkCore.SqlServer");
+        context.Database.GetDbConnection().ConnectionString.Should()
+            .Contain("OPMS_DesignTime")
+            .And.NotContain("Password");
+    }
+
     [Theory]
     [InlineData("SqlServer", "Server=(local);Database=OPMS;Trusted_Connection=True", "Microsoft.EntityFrameworkCore.SqlServer")]
     [InlineData("Sqlite", "Data Source=:memory:", "Microsoft.EntityFrameworkCore.Sqlite")]
