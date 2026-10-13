@@ -4028,6 +4028,8 @@ Migration `20261013014431_V39ControlledLegacySubmissionPeriodReconciliation` add
 
 Complete Release regression passes **729 backend tests with 1 explicit SQL Server-only skip and 0 failures** and **373/373 frontend tests across 78 files**. TypeScript, ESLint and accessibility **2/2** pass; Release compilation reports **0 warnings and 0 errors**; Vite transforms **2,112 modules**, and the enforced **78-chunk/402.1-KiB** bundle budget passes. Backend and frontend dependency audits report no vulnerabilities. With the SQL Server provider explicitly selected, EF reports no model drift and emits a **692,358-byte** idempotent migration chain; SQL Server and SQLite incremental script generation and the recovery-drill safety contract pass. Rendered browser verification remains blocked by the saved localhost browser-control preference, so no visual PASS is inferred. No Docker process, cloud resource or paid resource was created. R-04 is repository-implemented through controlled execution; production-shaped reconciliation, exception resolution, physical compatibility-column retirement and owner sign-off remain deployment work.
 
+Implementation commit `3139935c60dac8c85e74018f7d57e0bd149e84d1` is present on both `main` and `codex/dev`. GitHub Actions run `38334750543` verified that exact revision: the single `verify` job completed successfully in **6m19s**, with all **18/18** workflow steps green, including backend/frontend tests, migration validation, recovery safety, type-check, lint, accessibility, bundle enforcement, dependency audits and secret scanning.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
