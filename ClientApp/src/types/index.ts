@@ -2353,19 +2353,6 @@ export interface SecurityUserRoleConfiguration {
   assignments: SecurityUserRoleAssignment[];
 }
 
-export interface UserPermissionOverride {
-  permissionId: number;
-  code: string;
-  isAllowed: boolean;
-  reason?: string;
-}
-
-export interface UserPermissions {
-  fromRoles: string[];
-  overrides: UserPermissionOverride[];
-  effective: string[];
-}
-
 export interface LoginAuditLog {
   publicId: string;
   userPublicId?: string | null;

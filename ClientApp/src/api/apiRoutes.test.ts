@@ -9,7 +9,7 @@ import { saveSecurityUserRoles } from './api';
 import { getOpmsImportBatch, getOpmsImportBatchesPage } from './api';
 import { createIdpCommunitySession, createIdpPlan, createIdpPlanVersion, getIdpDashboard, getIdpReport } from './api';
 import { getMyMenu } from './api';
-import { activateUser, createUser, deactivateUser, deleteUser, getUser, getUserPermissions, getUsersPage, setUserPermissionOverrides, setUserRoles, updateUser } from './api';
+import { activateUser, createUser, deactivateUser, deleteUser, getUser, getUsersPage, setUserRoles, updateUser } from './api';
 import { logout, updateMyProfile } from './api';
 import { createIdpComment } from './api';
 
@@ -38,10 +38,8 @@ describe('versioned API routes', () => {
     await deactivateUser(userId, 'AQID', 'Approved account suspension');
     await deleteUser(userId, 'AQID', 'Approved account retirement');
     await setUserRoles(userId, [], 'AQID', 'Approved empty role assignment');
-    await getUserPermissions(userId);
-    await setUserPermissionOverrides(userId, []);
 
-    expect(fetchMock).toHaveBeenCalledTimes(10);
+    expect(fetchMock).toHaveBeenCalledTimes(8);
     for (const [url] of fetchMock.mock.calls) expect(String(url)).toContain('/api/v1/users');
     expect(fetchMock).toHaveBeenNthCalledWith(3, expect.any(String), expect.objectContaining({
       method: 'POST', body: expect.stringContaining('Approved account creation'),

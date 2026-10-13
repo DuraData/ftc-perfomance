@@ -2337,6 +2337,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
     private void EnforceAppendOnlyRecords()
     {
+        EnforceRetiredLegacyProjectionHistory();
         EnforceRolePermissionHistory();
         EnforceSecurityRegistryHistory();
         EnforcePerformancePeriodTargetHistory();
@@ -3143,6 +3144,19 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || !entry.CurrentValues.GetValue<DateTime?>(nameof(TechnicalIndicatorDescription.EffectiveTo)).HasValue)
                 throw new InvalidOperationException("Published TID versions are append-only; only the current version may be closed by a successor.");
         }
+    }
+
+    private void EnforceRetiredLegacyProjectionHistory()
+    {
+        if (ChangeTracker.Entries<UserPermissionOverride>().Any(entry => entry.State != EntityState.Unchanged))
+            throw new InvalidOperationException("Direct user-permission overrides are retired and immutable; use governed, tenant-scoped role assignments and versioned role permissions.");
+
+        RejectRewrites<Period>("Legacy period references are immutable; use governed financial years and reporting periods.");
+        RejectRewrites<StrategicGoal>("Legacy strategic-goal references are immutable; use governed municipality strategic-planning masters.");
+        RejectRewrites<StrategicObjective>("Legacy strategic-objective references are immutable; use governed municipality strategic-planning masters.");
+        RejectRewrites<BudgetSource>("Legacy budget-source references are immutable; use governed municipality budget-source masters.");
+        RejectRewrites<BudgetType>("Legacy budget-type references are immutable; use governed municipality budget-type masters.");
+        RejectRewrites<UnitOfMeasure>("Legacy unit-of-measure references are immutable; use governed KPI unit and canonical OPMS unit masters.");
     }
 
     private void EnforceRolePermissionHistory()

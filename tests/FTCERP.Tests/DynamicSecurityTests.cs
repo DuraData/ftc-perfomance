@@ -663,8 +663,7 @@ public class DynamicSecurityTests
         await context.SaveChangesAsync();
         context.SecurityUserRoleAssignments.Add(Assignment(user, role));
         context.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = permission.Id, IsAllowed = false, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
-        context.UserPermissionOverrides.Add(new UserPermissionOverride { UserId = user.Id, PermissionId = permission.Id, IsAllowed = true, Reason = "Must not override an explicit deny" });
-        await context.SaveChangesAsync();
+        await InsertLegacyUserOverrideAsync(context, user.Id, permission.Id, true, "Must not override an explicit deny");
 
         var decision = await CreateService(context, user).CheckPermissionAsync(user, permission.Code);
 
@@ -679,8 +678,42 @@ public class DynamicSecurityTests
         var permission = new Permission { Code = "SECURITY.SYSTEM_SCOPE", Module = "Security", Feature = "Role", Action = "System", Kind = SecurityPermissionKind.Action };
         context.AddRange(user, permission);
         await context.SaveChangesAsync();
-        context.UserPermissionOverrides.Add(new UserPermissionOverride { UserId = user.Id, PermissionId = permission.Id, IsAllowed = true, Reason = "Legacy unsafe grant" });
+        await InsertLegacyUserOverrideAsync(context, user.Id, permission.Id, true, "Legacy unsafe grant");
+
+        var decision = await CreateService(context, user).CheckPermissionAsync(user, permission.Code);
+
+        decision.Allowed.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PreservedLegacyUserDenyOverride_RemainsRestrictionOnly()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var user = IdpTestFixture.CreateUser();
+        var role = Role("legacy-deny-role", "LEGACY_DENY_ROLE");
+        var permission = new Permission
+        {
+            Code = "OPMS_KPI.READ",
+            Module = "Resource",
+            Feature = "OPMS_KPI",
+            Action = "Read",
+            Kind = SecurityPermissionKind.Resource,
+            ResourceCode = "OPMS_KPI",
+            Operation = SecurityOperation.Read
+        };
+        context.AddRange(user, role, permission);
         await context.SaveChangesAsync();
+        context.SecurityUserRoleAssignments.Add(Assignment(user, role));
+        context.RolePermissions.Add(new RolePermission
+        {
+            RoleId = role.Id,
+            PermissionId = permission.Id,
+            IsAllowed = true,
+            IsActive = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+        await InsertLegacyUserOverrideAsync(context, user.Id, permission.Id, false, "Preserved pre-retirement restriction");
 
         var decision = await CreateService(context, user).CheckPermissionAsync(user, permission.Code);
 
@@ -1091,6 +1124,12 @@ public class DynamicSecurityTests
         var roleManager = new Mock<RoleManager<ApplicationRole>>(roleStore.Object, null!, null!, null!, null!);
         return new AccessControlService(context, userManager.Object, roleManager.Object, tenantContext);
     }
+
+    private static Task InsertLegacyUserOverrideAsync(ApplicationDbContext context, string userId, int permissionId, bool isAllowed, string reason) =>
+        context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "UserPermissionOverrides" ("UserId", "PermissionId", "IsAllowed", "Reason")
+            VALUES ({userId}, {permissionId}, {isAllowed}, {reason})
+            """);
 
     private static ApplicationRole Role(string id, string code) => new() { Id = id, Name = code, NormalizedName = code, RoleCode = code, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
     private static SecurityUserRoleAssignment Assignment(ApplicationUser user, ApplicationRole role) => new() { UserId = user.Id, RoleId = role.Id, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1), AssignedAt = DateTime.UtcNow, AssignedBy = "test" };

@@ -110,21 +110,18 @@ public class AccessControlService : IAccessControlService
         var effectiveRules = roleRules.Where(item => item.IsAllowed && !denied.Contains(item.Code))
             .Select(item => new EffectivePermissionRule(item.Code, item.ScopeType)).ToList();
 
-        var overrides = await _context.UserPermissionOverrides
-            .Where(overrideItem => overrideItem.UserId == user.Id)
-            .Select(overrideItem => new { overrideItem.Permission.Code, overrideItem.IsAllowed })
+        var legacyOverrideDenials = await _context.UserPermissionOverrides
+            .Where(overrideItem => overrideItem.UserId == user.Id && !overrideItem.IsAllowed)
+            .Select(overrideItem => overrideItem.Permission.Code)
             .ToListAsync();
 
         var permissionSet = new HashSet<string>(effective, StringComparer.OrdinalIgnoreCase);
-        foreach (var item in overrides)
+        foreach (var code in legacyOverrideDenials)
         {
             // Legacy user overrides are restriction-only. Grants belong to audited,
             // tenant-scoped role assignments and may not bypass role DENY rules.
-            if (!item.IsAllowed)
-            {
-                permissionSet.Remove(item.Code);
-                effectiveRules.RemoveAll(rule => string.Equals(rule.Code, item.Code, StringComparison.OrdinalIgnoreCase));
-            }
+            permissionSet.Remove(code);
+            effectiveRules.RemoveAll(rule => string.Equals(rule.Code, code, StringComparison.OrdinalIgnoreCase));
         }
 
         var scopes = await _context.UserScopes

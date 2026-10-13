@@ -12,8 +12,6 @@ import type {
   AdminPermission,
   AdminPermissionGroup,
   RolePermission,
-  UserPermissions,
-  UserPermissionOverride,
   MenuItem,
   LoginAuditLog,
   RoleImplementationAuditRow,
@@ -1985,14 +1983,6 @@ export async function deleteUser(publicId: string, rowVersion: string, reason: s
 
 export async function setUserRoles(userPublicId: string, rolePublicIds: string[], rowVersion: string, reason: string): Promise<ApiResponse<boolean>> {
   return post<boolean>(`/v1/users/${userPublicId}/roles`, { rolePublicIds, rowVersion, reason });
-}
-
-export async function getUserPermissions(userPublicId: string): Promise<ApiResponse<UserPermissions>> {
-  return get<UserPermissions>(`/v1/users/${userPublicId}/permissions`);
-}
-
-export async function setUserPermissionOverrides(userPublicId: string, overrides: UserPermissionOverride[]): Promise<ApiResponse<boolean>> {
-  return put<boolean>(`/v1/users/${userPublicId}/permission-overrides`, { overrides });
 }
 
 export async function getRoles(): Promise<ApiResponse<AdminRole[]>> {
