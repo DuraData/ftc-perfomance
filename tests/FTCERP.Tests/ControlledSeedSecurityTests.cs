@@ -368,10 +368,16 @@ public sealed class ControlledSeedSecurityTests
         var dashboard = await context.Permissions.SingleAsync(item => item.Code == "Dashboard.View");
         var userResource = await context.SecurityResources.SingleAsync(item => item.Code == "USER");
         var emailMember = await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == "USER" && item.MemberCode == "Email");
+        var actor = IdpTestFixture.CreateUser("catalogue-governance-actor");
+        context.Users.Add(actor);
+        await context.SaveChangesAsync();
         dashboard.Description = "Administrator-defined dashboard description";
         dashboard.IsActive = false;
         userResource.SupportsDelete = false;
         emailMember.IsSensitive = false;
+        context.AuditTrails.AddRange(
+            RegistryAudit(nameof(SecurityResource), userResource.PublicId, actor.Id, "Preserve administrator resource configuration"),
+            RegistryAudit(nameof(SecurityMemberDefinition), emailMember.PublicId, actor.Id, "Preserve administrator member configuration"));
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
 
@@ -383,6 +389,54 @@ public sealed class ControlledSeedSecurityTests
         dashboard.IsActive.Should().BeFalse();
         (await context.SecurityResources.SingleAsync(item => item.Code == "USER")).SupportsDelete.Should().BeFalse();
         (await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == "USER" && item.MemberCode == "Email")).IsSensitive.Should().BeFalse();
+    }
+
+    private static AuditTrail RegistryAudit(string entityName, Guid publicId, string actorId, string reason) => new()
+    {
+        EntityName = entityName,
+        EntityId = publicId.ToString(),
+        Action = "Update",
+        OldValue = "{}",
+        NewValue = "{}",
+        ChangedBy = actorId,
+        ChangedAt = DateTime.UtcNow,
+        Reason = reason
+    };
+
+    [Fact]
+    public async Task Security_catalogue_legacy_member_correction_is_atomic_and_audited()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+        var actor = IdpTestFixture.CreateUser("catalogue-upgrade-actor");
+        var opms = new SecurityMemberDefinition
+        {
+            ResourceCode = "OPMS_SUBMISSION", MemberCode = "SuggestionReason", DisplayName = "Suggestion Reason",
+            IsSensitive = true, IsSystemManaged = true
+        };
+        var ipms = new SecurityMemberDefinition
+        {
+            ResourceCode = "IPMS_SUBMISSION", MemberCode = "SuggestionReason", DisplayName = "Suggestion Reason",
+            IsSensitive = true, IsSystemManaged = true
+        };
+        context.AddRange(actor, opms, ipms);
+        await context.SaveChangesAsync();
+
+        await SecurityRegistrySeeder.SeedAsync(context);
+
+        opms.IsSystemManaged.Should().BeFalse();
+        ipms.IsSystemManaged.Should().BeFalse();
+        var audits = await context.AuditTrails
+            .Where(item => item.EntityName == nameof(SecurityMemberDefinition) && item.Action == "Update")
+            .ToArrayAsync();
+        audits.Should().HaveCount(2).And.OnlyContain(item => item.ChangedBy == actor.Id
+            && item.OldValue!.Contains("\"IsSystemManaged\":true")
+            && item.NewValue!.Contains("\"IsSystemManaged\":false")
+            && !string.IsNullOrWhiteSpace(item.Reason));
+        (await context.Permissions.CountAsync(item => item.Code.EndsWith("SuggestionReason.UPDATE"))).Should().Be(2);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using FTCERP.Host.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace FTCERP.Host.Infrastructure.Persistence.Seed;
 
@@ -485,7 +486,32 @@ public static class SecurityRegistrySeeder
             .Where(item => (item.ResourceCode == "OPMS_SUBMISSION" || item.ResourceCode == "IPMS_SUBMISSION")
                 && item.MemberCode == "SuggestionReason" && item.IsSystemManaged)
             .ToListAsync();
-        foreach (var member in suggestionReasonMembers) member.IsSystemManaged = false;
+        var upgradeActorId = suggestionReasonMembers.Count == 0
+            ? null
+            : await context.Users.AsNoTracking().OrderBy(item => item.Id).Select(item => item.Id).FirstOrDefaultAsync();
+        foreach (var member in suggestionReasonMembers.Where(_ => upgradeActorId != null))
+        {
+            var oldValue = JsonSerializer.Serialize(new
+            {
+                member.ResourceCode, member.MemberCode, member.DisplayName, member.IsSensitive, member.IsSystemManaged, member.IsActive
+            });
+            member.IsSystemManaged = false;
+            var newValue = JsonSerializer.Serialize(new
+            {
+                member.ResourceCode, member.MemberCode, member.DisplayName, member.IsSensitive, member.IsSystemManaged, member.IsActive
+            });
+            context.AuditTrails.Add(new AuditTrail
+            {
+                EntityName = nameof(SecurityMemberDefinition),
+                EntityId = member.PublicId.ToString(),
+                Action = "Update",
+                OldValue = oldValue,
+                NewValue = newValue,
+                ChangedBy = upgradeActorId!,
+                ChangedAt = DateTime.UtcNow,
+                Reason = "Correct legacy SuggestionReason system-managed classification during additive registry upgrade."
+            });
+        }
         await context.SaveChangesAsync();
     }
 

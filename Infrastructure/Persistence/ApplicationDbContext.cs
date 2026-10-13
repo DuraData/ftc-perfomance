@@ -2293,6 +2293,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
     private void EnforceAppendOnlyRecords()
     {
+        EnforceSecurityRegistryHistory();
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
@@ -3082,6 +3083,57 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || entry.OriginalValues.GetValue<DateTime?>(nameof(TechnicalIndicatorDescription.EffectiveTo)).HasValue
                 || !entry.CurrentValues.GetValue<DateTime?>(nameof(TechnicalIndicatorDescription.EffectiveTo)).HasValue)
                 throw new InvalidOperationException("Published TID versions are append-only; only the current version may be closed by a successor.");
+        }
+    }
+
+    private void EnforceSecurityRegistryHistory()
+    {
+        if (ChangeTracker.Entries<SecurityResource>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<SecurityActionDefinition>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<SecurityMemberDefinition>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<SecurityNavigationItem>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Dynamic security registry history cannot be hard deleted; deactivate the definition instead.");
+
+        foreach (var entry in ChangeTracker.Entries<SecurityResource>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(SecurityResource.Name), nameof(SecurityResource.ResourceType), nameof(SecurityResource.Description),
+                    nameof(SecurityResource.SupportsCreate), nameof(SecurityResource.SupportsRead), nameof(SecurityResource.SupportsUpdate),
+                    nameof(SecurityResource.SupportsDelete), nameof(SecurityResource.SupportsExport), nameof(SecurityResource.SupportsImport),
+                    nameof(SecurityResource.SupportsFieldSecurity), nameof(SecurityResource.SupportsRecordCriteria),
+                    nameof(SecurityResource.IsActive), nameof(SecurityResource.RowVersion)],
+                "Security-resource public identity, code and implementation bindings are immutable.");
+            RequireGovernanceAudit(nameof(SecurityResource), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
+        }
+
+        foreach (var entry in ChangeTracker.Entries<SecurityActionDefinition>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(SecurityActionDefinition.Name), nameof(SecurityActionDefinition.Description),
+                    nameof(SecurityActionDefinition.IsActive), nameof(SecurityActionDefinition.RowVersion)],
+                "Security-action public identity, code and resource binding are immutable.");
+            RequireGovernanceAudit(nameof(SecurityActionDefinition), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
+        }
+
+        foreach (var entry in ChangeTracker.Entries<SecurityMemberDefinition>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(SecurityMemberDefinition.DisplayName), nameof(SecurityMemberDefinition.IsSensitive),
+                    nameof(SecurityMemberDefinition.IsSystemManaged), nameof(SecurityMemberDefinition.IsActive),
+                    nameof(SecurityMemberDefinition.RowVersion)],
+                "Security-member public identity and resource/member codes are immutable.");
+            RequireGovernanceAudit(nameof(SecurityMemberDefinition), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
+        }
+
+        foreach (var entry in ChangeTracker.Entries<SecurityNavigationItem>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry,
+                [nameof(SecurityNavigationItem.ParentId), nameof(SecurityNavigationItem.Name), nameof(SecurityNavigationItem.Route),
+                    nameof(SecurityNavigationItem.IconKey), nameof(SecurityNavigationItem.DisplayOrder),
+                    nameof(SecurityNavigationItem.RequiredPermissionCode), nameof(SecurityNavigationItem.IsActive),
+                    nameof(SecurityNavigationItem.RowVersion)],
+                "Security-navigation public identity and code are immutable.");
+            RequireGovernanceAudit(nameof(SecurityNavigationItem), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
         }
     }
 
