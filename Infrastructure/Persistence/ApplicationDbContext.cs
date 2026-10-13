@@ -2342,6 +2342,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceSecurityRoleHistory();
         EnforceSecurityRegistryHistory();
         EnforcePermissionProjectionHistory();
+        EnforceMunicipalityRootHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
@@ -3369,6 +3370,118 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             && permission.ResourceCode == resource.Code && permission.MemberCode == null && permission.NavigationCode == null
             && permission.ActionCode == null && permission.Description == $"{operation} {resource.Name}"
             && permission.IsActive == (resource.IsActive && supported);
+    }
+
+    private void EnforceMunicipalityRootHistory()
+    {
+        if (ChangeTracker.Entries<Municipality>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Municipality tenant-root history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<Municipality>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var changed = entry.Properties.Where(property => property.IsModified
+                    && property.Metadata.Name != nameof(Municipality.RowVersion))
+                .Select(property => property.Metadata.Name)
+                .ToHashSet(StringComparer.Ordinal);
+
+            if (changed.SetEquals([nameof(Municipality.AuthenticationMode)]))
+            {
+                var configurations = ChangeTracker.Entries<AuthenticationConfiguration>().Where(candidate =>
+                    candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == entry.Entity.Id
+                    && candidate.Entity.Mode == entry.Entity.AuthenticationMode).ToArray();
+                if (configurations.Length != 1)
+                    throw new InvalidOperationException("Municipality authentication mode may change only beside its exact reason-audited configuration version.");
+                var configuration = configurations[0].Entity;
+                var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate =>
+                    candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == entry.Entity.Id
+                    && candidate.Entity.EntityName == "AuthenticationConfiguration"
+                    && candidate.Entity.EntityId == configuration.PublicId.ToString()
+                    && candidate.Entity.Action is "AuthenticationConfigurationCreated" or "AuthenticationConfigurationVersionCreated"
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && MunicipalityAuthenticationSnapshotMatches(candidate.Entity.NewValue, entry.Entity.AuthenticationMode)).ToArray();
+                if (audits.Length != 1)
+                    throw new InvalidOperationException("Municipality authentication mode may change only beside its exact reason-audited configuration version.");
+                continue;
+            }
+
+            if (changed.Count > 0 && changed.All(property => property is nameof(Municipality.TidEnabled) or nameof(Municipality.TidAllKpisRequired)))
+            {
+                var audit = ChangeTracker.Entries<AuditTrail>().SingleOrDefault(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == entry.Entity.Id
+                    && candidate.Entity.EntityName == "TidConfiguration"
+                    && candidate.Entity.EntityId == entry.Entity.PublicId.ToString()
+                    && candidate.Entity.Action == "Update"
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && MunicipalityTidSnapshotMatches(candidate.Entity.OldValue,
+                        entry.OriginalValues.GetValue<bool>(nameof(Municipality.TidEnabled)),
+                        entry.OriginalValues.GetValue<bool>(nameof(Municipality.TidAllKpisRequired)))
+                    && MunicipalityTidSnapshotMatches(candidate.Entity.NewValue,
+                        entry.Entity.TidEnabled, entry.Entity.TidAllKpisRequired));
+                if (entry.Entity.TidAllKpisRequired && !entry.Entity.TidEnabled || audit == null)
+                    throw new InvalidOperationException("Municipality TID settings require a coherent state and exact same-transaction reasoned audit evidence.");
+                continue;
+            }
+
+            throw new InvalidOperationException("Municipality identity, code, name, activation and effective-date evidence are immutable at the tenant-root persistence boundary.");
+        }
+    }
+
+    private static bool MunicipalityAuthenticationSnapshotMatches(string? json, AuthenticationMode mode)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            if (!TryGetJsonProperty(document.RootElement, nameof(AuthenticationConfiguration.Mode), out var value)) return false;
+            return value.ValueKind switch
+            {
+                System.Text.Json.JsonValueKind.Number => value.TryGetInt32(out var numeric) && numeric == (int)mode,
+                System.Text.Json.JsonValueKind.String => Enum.TryParse<AuthenticationMode>(value.GetString(), true, out var parsed) && parsed == mode,
+                _ => false
+            };
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool MunicipalityTidSnapshotMatches(string? json, bool enabled, bool allRequired)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            return TryGetJsonProperty(document.RootElement, nameof(Municipality.TidEnabled), out var enabledValue)
+                && enabledValue.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                && enabledValue.GetBoolean() == enabled
+                && TryGetJsonProperty(document.RootElement, nameof(Municipality.TidAllKpisRequired), out var allRequiredValue)
+                && allRequiredValue.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                && allRequiredValue.GetBoolean() == allRequired;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetJsonProperty(System.Text.Json.JsonElement root, string name, out System.Text.Json.JsonElement value)
+    {
+        if (root.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            foreach (var property in root.EnumerateObject())
+            {
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+        }
+        value = default;
+        return false;
     }
 
     private void EnforcePerformancePeriodTargetHistory()

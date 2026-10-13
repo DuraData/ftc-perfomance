@@ -258,7 +258,55 @@ public sealed class EnterpriseAuthenticationTests
         Assert.Equal(2, history.TotalCount);
         Assert.Single(history.Items);
         Assert.Equal(2, history.Items[0].VersionNumber);
-        Assert.Equal(2, await context.AuditTrails.CountAsync(item => item.EntityName == "AuthenticationConfiguration"));
+        var createdAudit = await context.AuditTrails.AsNoTracking().SingleAsync(item =>
+            item.EntityName == "AuthenticationConfiguration" && item.Action == "AuthenticationConfigurationCreated");
+        var successorAudit = await context.AuditTrails.AsNoTracking().SingleAsync(item =>
+            item.EntityName == "AuthenticationConfiguration" && item.Action == "AuthenticationConfigurationVersionCreated");
+        Assert.Equal("Initial approved authentication policy", createdAudit.Reason);
+        Assert.Equal("Security committee approved stronger controls", successorAudit.Reason);
+    }
+
+    [Fact]
+    public async Task Authentication_administration_changes_municipality_mode_only_with_exact_version_and_audit()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Code = "AUTH-MODE", Name = "Governed Authentication Mode" };
+        var actor = User("authentication-mode-admin", municipality);
+        context.AddRange(municipality, actor);
+        await context.SaveChangesAsync();
+
+        var controller = new AuthenticationAdministrationController(context, new TenantContext(municipality.Id),
+            new EnterpriseProviderRegistry([Provider()]), Mock.Of<IAccessControlService>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = Http(actor.Id) }
+        };
+        var reason = "Security committee approved hybrid enterprise authentication.";
+
+        var result = await controller.Save(new SaveAuthenticationConfigurationRequest(
+            AuthenticationMode.Hybrid, "ENTRA", "Municipal hybrid sign-in", true, DateTime.UtcNow.AddMinutes(-1), null,
+            new AuthenticationPolicyRequest(14, 5, 20, true, true, true, 30, 24, 5, null),
+            reason, null), default);
+
+        var saved = Assert.IsType<ApiResponse<AuthenticationConfigurationDto>>(
+            Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        Assert.Equal(AuthenticationMode.Hybrid, saved.Mode);
+        Assert.Equal("ENTRA", saved.ProviderRegistrationCode);
+        Assert.Equal(AuthenticationMode.Hybrid,
+            await context.Municipalities.AsNoTracking().Where(item => item.Id == municipality.Id)
+                .Select(item => item.AuthenticationMode).SingleAsync());
+        var configuration = await context.AuthenticationConfigurations.AsNoTracking()
+            .SingleAsync(item => item.MunicipalityId == municipality.Id && item.IsCurrent);
+        var audit = await context.AuditTrails.AsNoTracking().SingleAsync(item =>
+            item.MunicipalityId == municipality.Id
+            && item.EntityName == "AuthenticationConfiguration"
+            && item.EntityId == configuration.PublicId.ToString());
+        Assert.Equal("AuthenticationConfigurationCreated", audit.Action);
+        Assert.Equal(reason, audit.Reason);
+        Assert.NotNull(audit.NewValue);
     }
 
     [Fact]

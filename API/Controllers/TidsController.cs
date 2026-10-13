@@ -86,7 +86,7 @@ public class TidsController : ControllerBase
         municipality.TidEnabled = request.TidEnabled;
         municipality.TidAllKpisRequired = request.TidEnabled && request.AllKpisRequired;
         workflow.QueueAuditTrail("TidConfiguration", municipality.PublicId.ToString(), "Update", before,
-            new { municipality.TidEnabled, municipality.TidAllKpisRequired, Reason = reason }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+            new { municipality.TidEnabled, municipality.TidAllKpisRequired }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
         {

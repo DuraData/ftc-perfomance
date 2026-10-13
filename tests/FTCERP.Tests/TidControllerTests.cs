@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace FTCERP.Tests;
 
 public class TidControllerTests
@@ -8,6 +10,21 @@ public class TidControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var setup = await SeedAsync(context, enabled: false, allRequired: false);
         var workflow = new Mock<IWorkflowGovernanceService>();
+        workflow.Setup(service => service.QueueAuditTrail("TidConfiguration", setup.Municipality.PublicId.ToString(), "Update",
+                It.IsAny<object>(), It.IsAny<object>(), setup.User.Id, It.IsAny<string?>(), It.IsAny<string?>()))
+            .Callback<string, string, string, object?, object?, string, string?, string?>((entityName, entityId, action, oldValue, newValue, changedBy, _, reason) =>
+                context.AuditTrails.Add(new AuditTrail
+                {
+                    MunicipalityId = setup.Municipality.Id,
+                    EntityName = entityName,
+                    EntityId = entityId,
+                    Action = action,
+                    OldValue = JsonSerializer.Serialize(oldValue),
+                    NewValue = JsonSerializer.Serialize(newValue),
+                    ChangedBy = changedBy,
+                    ChangedAt = DateTime.UtcNow,
+                    Reason = reason
+                }));
         var controller = Controller(context, setup.User, setup.Municipality.Id, workflow);
 
         var initial = Payload(await controller.GetConfiguration());
@@ -21,7 +38,9 @@ public class TidControllerTests
         updated.ScopedKpiCount.Should().Be(1);
         updated.MissingTidCount.Should().Be(1);
         workflow.Verify(service => service.QueueAuditTrail("TidConfiguration", setup.Municipality.PublicId.ToString(), "Update",
-            It.IsAny<object>(), It.IsAny<object>(), setup.User.Id, It.IsAny<string?>()), Times.Once);
+            It.IsAny<object>(), It.IsAny<object>(), setup.User.Id, It.IsAny<string?>(), "Council adopted mandatory TIDs"), Times.Once);
+        (await context.AuditTrails.SingleAsync(item => item.EntityName == "TidConfiguration")).Reason
+            .Should().Be("Council adopted mandatory TIDs");
 
         var stale = await controller.UpdateConfiguration(new UpdateTidConfigurationRequest(false, false, initial.RowVersion, "Stale change"));
         stale.Result.Should().BeOfType<ConflictObjectResult>();

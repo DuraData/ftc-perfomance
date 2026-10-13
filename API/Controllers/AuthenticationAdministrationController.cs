@@ -387,7 +387,7 @@ public sealed class AuthenticationAdministrationController(
         MunicipalityId = municipalityId, EntityName = entityName, EntityId = entityId, Action = action,
         OldValue = JsonSerializer.Serialize(new { Reason = reason }), NewValue = value == null ? null : JsonSerializer.Serialize(value),
         ChangedBy = actor, ChangedAt = DateTime.UtcNow, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
-        CorrelationId = HttpContext.TraceIdentifier, UserAgent = Request.Headers.UserAgent.ToString()
+        CorrelationId = HttpContext.TraceIdentifier, Reason = reason.Trim(), UserAgent = Request.Headers.UserAgent.ToString()
     });
 
     private bool SetVersion<TEntity>(TEntity entity, string? value) where TEntity : class { if (!TryDecode(value, out var bytes)) return false; context.Entry(entity).Property("RowVersion").OriginalValue = bytes; return true; }
