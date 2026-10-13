@@ -86,4 +86,38 @@ describe('performance submission register exports', () => {
     await waitFor(() => expect(kind === 'OPMS' ? api.getOpmsSubmissionsPage : api.getIpmsSubmissionsPage).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: 'New Submission' })).not.toBeInTheDocument();
   });
+
+  it.each([
+    ['OPMS', OPMSSubmissionsList],
+    ['IPMS', IPMSSubmissionsList],
+  ] as const)('omits denied %s Due, Actual and Variance columns even when a hostile response supplies values', async (kind, Component) => {
+    const pageApi = kind === 'OPMS' ? api.getOpmsSubmissionsPage : api.getIpmsSubmissionsPage;
+    pageApi.mockResolvedValue({
+      success: true,
+      data: {
+        ...emptyPage,
+        items: [{
+          id: `${kind.toLowerCase()}-submission-1`,
+          target: { targetName: `${kind} governed target`, indicatorNumber: `${kind}-KPI-1` },
+          quarter: 'Q1',
+          dueDate: '2099-12-31T00:00:00Z',
+          actualPerformance: 'HOSTILE-ACTUAL-SECRET',
+          variance: 919191,
+          status: 'draft',
+        }],
+        totalCount: 1,
+        totalPages: 1,
+      },
+    });
+    app.permissions = [`${kind}_SUBMISSION.READ`];
+
+    render(<Component />);
+
+    expect(await screen.findByText(`${kind} governed target`)).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Due' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Actual' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Var' })).not.toBeInTheDocument();
+    expect(screen.queryByText('HOSTILE-ACTUAL-SECRET')).not.toBeInTheDocument();
+    expect(screen.queryByText('919191')).not.toBeInTheDocument();
+  });
 });

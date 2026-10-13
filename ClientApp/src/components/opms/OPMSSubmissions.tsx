@@ -166,6 +166,9 @@ export function OPMSSubmissionsList() {
   const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
   const permissionSet = useMemo(() => new Set(permissions.map(permission => permission.toUpperCase())), [permissions]);
   const canCreate = permissionSet.has('OPMS_SUBMISSION.CREATE');
+  const canReadDueDate = permissionSet.has('OPMS_SUBMISSION.DUEDATE.READ');
+  const canReadActualPerformance = permissionSet.has('OPMS_SUBMISSION.ACTUALPERFORMANCE.READ');
+  const canReadVariance = permissionSet.has('OPMS_SUBMISSION.VARIANCE.READ');
   const canEditActualPerformance = permissionSet.has('OPMS_SUBMISSION.ACTUALPERFORMANCE.UPDATE');
   const canExport = useMemo(() => {
     return [
@@ -217,9 +220,9 @@ export function OPMSSubmissionsList() {
   const columns = [
     { id: 'target', sortKey: 'indicatorNumber', header: 'Target', accessor: (row: OPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
     { id: 'quarter', sortKey: 'quarter', header: 'Quarter', accessor: (row: OPMSSubmission) => row.quarter },
-    { id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => <span className={row.dueDate && new Date(row.dueDate) < new Date() && row.status === 'draft' ? 'text-error-600' : ''}>{formatOptionalDate(row.dueDate)}</span> },
-    { id: 'actual', header: 'Actual', accessor: (row: OPMSSubmission) => row.actualPerformance?.trim() || '-' },
-    { id: 'variance', header: 'Var', accessor: (row: OPMSSubmission) => <span className={row.variance != null && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{formatVariance(row.variance)}</span> },
+    ...(canReadDueDate ? [{ id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => <span className={row.dueDate && new Date(row.dueDate) < new Date() && row.status === 'draft' ? 'text-error-600' : ''}>{formatOptionalDate(row.dueDate)}</span> }] : []),
+    ...(canReadActualPerformance ? [{ id: 'actual', header: 'Actual', accessor: (row: OPMSSubmission) => row.actualPerformance?.trim() || '-' }] : []),
+    ...(canReadVariance ? [{ id: 'variance', header: 'Var', accessor: (row: OPMSSubmission) => <span className={row.variance != null && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{formatVariance(row.variance)}</span> }] : []),
     { id: 'status', sortKey: 'status', header: 'Status', accessor: (row: OPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status.includes('pending') ? 'warning' : 'default'}>{statusLabels[row.status]}</Badge> },
   ];
 
@@ -525,6 +528,9 @@ export function IPMSSubmissionsList() {
   const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
   const permissionSet = useMemo(() => new Set(permissions.map(permission => permission.toUpperCase())), [permissions]);
   const canCreate = permissionSet.has('IPMS_SUBMISSION.CREATE');
+  const canReadDueDate = permissionSet.has('IPMS_SUBMISSION.DUEDATE.READ');
+  const canReadActualPerformance = permissionSet.has('IPMS_SUBMISSION.ACTUALPERFORMANCE.READ');
+  const canReadVariance = permissionSet.has('IPMS_SUBMISSION.VARIANCE.READ');
   const canEditActualPerformance = permissionSet.has('IPMS_SUBMISSION.ACTUALPERFORMANCE.UPDATE');
   const canExport = useMemo(() => {
     return [
@@ -576,9 +582,9 @@ export function IPMSSubmissionsList() {
   const columns = [
     { id: 'target', sortKey: 'indicatorNumber', header: 'Target', accessor: (row: IPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
     { id: 'quarter', sortKey: 'quarter', header: 'Quarter', accessor: (row: IPMSSubmission) => row.quarter },
-    { id: 'due', header: 'Due', accessor: (row: IPMSSubmission) => formatOptionalDate(row.dueDate) },
-    { id: 'actual', header: 'Actual', accessor: (row: IPMSSubmission) => row.actualPerformance?.trim() || '-' },
-    { id: 'variance', header: 'Var', accessor: (row: IPMSSubmission) => <span className={row.variance != null && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{formatVariance(row.variance)}</span> },
+    ...(canReadDueDate ? [{ id: 'due', header: 'Due', accessor: (row: IPMSSubmission) => formatOptionalDate(row.dueDate) }] : []),
+    ...(canReadActualPerformance ? [{ id: 'actual', header: 'Actual', accessor: (row: IPMSSubmission) => row.actualPerformance?.trim() || '-' }] : []),
+    ...(canReadVariance ? [{ id: 'variance', header: 'Var', accessor: (row: IPMSSubmission) => <span className={row.variance != null && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{formatVariance(row.variance)}</span> }] : []),
     { id: 'status', sortKey: 'status', header: 'Status', accessor: (row: IPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status.includes('pending') ? 'warning' : 'default'}>{statusLabels[row.status]}</Badge> },
   ];
 

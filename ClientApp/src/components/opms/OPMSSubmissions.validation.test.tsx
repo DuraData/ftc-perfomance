@@ -22,7 +22,13 @@ vi.mock('../layout/AppShell', () => ({
 describe('OPMS submission creation validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    app.permissions = ['OPMS_SUBMISSION.CREATE', 'OPMS_SUBMISSION.ActualPerformance.UPDATE'];
+    app.permissions = [
+      'OPMS_SUBMISSION.CREATE',
+      'OPMS_SUBMISSION.DueDate.READ',
+      'OPMS_SUBMISSION.ActualPerformance.READ',
+      'OPMS_SUBMISSION.ActualPerformance.UPDATE',
+      'OPMS_SUBMISSION.Variance.READ',
+    ];
     api.getOpmsSubmissionsPage.mockResolvedValue({
       success: true,
       data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
