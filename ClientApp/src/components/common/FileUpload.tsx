@@ -212,7 +212,7 @@ export function FileUpload({
   return (
     <div className="space-y-4">
       {/* Drop zone */}
-      <div
+      {onUpload && <div
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -248,7 +248,7 @@ export function FileUpload({
             </p>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* File list */}
       {files.length > 0 && (
@@ -306,7 +306,7 @@ export function FileUpload({
                 )}
 
                 {/* Document type selector */}
-                {showDocumentType && (file.progress ?? 100) >= 100 && (
+                {showDocumentType && !disabled && onUpload && (file.progress ?? 100) >= 100 && (
                   <div className="mt-2">
                     <select
                       value={file.documentType || ''}
@@ -328,20 +328,22 @@ export function FileUpload({
               <div className="flex items-center gap-2">
                 {(file.progress ?? 100) >= 100 && (
                   <>
-                    {previewable && file.type.startsWith('image/') && (
-                      <button className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors">
+                    {previewable && file.url && file.type.startsWith('image/') && (
+                      <a href={file.url} target="_blank" rel="noreferrer" aria-label={`Preview ${file.name}`} className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors">
                         <Eye className="w-4 h-4 text-secondary-400" />
-                      </button>
+                      </a>
                     )}
                     {file.url && (
-                      <button className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors">
+                      <a href={file.url} download={file.name} title="Download" aria-label={`Download ${file.name}`} className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors">
                         <Download className="w-4 h-4 text-secondary-400" />
-                      </button>
+                      </a>
                     )}
                     {file.isActive !== false && file.isQuarantined && onRescan && <button type="button" title="Rescan quarantined evidence" onClick={() => onRescan(file.id)} className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700 transition-colors"><RefreshCw className="w-4 h-4 text-warning-600" /></button>}
                   </>
                 )}
-                {file.isActive !== false && <button
+                {file.isActive !== false && onRemove && <button
+                  type="button"
+                  aria-label={`Remove ${file.name}`}
                   onClick={() => handleRemove(file.id)}
                   className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors"
                 >

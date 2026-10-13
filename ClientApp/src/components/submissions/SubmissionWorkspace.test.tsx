@@ -3,6 +3,7 @@ import type { OPMSSubmission } from '../../types';
 import { SubmissionWorkspace } from './SubmissionWorkspace';
 
 const security = vi.hoisted(() => ({
+  canRead: vi.fn(),
   canUpdate: vi.fn(),
   canReadField: vi.fn(),
   canEditField: vi.fn(),
@@ -52,6 +53,7 @@ describe('SubmissionWorkspace member security', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Element.prototype.scrollIntoView = vi.fn();
+    security.canRead.mockReturnValue(true);
     security.canUpdate.mockReturnValue(true);
     security.canReadField.mockReturnValue(false);
     security.canEditField.mockReturnValue(false);
@@ -91,6 +93,39 @@ describe('SubmissionWorkspace member security', () => {
     expect(screen.queryByText('Private reason')).not.toBeInTheDocument();
     expect(screen.queryByText('Private corrective action')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
+  it.each(['OPMS', 'IPMS'] as const)('hides the %s evidence surface without resource READ access', (submissionType) => {
+    security.canRead.mockReturnValue(false);
+
+    render(<SubmissionWorkspace submission={submission} submissionType={submissionType} />);
+
+    expect(security.canRead).toHaveBeenCalledWith(`${submissionType}_POE`);
+    expect(screen.queryByRole('button', { name: /Proof of Evidence/i })).not.toBeInTheDocument();
+  });
+
+  it('shows POE upload and rescan controls only with the exact upload action grant', async () => {
+    api.getOpmsSubmissionAttachmentsPage.mockResolvedValue({
+      success: true,
+      data: { items: [{ id: 'evidence-1', publicId: 'public-1', fileName: 'quarantined.pdf', fileSize: 10, fileType: 'application/pdf', uploadedAt: '2026-10-01T00:00:00Z', documentType: 'evidence', url: '/content/1', scanStatus: 'ThreatDetected', isQuarantined: true }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    const rendered = render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    await waitFor(() => expect(screen.getByText('quarantined.pdf')).toBeInTheDocument());
+    expect(screen.queryByText(/Drop files here/i)).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Rescan quarantined evidence')).not.toBeInTheDocument();
+
+    security.canExecute.mockImplementation((code: string) => code === 'OPMS_POE.UPLOAD');
+    rendered.rerender(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+
+    expect(screen.getByText(/Drop files here/i)).toBeInTheDocument();
+    expect(screen.getByTitle('Rescan quarantined evidence')).toBeInTheDocument();
+
+    security.canRead.mockReturnValue(false);
+    rendered.rerender(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
+    expect(screen.queryByText('quarantined.pdf')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Proof of Evidence/i })).not.toBeInTheDocument();
   });
 
   it('renders readable members and enables only fields with member update permission', () => {

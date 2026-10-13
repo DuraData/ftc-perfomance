@@ -2,6 +2,20 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { FileUpload } from './FileUpload';
 
 describe('FileUpload evidence scan state', () => {
+  it('renders persisted files without fake mutation controls and links an authorized download', () => {
+    render(<FileUpload disabled existingFiles={[{
+      id: 'evidence-readonly', name: 'signed-register.pdf', size: 256, type: 'application/pdf', progress: 100,
+      documentType: 'evidence', scanStatus: 'Clean', isQuarantined: false, url: '/api/v1/opms/submissions/1/attachments/1/download',
+    }]} />);
+
+    expect(screen.queryByText(/Drop files here/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove signed-register.pdf' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Download signed-register.pdf' })).toHaveAttribute(
+      'href', '/api/v1/opms/submissions/1/attachments/1/download',
+    );
+  });
+
   it('shows quarantine state and exposes governed rescan without a download', () => {
     const onRescan = vi.fn();
     render(<FileUpload onRescan={onRescan} existingFiles={[{

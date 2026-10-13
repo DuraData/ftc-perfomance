@@ -352,6 +352,11 @@ export function SubmissionWorkspace({
   workflowBusy = false,
 }: SubmissionWorkspaceProps) {
   const security = useSecurity();
+  const resourceCode = `${submissionType}_SUBMISSION`;
+  const poeResourceCode = `${submissionType}_POE`;
+  const workflowResourceCode = `${submissionType}_WORKFLOW`;
+  const canReadEvidence = security.canRead(poeResourceCode);
+  const canUploadEvidence = security.canExecute(`${submissionType}_POE.UPLOAD`);
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(false);
   const [draftSubmission, setDraftSubmission] = useState<SubmissionRecord>(submission);
@@ -436,7 +441,7 @@ export function SubmissionWorkspace({
   }, [evidenceSearch, evidenceSearchInput]);
 
   const loadEvidence = useCallback(async () => {
-    if (activeTab !== 'evidence') return;
+    if (activeTab !== 'evidence' || !canReadEvidence) return;
     setEvidenceBusy(true);
     setEvidenceError('');
     const query = {
@@ -462,7 +467,7 @@ export function SubmissionWorkspace({
       setEvidenceError(result.message ?? 'Submission evidence could not be loaded.');
     }
     setEvidenceBusy(false);
-  }, [activeTab, evidenceLifecycle, evidencePage, evidenceScanStatus, evidenceSearch, submission.id, submissionType]);
+  }, [activeTab, canReadEvidence, evidenceLifecycle, evidencePage, evidenceScanStatus, evidenceSearch, submission.id, submissionType]);
 
   useEffect(() => {
     // The monotonic revision deliberately re-runs the active page after a governed mutation.
@@ -586,24 +591,25 @@ export function SubmissionWorkspace({
   const tabs = useMemo(
     () => [
       { id: 'details', label: 'Submission Details', icon: <FileText className="w-3.5 h-3.5" /> },
-      { id: 'evidence', label: 'Proof of Evidence', icon: <FileBadge className="w-3.5 h-3.5" /> },
+      ...(canReadEvidence ? [{ id: 'evidence', label: 'Proof of Evidence', icon: <FileBadge className="w-3.5 h-3.5" /> }] : []),
       { id: 'verification', label: 'Verification', icon: <ClipboardCheck className="w-3.5 h-3.5" /> },
       { id: 'approval', label: 'Approval', icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
       { id: 'pms', label: 'PMS Section', icon: <Sparkles className="w-3.5 h-3.5" /> },
       { id: 'auditor', label: 'Auditor Information', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
       { id: 'comments', label: 'Comments & History', icon: <MessageSquare className="w-3.5 h-3.5" /> },
     ],
-    [],
+    [canReadEvidence],
   );
+
+  useEffect(() => {
+    if (activeTab === 'evidence' && !canReadEvidence) setActiveTab('details');
+  }, [activeTab, canReadEvidence]);
 
   const comments = getComments(currentSubmission);
   const score = getScore(currentSubmission);
   const variance = getVariance(currentSubmission);
   const actualExpenditure = getActualExpenditure(currentSubmission);
   const isConsolidationPeriod = currentSubmission.quarter === 'Mid-Year' || currentSubmission.quarter === 'Annual';
-  const resourceCode = `${submissionType}_SUBMISSION`;
-  const poeResourceCode = `${submissionType}_POE`;
-  const workflowResourceCode = `${submissionType}_WORKFLOW`;
   const canEditWorkflowComment = security.canEditField(workflowResourceCode, 'ActionComment');
   const canEditWorkflowRating = security.canEditField(workflowResourceCode, 'ActionRatingValue');
   const canReadDueDate = security.canReadField(resourceCode, 'DueDate');
@@ -1084,7 +1090,7 @@ export function SubmissionWorkspace({
         </div>
       )}
 
-      {activeTab === 'evidence' && (
+      {activeTab === 'evidence' && canReadEvidence && (
         <Section title="Proof of Evidence" icon={<FileBadge className="h-4 w-4" />}>
           <div className="mb-4 flex flex-wrap items-end gap-2">
             <label className="text-xs text-secondary-600">Search
@@ -1107,9 +1113,10 @@ export function SubmissionWorkspace({
           <FileUpload
             existingFiles={uploadedFileItems}
             maxFiles={undefined}
-            disabled={currentSubmission.isDisabled || evidenceBusy}
-            onUpload={(files) => { void uploadEvidence(files); }}
-            onRescan={(attachmentId) => { void mutateEvidence(() => submissionType === 'OPMS' ? rescanOpmsSubmissionAttachment(submission.id, attachmentId) : rescanIpmsSubmissionAttachment(submission.id, attachmentId), 'Evidence scan completed'); }}
+            disabled={currentSubmission.isDisabled || evidenceBusy || !canUploadEvidence}
+            showDocumentType={false}
+            onUpload={canUploadEvidence ? (files) => { void uploadEvidence(files); } : undefined}
+            onRescan={canUploadEvidence ? (attachmentId) => { void mutateEvidence(() => submissionType === 'OPMS' ? rescanOpmsSubmissionAttachment(submission.id, attachmentId) : rescanIpmsSubmissionAttachment(submission.id, attachmentId), 'Evidence scan completed'); } : undefined}
             onAssess={security.canExecute(`${submissionType}_POE.ASSESS`) ? (attachmentId, outcome, comment) => { void mutateEvidence(() => submissionType === 'OPMS' ? assessOpmsSubmissionAttachment(submission.id, attachmentId, { outcome, comment }) : assessIpmsSubmissionAttachment(submission.id, attachmentId, { outcome, comment }), 'Evidence assessment recorded'); } : undefined}
             canAssessComment={security.canEditField(poeResourceCode, 'AssessmentComment')}
             onReplace={security.canExecute(`${submissionType}_POE.REPLACE`) && security.canEditField(poeResourceCode, 'ReplacementReason') ? (attachmentId, replacementPublicId, reason, supersededRowVersion, replacementRowVersion) => { void mutateEvidence(() => submissionType === 'OPMS' ? replaceOpmsSubmissionAttachment(submission.id, attachmentId, { replacementEvidencePublicId: replacementPublicId, reason, supersededRowVersion, replacementRowVersion }) : replaceIpmsSubmissionAttachment(submission.id, attachmentId, { replacementEvidencePublicId: replacementPublicId, reason, supersededRowVersion, replacementRowVersion }), 'Evidence replacement recorded'); } : undefined}
