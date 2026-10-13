@@ -397,7 +397,7 @@ public class DynamicSecurityTests
         };
 
         var viewerRoleResult = await controller.CreateRole(new CreateSecurityRoleRequest(
-            "VISUAL_KPI_VIEWER", "Visual KPI Viewer", "Read-only KPI dashboard verification role", null, null));
+            "VISUAL_KPI_VIEWER", "Visual KPI Viewer", "Read-only KPI dashboard verification role", null, null, "Create KPI viewer acceptance role"));
         var viewerRole = viewerRoleResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<ApiResponse<SecurityRoleDto>>().Subject.Data!;
         var viewerRoleId = await context.Roles.Where(item => item.PublicId == viewerRole.PublicId).Select(item => item.Id).SingleAsync();
@@ -409,7 +409,7 @@ public class DynamicSecurityTests
             new("OPMS_KPI.READ", "ALLOW", nameof(ScopeType.InstitutionScope)),
             new("NAV.DASHBOARD", "ALLOW", null),
             new("NAV.SDBIP", "ALLOW", null)
-        ]))).Result.Should().BeOfType<OkObjectResult>();
+        ], "Grant viewer permissions"))).Result.Should().BeOfType<OkObjectResult>();
         (await controller.PutUserRoles(viewer.PublicId, new UpdateUserRoleSecurityRequest([], [
             new(viewerRole.PublicId, municipality.PublicId, null, null, DateTime.UtcNow.AddMinutes(-1), null)
         ], "Assign KPI viewer role"))).Result.Should().BeOfType<OkObjectResult>();
@@ -427,14 +427,14 @@ public class DynamicSecurityTests
         (await foreignView.GetAuthorizedNavigationAsync(viewer)).Should().BeEmpty();
 
         var restrictionRoleResult = await controller.CreateRole(new CreateSecurityRoleRequest(
-            "VISUAL_KPI_RESTRICTED", "Visual KPI Restricted", "Explicit deny precedence verification role", null, null));
+            "VISUAL_KPI_RESTRICTED", "Visual KPI Restricted", "Explicit deny precedence verification role", null, null, "Create explicit deny acceptance role"));
         var restrictionRole = restrictionRoleResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<ApiResponse<SecurityRoleDto>>().Subject.Data!;
         var restrictionRoleId = await context.Roles.Where(item => item.PublicId == restrictionRole.PublicId).Select(item => item.Id).SingleAsync();
         (await controller.PutRolePermissions(restrictionRole.PublicId, new UpdateRoleSecurityRequest(restrictionRole.RowVersion,
         [
             new("OPMS_KPI.READ", "DENY", nameof(ScopeType.InstitutionScope))
-        ]))).Result.Should().BeOfType<OkObjectResult>();
+        ], "Add explicit deny permission"))).Result.Should().BeOfType<OkObjectResult>();
 
         var firstAssignmentResult = await controller.GetUserRoles(viewer.PublicId);
         var firstAssignmentConfiguration = firstAssignmentResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
@@ -452,7 +452,7 @@ public class DynamicSecurityTests
         var currentViewerConfigurationResult = await controller.GetRolePermissions(viewerRole.PublicId);
         var currentViewerConfiguration = currentViewerConfigurationResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<ApiResponse<RoleSecurityConfigurationDto>>().Subject.Data!;
-        (await controller.PutRolePermissions(viewerRole.PublicId, new UpdateRoleSecurityRequest(currentViewerConfiguration.RoleRowVersion, [])))
+        (await controller.PutRolePermissions(viewerRole.PublicId, new UpdateRoleSecurityRequest(currentViewerConfiguration.RoleRowVersion, [], "Revoke viewer permissions")))
             .Result.Should().BeOfType<OkObjectResult>();
         (await viewerSecurity.GetAuthorizedNavigationAsync(viewer)).Should().BeEmpty();
         (await viewerSecurity.CheckPermissionAsync(viewer, "OPMS_KPI.READ", new AccessScopeContext(MunicipalityId: 7))).Allowed.Should().BeFalse();
@@ -468,6 +468,8 @@ public class DynamicSecurityTests
 
         (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityRole" && item.Action == "Create")).Should().Be(2);
         (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityRolePermissions" && item.Action == "ReplacePermissions")).Should().Be(3);
+        (await context.AuditTrails.Where(item => item.EntityName == "SecurityRole" || item.EntityName == "SecurityRolePermissions").ToArrayAsync())
+            .Should().OnlyContain(item => !string.IsNullOrWhiteSpace(item.Reason));
         (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityUserRoleAssignment" && item.Action == "ReplaceRoleAssignments")).Should().Be(3);
         (await context.RolePermissions.CountAsync(item => item.RoleId == viewerRoleId)).Should().Be(3);
         (await context.RolePermissions.CountAsync(item => item.RoleId == viewerRoleId && !item.IsActive && item.EffectiveTo.HasValue)).Should().Be(3);
@@ -476,7 +478,7 @@ public class DynamicSecurityTests
         var staleUpdate = await controller.PutRolePermissions(viewerRole.PublicId, new UpdateRoleSecurityRequest(originalViewerRoleVersion,
         [
             new("OPMS_KPI.READ", "ALLOW", nameof(ScopeType.InstitutionScope))
-        ]));
+        ], "Attempt stale permission edit"));
         staleUpdate.Result.Should().BeOfType<ConflictObjectResult>();
     }
 
@@ -537,7 +539,7 @@ public class DynamicSecurityTests
         };
 
         var roleResult = await controller.CreateRole(new CreateSecurityRoleRequest(
-            "VISUAL_DEPARTMENT_SUBMITTER", "Visual Department Submitter", "Department-scoped KPI capture verification role", null, null));
+            "VISUAL_DEPARTMENT_SUBMITTER", "Visual Department Submitter", "Department-scoped KPI capture verification role", null, null, "Create department submitter acceptance role"));
         var role = roleResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<ApiResponse<SecurityRoleDto>>().Subject.Data!;
         var roleId = await context.Roles.Where(item => item.PublicId == role.PublicId).Select(item => item.Id).SingleAsync();
@@ -548,7 +550,7 @@ public class DynamicSecurityTests
             new("OPMS_KPI.TargetValue.READ", "ALLOW", nameof(ScopeType.DepartmentScope)),
             new("OPMS_KPI.TargetValue.UPDATE", "ALLOW", nameof(ScopeType.DepartmentScope)),
             new("NAV.SDBIP", "ALLOW", null)
-        ]))).Result.Should().BeOfType<OkObjectResult>();
+        ], "Grant department submitter permissions"))).Result.Should().BeOfType<OkObjectResult>();
         (await controller.PutUserRoles(submitter.PublicId, new UpdateUserRoleSecurityRequest([], [
             new(role.PublicId, municipality.PublicId, finance.PublicId, null, DateTime.UtcNow.AddMinutes(-1), null)
         ], "Assign Finance submitter role"))).Result.Should().BeOfType<OkObjectResult>();
@@ -593,7 +595,7 @@ public class DynamicSecurityTests
         [
             new("OPMS_KPI.READ", "ALLOW", nameof(ScopeType.DepartmentScope)),
             new("NAV.SDBIP", "ALLOW", null)
-        ]))).Result.Should().BeOfType<OkObjectResult>();
+        ], "Revoke submitter write permissions"))).Result.Should().BeOfType<OkObjectResult>();
         (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.READ", roadsScope)).Allowed.Should().BeTrue();
         (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.UPDATE", roadsScope)).Allowed.Should().BeFalse();
         (await submitterSecurity.CheckPermissionAsync(submitter, "OPMS_KPI.TargetValue.READ", roadsScope)).Allowed.Should().BeFalse();
@@ -601,6 +603,8 @@ public class DynamicSecurityTests
 
         (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityRole" && item.Action == "Create")).Should().Be(1);
         (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityRolePermissions" && item.Action == "ReplacePermissions")).Should().Be(2);
+        (await context.AuditTrails.Where(item => item.EntityName == "SecurityRole" || item.EntityName == "SecurityRolePermissions").ToArrayAsync())
+            .Should().OnlyContain(item => !string.IsNullOrWhiteSpace(item.Reason));
         (await context.AuditTrails.CountAsync(item => item.EntityName == "SecurityUserRoleAssignment" && item.Action == "ReplaceRoleAssignments")).Should().Be(2);
         (await context.RolePermissions.CountAsync(item => item.RoleId == roleId)).Should().Be(7);
         (await context.RolePermissions.CountAsync(item => item.RoleId == roleId && item.IsActive)).Should().Be(2);

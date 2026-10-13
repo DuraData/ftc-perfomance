@@ -61,9 +61,12 @@ export function SecurityAdministrationPage() {
   const [newRoleCode, setNewRoleCode] = useState('');
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDescription, setNewRoleDescription] = useState('');
+  const [newRoleReason, setNewRoleReason] = useState('');
   const [roleName, setRoleName] = useState('');
   const [roleDescription, setRoleDescription] = useState('');
   const [roleActive, setRoleActive] = useState(true);
+  const [roleReason, setRoleReason] = useState('');
+  const [permissionReason, setPermissionReason] = useState('');
 
   useEffect(() => {
     void getSecurityRolesPage({ page: rolePage, pageSize: 25, search: roleSearch, sortBy: 'name', sortDirection: 'asc' }, true).then(roleResult => {
@@ -87,6 +90,8 @@ export function SecurityAdministrationPage() {
     setRoleName(selectedRole?.name ?? '');
     setRoleDescription(selectedRole?.description ?? '');
     setRoleActive(selectedRole?.isActive ?? true);
+    setRoleReason('');
+    setPermissionReason('');
   }, [selectedRole]);
 
   useEffect(() => {
@@ -138,7 +143,7 @@ export function SecurityAdministrationPage() {
     if (!roleId || !roleVersion) return;
     setBusy(true);
     setMessage('');
-    const result = await saveRoleSecurityConfiguration(roleId, roleVersion, Object.values(rules));
+    const result = await saveRoleSecurityConfiguration(roleId, roleVersion, Object.values(rules), permissionReason.trim());
     if (!result.success) {
       setMessage(result.message ?? 'Security configuration could not be saved. Refresh before retrying.');
       setBusy(false);
@@ -146,20 +151,21 @@ export function SecurityAdministrationPage() {
     }
     const refreshed = await getRoleSecurityConfiguration(roleId);
     if (refreshed.data) setRoleVersion(refreshed.data.roleRowVersion);
+    setPermissionReason('');
     setMessage('Security configuration saved and audited. Affected users must refresh their session.');
     setBusy(false);
   };
 
   const createRole = async () => {
     setBusy(true); setMessage('');
-    const result = await createSecurityRole({ roleCode: newRoleCode, name: newRoleName, description: newRoleDescription || undefined });
+    const result = await createSecurityRole({ roleCode: newRoleCode, name: newRoleName, description: newRoleDescription || undefined, reason: newRoleReason.trim() });
     if (!result.success || !result.data) {
       setMessage(result.message ?? 'Role could not be created.'); setBusy(false); return;
     }
     setRoleSearch(result.data.roleCode);
     setRolePage(1);
     setRoleId(result.data.publicId);
-    setNewRoleCode(''); setNewRoleName(''); setNewRoleDescription('');
+    setNewRoleCode(''); setNewRoleName(''); setNewRoleDescription(''); setNewRoleReason('');
     setMessage('Tenant role created and audited. Configure its permissions below.');
     setBusy(false);
   };
@@ -167,11 +173,12 @@ export function SecurityAdministrationPage() {
   const saveRoleDetails = async () => {
     if (!selectedRole) return;
     setBusy(true); setMessage('');
-    const result = await updateSecurityRole(selectedRole, { name: roleName, description: roleDescription || undefined, isActive: roleActive, effectiveFrom: selectedRole.effectiveFrom, effectiveTo: selectedRole.effectiveTo });
+    const result = await updateSecurityRole(selectedRole, { name: roleName, description: roleDescription || undefined, isActive: roleActive, effectiveFrom: selectedRole.effectiveFrom, effectiveTo: selectedRole.effectiveTo, reason: roleReason.trim() });
     if (!result.success || !result.data) {
       setMessage(result.message ?? 'Role details could not be saved.'); setBusy(false); return;
     }
     setRoles(current => current.map(role => role.publicId === result.data!.publicId ? result.data! : role));
+    setRoleReason('');
     setMessage('Role details saved and audited.');
     setBusy(false);
   };
@@ -227,7 +234,8 @@ export function SecurityAdministrationPage() {
               <input aria-label="Role name" className="rounded border border-gray-300 p-2" value={roleName} onChange={event => setRoleName(event.target.value)} disabled={selectedRole.isSystemRole} />
               <textarea aria-label="Role description" className="rounded border border-gray-300 p-2" value={roleDescription} onChange={event => setRoleDescription(event.target.value)} disabled={selectedRole.isSystemRole} />
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={roleActive} onChange={event => setRoleActive(event.target.checked)} disabled={selectedRole.isSystemRole} /> Active</label>
-              <button type="button" onClick={() => void saveRoleDetails()} disabled={busy || selectedRole.isSystemRole} className="w-fit rounded border border-blue-700 px-4 py-2 text-sm text-blue-700 disabled:opacity-50">Save role details</button>
+              <textarea aria-label="Role change governance reason" placeholder="Approved change reference and reason" className="rounded border border-gray-300 p-2" value={roleReason} onChange={event => setRoleReason(event.target.value)} disabled={selectedRole.isSystemRole} />
+              <button type="button" onClick={() => void saveRoleDetails()} disabled={busy || selectedRole.isSystemRole || roleReason.trim().length < 5} className="w-fit rounded border border-blue-700 px-4 py-2 text-sm text-blue-700 disabled:opacity-50">Save role details</button>
             </div>}
           </div>
           <div>
@@ -236,7 +244,8 @@ export function SecurityAdministrationPage() {
               <input aria-label="New role code" placeholder="DEPARTMENT_SUBMITTER" className="rounded border border-gray-300 p-2 font-mono uppercase" value={newRoleCode} onChange={event => setNewRoleCode(event.target.value.toUpperCase())} />
               <input aria-label="New role name" placeholder="Department Submitter" className="rounded border border-gray-300 p-2" value={newRoleName} onChange={event => setNewRoleName(event.target.value)} />
               <textarea aria-label="New role description" placeholder="Role purpose" className="rounded border border-gray-300 p-2" value={newRoleDescription} onChange={event => setNewRoleDescription(event.target.value)} />
-              <button type="button" onClick={() => void createRole()} disabled={busy || newRoleCode.trim().length < 3 || newRoleName.trim().length < 3} className="w-fit rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Create role</button>
+              <textarea aria-label="New role governance reason" placeholder="Approved creation reference and reason" className="rounded border border-gray-300 p-2" value={newRoleReason} onChange={event => setNewRoleReason(event.target.value)} />
+              <button type="button" onClick={() => void createRole()} disabled={busy || newRoleCode.trim().length < 3 || newRoleName.trim().length < 3 || newRoleReason.trim().length < 5} className="w-fit rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Create role</button>
             </div>
           </div>
         </div>
@@ -274,7 +283,7 @@ export function SecurityAdministrationPage() {
         </div>
         <div className="flex items-center justify-between border-t border-gray-200 p-4">
           <span className="text-sm text-gray-600">{message}</span>
-          <button type="button" disabled={busy || !roleId} onClick={() => void save()} className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? 'Working…' : 'Save role security'}</button>
+          <div className="flex items-center gap-2"><input aria-label="Role permission governance reason" placeholder="Reason for permission replacement" className="min-w-72 rounded border border-gray-300 p-2 text-sm" value={permissionReason} onChange={event => setPermissionReason(event.target.value)} /><button type="button" disabled={busy || !roleId || permissionReason.trim().length < 5} onClick={() => void save()} className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? 'Working…' : 'Save role security'}</button></div>
         </div>
       </section>
 

@@ -2339,6 +2339,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     {
         EnforceRetiredLegacyProjectionHistory();
         EnforceRolePermissionHistory();
+        EnforceSecurityRoleHistory();
         EnforceSecurityRegistryHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
@@ -3188,6 +3189,31 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || entry.CurrentValues.GetValue<DateTime?>(nameof(RolePermission.EffectiveTo))
                     < entry.OriginalValues.GetValue<DateTime>(nameof(RolePermission.EffectiveFrom)))
                 throw new InvalidOperationException("A role-permission version may only close once with an ordered effective end.");
+        }
+    }
+
+    private void EnforceSecurityRoleHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries<ApplicationRole>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Dynamic role history cannot be hard deleted; deactivate the role through governed security administration.");
+
+            EnsureOnlyProperties(entry,
+                [nameof(ApplicationRole.Name), nameof(ApplicationRole.NormalizedName), nameof(ApplicationRole.Description),
+                    nameof(ApplicationRole.IsActive), nameof(ApplicationRole.EffectiveFrom), nameof(ApplicationRole.EffectiveTo),
+                    nameof(ApplicationRole.UpdatedAt), nameof(ApplicationRole.ConcurrencyStamp), nameof(ApplicationRole.RowVersion)],
+                "Dynamic role identity, tenant ownership, stable code, system classification and creation evidence are immutable.");
+
+            var hasAudit = ChangeTracker.Entries<AuditTrail>().Any(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityId == entry.Entity.PublicId.ToString()
+                && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && candidate.Entity.NewValue != null
+                && ((candidate.Entity.EntityName == "SecurityRole" && candidate.Entity.Action == "Update" && candidate.Entity.OldValue != null)
+                    || candidate.Entity.EntityName == "SecurityRolePermissions" && candidate.Entity.Action == "ReplacePermissions"));
+            if (!hasAudit)
+                throw new InvalidOperationException("Dynamic role changes require same-transaction reasoned audit evidence.");
         }
     }
 

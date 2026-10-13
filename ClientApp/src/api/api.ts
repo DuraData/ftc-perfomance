@@ -2078,11 +2078,11 @@ export async function getSecurityRolesPage(query: RegisterPageQuery = {}, includ
   return get<PagedResult<SecurityRoleSummary>>(`/v1/security/roles/page?${parameters.toString()}`);
 }
 
-export async function createSecurityRole(payload: { roleCode: string; name: string; description?: string; effectiveFrom?: string; effectiveTo?: string }): Promise<ApiResponse<SecurityRoleSummary>> {
+export async function createSecurityRole(payload: { roleCode: string; name: string; description?: string; effectiveFrom?: string; effectiveTo?: string; reason: string }): Promise<ApiResponse<SecurityRoleSummary>> {
   return post<SecurityRoleSummary>('/v1/security/roles', payload);
 }
 
-export async function updateSecurityRole(role: SecurityRoleSummary, payload: { name: string; description?: string; isActive: boolean; effectiveFrom: string; effectiveTo?: string }): Promise<ApiResponse<SecurityRoleSummary>> {
+export async function updateSecurityRole(role: SecurityRoleSummary, payload: { name: string; description?: string; isActive: boolean; effectiveFrom: string; effectiveTo?: string; reason: string }): Promise<ApiResponse<SecurityRoleSummary>> {
   return put<SecurityRoleSummary>(`/v1/security/roles/${role.publicId}`, { ...payload, rowVersion: role.rowVersion });
 }
 
@@ -2106,8 +2106,8 @@ export async function getRoleSecurityConfiguration(rolePublicId: string): Promis
   return get<RoleSecurityConfiguration>(`/v1/security/roles/${rolePublicId}/permissions`);
 }
 
-export async function saveRoleSecurityConfiguration(rolePublicId: string, roleRowVersion: string, permissions: Array<Pick<RoleSecurityPermission, 'permissionCode' | 'state' | 'scopeType'>>): Promise<ApiResponse<boolean>> {
-  return put<boolean>(`/v1/security/roles/${rolePublicId}/permissions`, { roleRowVersion, permissions });
+export async function saveRoleSecurityConfiguration(rolePublicId: string, roleRowVersion: string, permissions: Array<Pick<RoleSecurityPermission, 'permissionCode' | 'state' | 'scopeType'>>, reason: string): Promise<ApiResponse<boolean>> {
+  return put<boolean>(`/v1/security/roles/${rolePublicId}/permissions`, { roleRowVersion, permissions, reason });
 }
 
 export async function getEffectiveSecurityPreview(userPublicId: string): Promise<ApiResponse<EffectiveSecurityPreview>> {

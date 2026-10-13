@@ -25,6 +25,9 @@ describe('SecurityAdministrationPage role assignments', () => {
     api.getRoleSecurityConfiguration.mockResolvedValue({ success: true, data: { rolePublicId: 'role-public', name: 'Department Reviewer', roleRowVersion: 'AQ==', permissions: [] } });
     api.getSecurityUserRoles.mockResolvedValue({ success: true, data: { userPublicId: 'user-public', userName: 'Review User', assignments: [] } });
     api.saveSecurityUserRoles.mockResolvedValue({ success: true, data: true });
+    api.saveRoleSecurityConfiguration.mockResolvedValue({ success: true, data: true });
+    api.updateSecurityRole.mockResolvedValue({ success: true, data: { publicId: 'role-public', roleCode: 'DEPARTMENT_REVIEWER', name: 'Department Reviewer', municipalityPublicId: 'municipality-public', isSystemRole: false, isActive: true, effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'Ag==' } });
+    api.createSecurityRole.mockResolvedValue({ success: true, data: { publicId: 'new-role-public', roleCode: 'DATA_STEWARD', name: 'Data Steward', municipalityPublicId: 'municipality-public', isSystemRole: false, isActive: true, effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==' } });
   });
 
   it('authors department, unit, and effective dates instead of role ids alone', async () => {
@@ -59,13 +62,31 @@ describe('SecurityAdministrationPage role assignments', () => {
     fireEvent.change(await screen.findByLabelText('CASE.READ decision'), { target: { value: 'ALLOW' } });
     fireEvent.click(screen.getByRole('button', { name: 'Next permissions' }));
     fireEvent.change(await screen.findByLabelText('CASE.UPDATE decision'), { target: { value: 'DENY' } });
+    fireEvent.change(screen.getByLabelText('Role permission governance reason'), { target: { value: 'Approved quarterly permission review' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save role security' }));
 
     await waitFor(() => expect(api.saveRoleSecurityConfiguration).toHaveBeenCalledWith('role-public', 'AQ==', expect.arrayContaining([
       expect.objectContaining({ permissionCode: 'AUDIT.READ', state: 'ALLOW', scopeType: 'InstitutionScope' }),
       expect.objectContaining({ permissionCode: 'CASE.READ', state: 'ALLOW' }),
       expect.objectContaining({ permissionCode: 'CASE.UPDATE', state: 'DENY' }),
-    ])));
+    ]), 'Approved quarterly permission review'));
+  });
+
+  it('requires and submits governance reasons for role creation and edits', async () => {
+    render(<SecurityAdministrationPage />);
+
+    const saveDetails = await screen.findByRole('button', { name: 'Save role details' });
+    expect(saveDetails).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Role change governance reason'), { target: { value: 'Approved role description review' } });
+    fireEvent.click(saveDetails);
+    await waitFor(() => expect(api.updateSecurityRole).toHaveBeenCalledWith(expect.objectContaining({ publicId: 'role-public' }), expect.objectContaining({ reason: 'Approved role description review' })));
+
+    const create = screen.getByRole('button', { name: 'Create role' });
+    fireEvent.change(screen.getByLabelText('New role code'), { target: { value: 'DATA_STEWARD' } });
+    fireEvent.change(screen.getByLabelText('New role name'), { target: { value: 'Data Steward' } });
+    fireEvent.change(screen.getByLabelText('New role governance reason'), { target: { value: 'Approved data governance role' } });
+    fireEvent.click(create);
+    await waitFor(() => expect(api.createSecurityRole).toHaveBeenCalledWith(expect.objectContaining({ roleCode: 'DATA_STEWARD', reason: 'Approved data governance role' })));
   });
 
   it('renders a member-protected user directory without inventing an email label', async () => {

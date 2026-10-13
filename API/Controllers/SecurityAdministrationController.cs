@@ -112,8 +112,10 @@ public sealed class SecurityAdministrationController : ControllerBase
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(new ApiResponse<SecurityRoleDto>(false, null, "Select a municipality context before creating a role"));
         var code = request.RoleCode.Trim().ToUpperInvariant();
         var name = request.Name.Trim();
+        var reason = request.Reason.Trim();
         if (!Regex.IsMatch(code, "^[A-Z][A-Z0-9_]{2,63}$")) return BadRequest(new ApiResponse<SecurityRoleDto>(false, null, "Role code must be 3-64 uppercase letters, digits or underscores and start with a letter"));
         if (name.Length is < 3 or > 128) return BadRequest(new ApiResponse<SecurityRoleDto>(false, null, "Role name must be 3-128 characters"));
+        if (reason.Length is < 5 or > 500) return BadRequest(new ApiResponse<SecurityRoleDto>(false, null, "A governance reason of 5-500 characters is required"));
         var municipalityId = _tenantContext.MunicipalityId.Value;
         var municipality = await _context.Municipalities.SingleOrDefaultAsync(item => item.Id == municipalityId);
         if (municipality == null) return Conflict(new ApiResponse<SecurityRoleDto>(false, null, "The selected municipality no longer exists"));
@@ -128,7 +130,7 @@ public sealed class SecurityAdministrationController : ControllerBase
         var role = new ApplicationRole { MunicipalityId = municipalityId, Municipality = municipality, RoleCode = code, Name = name, NormalizedName = name.ToUpperInvariant(), Description = request.Description?.Trim(), IsSystemRole = false, IsActive = true, EffectiveFrom = request.EffectiveFrom ?? now, EffectiveTo = request.EffectiveTo, CreatedAt = now };
         if (role.EffectiveTo.HasValue && role.EffectiveTo <= role.EffectiveFrom) return BadRequest(new ApiResponse<SecurityRoleDto>(false, null, "EffectiveTo must be later than EffectiveFrom"));
         _context.Roles.Add(role);
-        _context.AuditTrails.Add(new AuditTrail { EntityName = "SecurityRole", EntityId = role.PublicId.ToString(), Action = "Create", NewValue = JsonSerializer.Serialize(new { role.RoleCode, role.Name, role.Description, MunicipalityPublicId = municipality.PublicId, role.EffectiveFrom, role.EffectiveTo }), ChangedBy = actor.Id, ChangedAt = now, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() });
+        _context.AuditTrails.Add(new AuditTrail { MunicipalityId = municipalityId, EntityName = "SecurityRole", EntityId = role.PublicId.ToString(), Action = "Create", NewValue = JsonSerializer.Serialize(new { role.RoleCode, role.Name, role.Description, MunicipalityPublicId = municipality.PublicId, role.EffectiveFrom, role.EffectiveTo }), ChangedBy = actor.Id, ChangedAt = now, Reason = reason, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() });
         await _context.SaveChangesAsync();
         return Ok(new ApiResponse<SecurityRoleDto>(true, ToRoleDto(role)));
     }
@@ -147,7 +149,9 @@ public sealed class SecurityAdministrationController : ControllerBase
         try { rowVersion = Convert.FromBase64String(request.RowVersion); }
         catch (FormatException) { return BadRequest(new ApiResponse<SecurityRoleDto>(false, null, "RowVersion is invalid")); }
         var name = request.Name.Trim();
+        var reason = request.Reason.Trim();
         if (name.Length is < 3 or > 128) return BadRequest(new ApiResponse<SecurityRoleDto>(false, null, "Role name must be 3-128 characters"));
+        if (reason.Length is < 5 or > 500) return BadRequest(new ApiResponse<SecurityRoleDto>(false, null, "A governance reason of 5-500 characters is required"));
         if (request.EffectiveTo.HasValue && request.EffectiveTo <= request.EffectiveFrom) return BadRequest(new ApiResponse<SecurityRoleDto>(false, null, "EffectiveTo must be later than EffectiveFrom"));
         _context.Entry(role).Property(item => item.RowVersion).OriginalValue = rowVersion;
         var oldValue = new { role.Name, role.Description, role.IsActive, role.EffectiveFrom, role.EffectiveTo };
@@ -158,7 +162,7 @@ public sealed class SecurityAdministrationController : ControllerBase
         role.EffectiveFrom = request.EffectiveFrom;
         role.EffectiveTo = request.IsActive ? request.EffectiveTo : request.EffectiveTo ?? DateTime.UtcNow;
         role.UpdatedAt = DateTime.UtcNow;
-        _context.AuditTrails.Add(new AuditTrail { EntityName = "SecurityRole", EntityId = role.PublicId.ToString(), Action = "Update", OldValue = JsonSerializer.Serialize(oldValue), NewValue = JsonSerializer.Serialize(new { role.Name, role.Description, role.IsActive, role.EffectiveFrom, role.EffectiveTo }), ChangedBy = actor.Id, ChangedAt = role.UpdatedAt.Value, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() });
+        _context.AuditTrails.Add(new AuditTrail { MunicipalityId = role.MunicipalityId, EntityName = "SecurityRole", EntityId = role.PublicId.ToString(), Action = "Update", OldValue = JsonSerializer.Serialize(oldValue), NewValue = JsonSerializer.Serialize(new { role.Name, role.Description, role.IsActive, role.EffectiveFrom, role.EffectiveTo }), ChangedBy = actor.Id, ChangedAt = role.UpdatedAt.Value, Reason = reason, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() });
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<SecurityRoleDto>(false, null, "The role changed since it was loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<SecurityRoleDto>(true, ToRoleDto(role)));
@@ -831,6 +835,8 @@ public sealed class SecurityAdministrationController : ControllerBase
         var actor = await GetCurrentUserAsync();
         if (actor == null) return Unauthorized(new ApiResponse<bool>(false, false, "User not found"));
         if (!await CanAdministerRoleAsync(actor, role)) return Forbid();
+        var reason = request.Reason.Trim();
+        if (reason.Length is < 5 or > 500) return BadRequest(new ApiResponse<bool>(false, false, "A governance reason of 5-500 characters is required"));
         var actorAccess = await _accessControl.GetEffectiveAccessAsync(actor);
         var actorPermissions = actorAccess.EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
         byte[] expectedRoleVersion;
@@ -875,6 +881,7 @@ public sealed class SecurityAdministrationController : ControllerBase
         role.UpdatedAt = now;
         _context.AuditTrails.Add(new AuditTrail
         {
+            MunicipalityId = role.MunicipalityId,
             EntityName = "SecurityRolePermissions",
             EntityId = role.PublicId.ToString(),
             Action = "ReplacePermissions",
@@ -882,6 +889,7 @@ public sealed class SecurityAdministrationController : ControllerBase
             NewValue = JsonSerializer.Serialize(request.Permissions),
             ChangedBy = actor.Id,
             ChangedAt = now,
+            Reason = reason,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString()
         });
         try
@@ -1125,11 +1133,11 @@ public sealed record SecurityMemberDto(Guid PublicId, string ResourceCode, strin
 public sealed record SecurityPermissionDefinitionDto(string Code, string? Description, string Kind, string? ResourceCode, string? Operation, string? MemberCode, string? NavigationCode, string? ActionCode);
 public sealed record RoleSecurityPermissionDto(string PermissionCode, string Kind, string? ResourceCode, string? MemberCode, string? NavigationCode, string? ActionCode, string State, string? ScopeType, string RowVersion);
 public sealed record RoleSecurityConfigurationDto(Guid RolePublicId, string Name, string RoleRowVersion, RoleSecurityPermissionDto[] Permissions);
-public sealed record UpdateRoleSecurityRequest(string RoleRowVersion, UpdateRoleSecurityItem[] Permissions);
+public sealed record UpdateRoleSecurityRequest(string RoleRowVersion, UpdateRoleSecurityItem[] Permissions, string Reason);
 public sealed record UpdateRoleSecurityItem(string PermissionCode, string State, string? ScopeType);
 public sealed record EffectiveSecurityDto(Guid UserPublicId, string[] Roles, string[] Permissions, string[] Scopes, string[] Assignments);
-public sealed record CreateSecurityRoleRequest(string RoleCode, string Name, string? Description, DateTime? EffectiveFrom, DateTime? EffectiveTo);
-public sealed record UpdateSecurityRoleRequest(string Name, string? Description, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion);
+public sealed record CreateSecurityRoleRequest(string RoleCode, string Name, string? Description, DateTime? EffectiveFrom, DateTime? EffectiveTo, string Reason);
+public sealed record UpdateSecurityRoleRequest(string Name, string? Description, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, string Reason);
 public sealed record CreateSecurityNavigationRequest(string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, string Reason);
 public sealed record UpdateSecurityNavigationRequest(Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion, string Reason);
 public sealed record CreateSecurityResourceRequest(string Code, string Name, string ResourceType, string? Description, bool SupportsCreate, bool SupportsRead, bool SupportsUpdate, bool SupportsDelete, bool SupportsExport, bool SupportsImport, bool SupportsFieldSecurity, bool SupportsRecordCriteria, string Reason);
