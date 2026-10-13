@@ -3,6 +3,7 @@ using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using SecurityModel = FTCERP.Host.Infrastructure.Persistence.Seed.BaselineSecurityRoleCatalog;
 
 namespace FTCERP.Host.Infrastructure.Persistence.Seed;
 
@@ -275,7 +276,7 @@ public static class DbInitializer
             }
 
             IEnumerable<int> permissionIds;
-            if (SecurityModel.IsSuperAdmin([roleName]))
+            if (SecurityModel.ReceivesInitialFullPermissionCatalogue(roleName))
             {
                 permissionIds = permissionsByCode.Values;
             }

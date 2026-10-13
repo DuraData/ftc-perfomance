@@ -1,6 +1,11 @@
-namespace FTCERP.Host.Infrastructure.Security;
+namespace FTCERP.Host.Infrastructure.Persistence.Seed;
 
-public static class SecurityModel
+/// <summary>
+/// Names used only to create the optional controlled baseline role catalogue.
+/// Runtime authorization must resolve database permissions through the central
+/// access-control service and must never infer access from one of these names.
+/// </summary>
+internal static class BaselineSecurityRoleCatalog
 {
     public const string SuperAdmin = "Super Admin";
     public const string Admin = "Admin";
@@ -27,8 +32,8 @@ public static class SecurityModel
         Submitter
     ];
 
-    public static bool IsSuperAdmin(IEnumerable<string> roles)
+    public static bool ReceivesInitialFullPermissionCatalogue(string roleName)
     {
-        return roles.Any(role => string.Equals(role, SuperAdmin, StringComparison.OrdinalIgnoreCase));
+        return string.Equals(roleName, SuperAdmin, StringComparison.OrdinalIgnoreCase);
     }
 }

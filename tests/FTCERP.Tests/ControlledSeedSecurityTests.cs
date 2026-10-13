@@ -336,12 +336,12 @@ public sealed class ControlledSeedSecurityTests
     [Fact]
     public async Task Baseline_role_seed_does_not_rewrite_existing_or_disable_dynamic_roles()
     {
-        var existing = new ApplicationRole { Id = "super", Name = SecurityModel.SuperAdmin, NormalizedName = "SUPER ADMIN", RoleCode = "SUPER_ADMIN", Description = "Administrator configured", IsSystemRole = false, IsActive = false };
+        var existing = new ApplicationRole { Id = "super", Name = BaselineSecurityRoleCatalog.SuperAdmin, NormalizedName = "SUPER ADMIN", RoleCode = "SUPER_ADMIN", Description = "Administrator configured", IsSystemRole = false, IsActive = false };
         var dynamicRole = new ApplicationRole { Id = "dynamic", Name = "Municipal Data Steward", NormalizedName = "MUNICIPAL DATA STEWARD", RoleCode = "DATA_STEWARD", IsActive = true };
         var store = new Mock<IRoleStore<ApplicationRole>>();
         var roleManager = new Mock<RoleManager<ApplicationRole>>(store.Object, null!, null!, null!, null!);
         roleManager.Setup(manager => manager.FindByNameAsync(It.IsAny<string>()))
-            .ReturnsAsync((string roleName) => string.Equals(roleName, SecurityModel.SuperAdmin, StringComparison.OrdinalIgnoreCase) ? existing : null);
+            .ReturnsAsync((string roleName) => string.Equals(roleName, BaselineSecurityRoleCatalog.SuperAdmin, StringComparison.OrdinalIgnoreCase) ? existing : null);
         roleManager.Setup(manager => manager.CreateAsync(It.IsAny<ApplicationRole>())).ReturnsAsync(IdentityResult.Success);
         roleManager.SetupGet(manager => manager.Roles).Returns(new[] { existing, dynamicRole }.AsQueryable());
 

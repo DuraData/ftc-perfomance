@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **855 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **399 frontend tests pass** across 80 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **856 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **399 frontend tests pass** across 80 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -56,7 +56,7 @@ Absence from the reviewed repository is classified as **NOT IMPLEMENTED** when t
 |---|---|---|
 | Backend build | Passed with 0 errors and 0 warnings | The host compiles, but compilation is not requirements compliance. |
 | Frontend unit tests | 399/399 passed across 80 files | Component, mapping, routing, security-administration and governed-capture coverage passes. |
-| Backend tests via ordinary `dotnet test` | 855 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite. |
+| Backend tests via ordinary `dotnet test` | 856 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite. |
 | Frontend type-check | Passed | The production TypeScript project has no static type errors. |
 | Frontend lint | Passed | The client passes the configured ESLint gate. |
 | Accessibility automation | 2/2 passed | The shared application shell and form contract pass the automated axe checks; manual certification remains external acceptance work. |
@@ -4326,6 +4326,12 @@ Submission detail no longer invents a `4 / 5` submitter score merely because a r
 
 Focused component verification passes **39/39** across the uploader, submission workspace and access-governance page. It proves real-callback waiting, absence of fabricated file/progress state, controlled upload failure, pre-API file validation and absence of an invented approved score. Complete regression passes **855 backend tests with 1 explicit native SQL Server-only skip and 0 failures** plus **399/399 frontend tests across 80 files**. TypeScript, ESLint and the clean isolated Release build pass with **0 warnings and 0 errors**; Vite transforms **2,113 modules**. Implementation commit `7b38722059983c94a77f94e49a271fa8fae3e71a` was pushed directly to both `codex/dev` and `main`. GitHub Actions run `38460838757`, job `115515271233`, verified that exact revision in **5m36s**: all **18/18** quality/security steps passed with zero annotations. This increment changes no schema or provider behavior. Mandatory rendered-browser verification remains outstanding and no visual PASS is inferred. No Docker process, cloud infrastructure or paid resource was created.
 
+### 11.358 Source-governed dynamic authorization boundary
+
+The final server-side role-name audit found no production request authorization using `IsInRole`, `IsInRoleAsync`, role claims, `[Authorize(Roles = ...)]`, `RequireRole` or a comparison with any baseline role display name. Runtime access continues to resolve current database-backed permissions, explicit DENY precedence, member rules, actions, navigation and effective tenant/record scope through the central access-control service. The only retained role-name catalogue creates optional controlled baseline data and initial permission rows; it has been moved from the general security namespace into `Infrastructure/Persistence/Seed`, renamed `BaselineSecurityRoleCatalog`, documented as seed-only and kept additive so it cannot overwrite administrator-owned role configuration.
+
+`DynamicAuthorizationSourceGovernanceTests` now inventories all server production C# under API, Application, Domain, Infrastructure and `Program.cs`, excluding only the controlled seed directory. It fails if any role-name authorization construct, role claim or exact baseline role literal is introduced outside seeding. The focused authorization/controlled-seed suite passes **14/14**. Complete backend regression advances to **856 passed, 0 failed and 1 explicit native SQL Server-only skip**. An isolated Release build passes with **0 warnings and 0 errors** while the existing locally running application retains the normal Release output lock. No schema, public API, provider behavior, Docker process, cloud infrastructure or paid resource is introduced. Mandatory deployed penetration and rendered dynamic-role acceptance remain external evidence and no visual PASS is inferred.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
@@ -4405,6 +4411,7 @@ The assessment unit below is a major V3.9 requirement area, not an individual se
 
 ### 12.4 Remediation completed during this final pass
 
+- Moved the optional baseline role-name catalogue into controlled seeding and added executable source governance that rejects role-name checks, role claims, role-based authorization attributes and baseline-role literals from production authorization code.
 - Replaced destructive OPMS Ward, Additional Assignee and Vote Number replacement with actor-stamped, RowVersion-protected, append-preserved link/unlink history, active-only projections and reason-required aggregate updates.
 - Enforced an append-preserved refresh-session lifecycle with validated digest/time bounds, immutable token/security identity, monotonic activity, irreversible reasoned revocation, idempotent repeated revoke handling and hard-delete rejection.
 - Made governed IDP document rows append-only at the persistence boundary, preserving plan/version/blob identity, file metadata, retention, approval and upload evidence while retaining additive logical versions and monotonic physical-blob rescans.
