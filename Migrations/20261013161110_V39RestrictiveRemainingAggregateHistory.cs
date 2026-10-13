@@ -45,6 +45,10 @@ namespace FTCERP.Host.Migrations
                 table: "AuthenticationPolicies");
 
             migrationBuilder.DropForeignKey(
+                name: "FK_LoginAuditLogs_AspNetUsers_UserId",
+                table: "LoginAuditLogs");
+
+            migrationBuilder.DropForeignKey(
                 name: "FK_OpmsImportRows_OpmsImportBatches_OpmsImportBatchId",
                 table: "OpmsImportRows");
 
@@ -137,6 +141,14 @@ namespace FTCERP.Host.Migrations
                 table: "AuthenticationPolicies",
                 column: "AuthenticationConfigurationId",
                 principalTable: "AuthenticationConfigurations",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.Restrict);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_LoginAuditLogs_AspNetUsers_UserId",
+                table: "LoginAuditLogs",
+                column: "UserId",
+                principalTable: "AspNetUsers",
                 principalColumn: "Id",
                 onDelete: ReferentialAction.Restrict);
 
@@ -259,6 +271,10 @@ namespace FTCERP.Host.Migrations
                 table: "AuthenticationPolicies");
 
             migrationBuilder.DropForeignKey(
+                name: "FK_LoginAuditLogs_AspNetUsers_UserId",
+                table: "LoginAuditLogs");
+
+            migrationBuilder.DropForeignKey(
                 name: "FK_OpmsImportRows_OpmsImportBatches_OpmsImportBatchId",
                 table: "OpmsImportRows");
 
@@ -353,6 +369,14 @@ namespace FTCERP.Host.Migrations
                 principalTable: "AuthenticationConfigurations",
                 principalColumn: "Id",
                 onDelete: ReferentialAction.Cascade);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_LoginAuditLogs_AspNetUsers_UserId",
+                table: "LoginAuditLogs",
+                column: "UserId",
+                principalTable: "AspNetUsers",
+                principalColumn: "Id",
+                onDelete: ReferentialAction.SetNull);
 
             migrationBuilder.AddForeignKey(
                 name: "FK_OpmsImportRows_OpmsImportBatches_OpmsImportBatchId",
@@ -469,6 +493,7 @@ namespace FTCERP.Host.Migrations
             ("TRG_AspNetUsers_AspNetUserRoles_RestrictDelete", "AspNetUserRoles", "AspNetUsers", "UserId"),
             ("TRG_AspNetUsers_AspNetUserTokens_RestrictDelete", "AspNetUserTokens", "AspNetUsers", "UserId"),
             ("TRG_AuthenticationConfigurations_AuthenticationPolicies_RestrictDelete", "AuthenticationPolicies", "AuthenticationConfigurations", "AuthenticationConfigurationId"),
+            ("TRG_AspNetUsers_LoginAuditLogs_RestrictDelete", "LoginAuditLogs", "AspNetUsers", "UserId"),
             ("TRG_OpmsImportBatches_OpmsImportRows_RestrictDelete", "OpmsImportRows", "OpmsImportBatches", "OpmsImportBatchId"),
             ("TRG_AspNetUsers_RefreshTokens_RestrictDelete", "RefreshTokens", "AspNetUsers", "UserId"),
             ("TRG_AspNetRoles_RolePermissions_RestrictDelete", "RolePermissions", "AspNetRoles", "RoleId"),

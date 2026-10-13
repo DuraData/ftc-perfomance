@@ -15041,7 +15041,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "User")
                         .WithMany("LoginAuditLogs")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Municipality");
 

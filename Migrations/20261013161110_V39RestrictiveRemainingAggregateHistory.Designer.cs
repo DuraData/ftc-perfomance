@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FTCERP.Host.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20261013155944_V39RestrictiveRemainingAggregateHistory")]
+    [Migration("20261013161110_V39RestrictiveRemainingAggregateHistory")]
     partial class V39RestrictiveRemainingAggregateHistory
     {
         /// <inheritdoc />
@@ -15044,7 +15044,7 @@ namespace FTCERP.Host.Migrations
                     b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "User")
                         .WithMany("LoginAuditLogs")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Municipality");
 

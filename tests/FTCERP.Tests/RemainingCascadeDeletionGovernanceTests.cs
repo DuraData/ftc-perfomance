@@ -15,6 +15,7 @@ public sealed class RemainingCascadeDeletionGovernanceTests
         new(typeof(IdentityUserRole<string>), typeof(ApplicationUser), "UserId", "AspNetUserRoles", "AspNetUsers", "TRG_AspNetUsers_AspNetUserRoles_RestrictDelete"),
         new(typeof(IdentityUserToken<string>), typeof(ApplicationUser), "UserId", "AspNetUserTokens", "AspNetUsers", "TRG_AspNetUsers_AspNetUserTokens_RestrictDelete"),
         new(typeof(AuthenticationPolicy), typeof(AuthenticationConfiguration), nameof(AuthenticationPolicy.AuthenticationConfigurationId), "AuthenticationPolicies", "AuthenticationConfigurations", "TRG_AuthenticationConfigurations_AuthenticationPolicies_RestrictDelete"),
+        new(typeof(LoginAuditLog), typeof(ApplicationUser), nameof(LoginAuditLog.UserId), "LoginAuditLogs", "AspNetUsers", "TRG_AspNetUsers_LoginAuditLogs_RestrictDelete"),
         new(typeof(OpmsImportRow), typeof(OpmsImportBatch), nameof(OpmsImportRow.OpmsImportBatchId), "OpmsImportRows", "OpmsImportBatches", "TRG_OpmsImportBatches_OpmsImportRows_RestrictDelete"),
         new(typeof(RefreshToken), typeof(ApplicationUser), nameof(RefreshToken.UserId), "RefreshTokens", "AspNetUsers", "TRG_AspNetUsers_RefreshTokens_RestrictDelete"),
         new(typeof(RolePermission), typeof(ApplicationRole), nameof(RolePermission.RoleId), "RolePermissions", "AspNetRoles", "TRG_AspNetRoles_RolePermissions_RestrictDelete"),
@@ -28,18 +29,18 @@ public sealed class RemainingCascadeDeletionGovernanceTests
     ];
 
     [Fact]
-    public void Compiled_model_has_no_cascade_delete_relationships()
+    public void Compiled_model_has_no_database_destructive_delete_relationships()
     {
         using var context = IdpTestFixture.CreateRelationalContext();
 
-        var cascades = context.Model.GetEntityTypes()
+        var destructiveRelationships = context.Model.GetEntityTypes()
             .SelectMany(entity => entity.GetForeignKeys())
-            .Where(foreignKey => foreignKey.DeleteBehavior == DeleteBehavior.Cascade)
+            .Where(foreignKey => foreignKey.DeleteBehavior is DeleteBehavior.Cascade or DeleteBehavior.SetNull)
             .Select(foreignKey => $"{foreignKey.DeclaringEntityType.ClrType.Name}.{string.Join(',', foreignKey.Properties.Select(property => property.Name))}")
             .ToArray();
 
-        cascades.Should().BeEmpty("a direct parent delete must never erase governed or identity history");
-        GovernedRelationships.Should().HaveCount(17);
+        destructiveRelationships.Should().BeEmpty("a direct parent delete must never erase or detach governed or identity history");
+        GovernedRelationships.Should().HaveCount(18);
         foreach (var relationship in GovernedRelationships)
         {
             var dependent = context.Model.FindEntityType(relationship.DependentType);
@@ -96,7 +97,7 @@ public sealed class RemainingCascadeDeletionGovernanceTests
                     "ProductVersion" TEXT NOT NULL
                 );
                 """);
-            const string latestMigration = "20261013155944_V39RestrictiveRemainingAggregateHistory";
+            const string latestMigration = "20261013161110_V39RestrictiveRemainingAggregateHistory";
             foreach (var migration in context.Database.GetMigrations().Where(item => item != latestMigration))
                 await context.Database.ExecuteSqlRawAsync(
                     "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ({0}, {1})",

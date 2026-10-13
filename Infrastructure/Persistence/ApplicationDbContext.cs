@@ -465,7 +465,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<LoginAuditLog>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<LoginAuditLog>().HasIndex(item => new { item.MunicipalityId, item.LoggedAt });
         builder.Entity<LoginAuditLog>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
-        builder.Entity<LoginAuditLog>().HasOne(item => item.User).WithMany(item => item.LoginAuditLogs).HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<LoginAuditLog>().HasOne(item => item.User).WithMany(item => item.LoginAuditLogs).HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<LoginAuditLog>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
         builder.Entity<Municipality>().HasQueryFilter(item => TenantFilterBypass || item.Id == CurrentMunicipalityIdOrSentinel);
