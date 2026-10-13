@@ -102,6 +102,69 @@ public sealed class OpmsImportControllerTests
     }
 
     [Fact]
+    public async Task Revision_import_governs_unit_and_direction_only_changes_with_exact_field_history()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+        var controller = Controller(context, setup);
+        var initial = Payload(await controller.Stage(setup.Layer.PublicId,
+            new StageOpmsImportRequest(Guid.NewGuid(), "initial.csv", [Row(2, "KPI-UNIT", setup.Department.Code)])));
+        _ = Payload(await controller.Commit(initial.PublicId,
+            new CommitOpmsImportRequest("Approve initial KPI", null, null, initial.RowVersion)));
+
+        var revisedRow = Row(2, "KPI-UNIT", setup.Department.Code) with
+        {
+            PeriodTargets =
+            [
+                new SaveTargetPeriodValueRequest(ReportingPeriodType.Annual, PerformanceUnitKind.PercentageBased,
+                    PerformanceDirection.LowerIsBetter, "100", 1000, "Annual")
+            ]
+        };
+        var revision = Payload(await controller.Stage(setup.Layer.PublicId,
+            new StageOpmsImportRequest(Guid.NewGuid(), "unit-direction-revision.csv", [revisedRow])));
+        revision.ChangedRows.Should().Be(1);
+
+        _ = Payload(await controller.Commit(revision.PublicId,
+            new CommitOpmsImportRequest("Council approved unit and direction revision", "COUNCIL-UNIT-1",
+                new DateTime(2026, 10, 13), revision.RowVersion)));
+
+        var stored = await context.PerformancePeriodTargets.SingleAsync();
+        stored.IsTargetRevised.Should().BeTrue();
+        stored.RevisedTargetValue.Should().Be("100");
+        stored.RevisedUnitKind.Should().Be(PerformanceUnitKind.PercentageBased);
+        stored.RevisedOpmsUnitId.Should().NotBeNull().And.NotBe(stored.OpmsUnitId);
+        stored.Direction.Should().Be(PerformanceDirection.LowerIsBetter);
+        var fields = await context.PerformanceTargetRevisions.Where(item => item.PerformancePeriodTargetId == stored.Id)
+            .Select(item => item.FieldName).ToArrayAsync();
+        fields.Should().BeEquivalentTo(nameof(PerformancePeriodTarget.IsTargetRevised),
+            nameof(PerformancePeriodTarget.RevisedTargetValue), nameof(PerformancePeriodTarget.RevisedUnitKind),
+            nameof(PerformancePeriodTarget.RevisedOpmsUnitId), nameof(PerformancePeriodTarget.Direction),
+            nameof(PerformancePeriodTarget.PerformanceDirectionId));
+
+        var directionOnlyRow = revisedRow with
+        {
+            PeriodTargets =
+            [
+                new SaveTargetPeriodValueRequest(ReportingPeriodType.Annual, PerformanceUnitKind.PercentageBased,
+                    PerformanceDirection.Exact, "100", 1000, "Annual")
+            ]
+        };
+        var directionRevision = Payload(await controller.Stage(setup.Layer.PublicId,
+            new StageOpmsImportRequest(Guid.NewGuid(), "direction-only-revision.csv", [directionOnlyRow])));
+        directionRevision.ChangedRows.Should().Be(1);
+        _ = Payload(await controller.Commit(directionRevision.PublicId,
+            new CommitOpmsImportRequest("Council approved direction-only revision", "COUNCIL-DIRECTION-2",
+                new DateTime(2026, 10, 14), directionRevision.RowVersion)));
+
+        stored.Direction.Should().Be(PerformanceDirection.Exact);
+        var directionFields = await context.PerformanceTargetRevisions
+            .Where(item => item.PerformancePeriodTargetId == stored.Id && item.ApprovalReference == "COUNCIL-DIRECTION-2")
+            .Select(item => item.FieldName).ToArrayAsync();
+        directionFields.Should().BeEquivalentTo(nameof(PerformancePeriodTarget.Direction),
+            nameof(PerformancePeriodTarget.PerformanceDirectionId));
+    }
+
+    [Fact]
     public async Task Import_resolves_and_persists_governed_budget_type_and_multiple_sources()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();

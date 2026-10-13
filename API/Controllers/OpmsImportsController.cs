@@ -297,16 +297,31 @@ public sealed class OpmsImportsController(
                 {
                     var current = currentRows.Single(x => x.ReportingPeriodId == desired.ReportingPeriod.Id);
                     var currentValue = current.IsTargetRevised ? current.RevisedTargetValue : current.TargetValue;
-                    if (currentValue != desired.TargetValue)
+                    var currentUnit = current.IsTargetRevised ? current.RevisedUnitKind ?? current.UnitKind : current.UnitKind;
+                    var currentUnitId = current.IsTargetRevised ? current.RevisedOpmsUnitId ?? current.OpmsUnitId : current.OpmsUnitId;
+                    if (currentValue != desired.TargetValue || currentUnit != desired.UnitKind || currentUnitId != desired.OpmsUnitId
+                        || current.Direction != desired.Direction || current.PerformanceDirectionId != desired.PerformanceDirectionId)
                     {
-                        context.PerformanceTargetRevisions.Add(new PerformanceTargetRevision { MunicipalityId = batch.MunicipalityId, PerformancePeriodTargetId = current.Id, FieldName = "TargetValue", OriginalValue = currentValue, RevisedValue = desired.TargetValue, Reason = request.Reason.Trim(), ApprovalReference = request.ApprovalReference!.Trim(), EffectiveAt = request.EffectiveAt!.Value, RevisedByUserId = user.Id });
-                        current.IsTargetRevised = true; current.RevisedTargetValue = desired.TargetValue; current.RevisedUnitKind = desired.UnitKind;
+                        AddPeriodRevision(current, nameof(PerformancePeriodTarget.IsTargetRevised), current.IsTargetRevised.ToString(), true.ToString(), request, user.Id);
+                        AddPeriodRevision(current, nameof(PerformancePeriodTarget.RevisedTargetValue), current.RevisedTargetValue, desired.TargetValue, request, user.Id);
+                        AddPeriodRevision(current, nameof(PerformancePeriodTarget.RevisedUnitKind), current.RevisedUnitKind?.ToString(), desired.UnitKind.ToString(), request, user.Id);
+                        AddPeriodRevision(current, nameof(PerformancePeriodTarget.RevisedOpmsUnitId), current.RevisedOpmsUnitId?.ToString(CultureInfo.InvariantCulture), desired.OpmsUnitId.ToString(CultureInfo.InvariantCulture), request, user.Id);
+                        AddPeriodRevision(current, nameof(PerformancePeriodTarget.Direction), current.Direction.ToString(), desired.Direction.ToString(), request, user.Id);
+                        AddPeriodRevision(current, nameof(PerformancePeriodTarget.PerformanceDirectionId), current.PerformanceDirectionId?.ToString(CultureInfo.InvariantCulture), desired.PerformanceDirectionId.ToString(CultureInfo.InvariantCulture), request, user.Id);
+                        current.IsTargetRevised = true;
+                        current.RevisedTargetValue = desired.TargetValue;
+                        current.RevisedUnitKind = desired.UnitKind;
+                        current.RevisedOpmsUnitId = desired.OpmsUnitId;
+                        current.Direction = desired.Direction;
+                        current.PerformanceDirectionId = desired.PerformanceDirectionId;
                     }
                     var currentBudget = current.IsBudgetRevised ? current.RevisedBudgetValue : current.BudgetValue;
                     if (currentBudget != desired.BudgetValue)
                     {
-                        context.PerformanceTargetRevisions.Add(new PerformanceTargetRevision { MunicipalityId = batch.MunicipalityId, PerformancePeriodTargetId = current.Id, FieldName = "BudgetValue", OriginalValue = currentBudget?.ToString(), RevisedValue = desired.BudgetValue?.ToString(), Reason = request.Reason.Trim(), ApprovalReference = request.ApprovalReference!.Trim(), EffectiveAt = request.EffectiveAt!.Value, RevisedByUserId = user.Id });
-                        current.IsBudgetRevised = true; current.RevisedBudgetValue = desired.BudgetValue;
+                        AddPeriodRevision(current, nameof(PerformancePeriodTarget.IsBudgetRevised), current.IsBudgetRevised.ToString(), true.ToString(), request, user.Id);
+                        AddPeriodRevision(current, nameof(PerformancePeriodTarget.RevisedBudgetValue), current.RevisedBudgetValue?.ToString(CultureInfo.InvariantCulture), desired.BudgetValue?.ToString(CultureInfo.InvariantCulture), request, user.Id);
+                        current.IsBudgetRevised = true;
+                        current.RevisedBudgetValue = desired.BudgetValue;
                     }
                 }
             }
@@ -451,9 +466,9 @@ public sealed class OpmsImportsController(
                 var currentPeriods = await context.PerformancePeriodTargets.Include(x => x.ReportingPeriod).Where(x => x.OpmsTargetId == match.Id && x.IsActive).ToArrayAsync();
                 var missingPeriod = plan.Rows.FirstOrDefault(desired => currentPeriods.All(current => current.ReportingPeriodId != desired.ReportingPeriod.Id));
                 if (missingPeriod != null) { result.Add(Invalid("PERIOD_NOT_RECONCILED", "PeriodTargets", missingPeriod.TargetValue, $"{missingPeriod.ReportingPeriod.PeriodType} has no governed current row. Reconcile legacy targets before revision import.", missingPeriod.ReportingPeriod.PeriodType.ToString())); continue; }
-                var forbidden = plan.Rows.FirstOrDefault(desired => desired.ReportingPeriod.PeriodType is ReportingPeriodType.Quarter1 or ReportingPeriodType.Quarter2 or ReportingPeriodType.MidTerm && currentPeriods.Any(current => current.ReportingPeriodId == desired.ReportingPeriod.Id && ((current.IsTargetRevised ? current.RevisedTargetValue : current.TargetValue) != desired.TargetValue || current.UnitKind != desired.UnitKind || (current.IsBudgetRevised ? current.RevisedBudgetValue : current.BudgetValue) != desired.BudgetValue)));
+                var forbidden = plan.Rows.FirstOrDefault(desired => desired.ReportingPeriod.PeriodType is ReportingPeriodType.Quarter1 or ReportingPeriodType.Quarter2 or ReportingPeriodType.MidTerm && currentPeriods.Any(current => current.ReportingPeriodId == desired.ReportingPeriod.Id && ((current.IsTargetRevised ? current.RevisedTargetValue : current.TargetValue) != desired.TargetValue || current.UnitKind != desired.UnitKind || current.OpmsUnitId != desired.OpmsUnitId || current.Direction != desired.Direction || current.PerformanceDirectionId != desired.PerformanceDirectionId || (current.IsBudgetRevised ? current.RevisedBudgetValue : current.BudgetValue) != desired.BudgetValue)));
                 if (forbidden != null) { result.Add(Invalid("ORIGINAL_PERIOD_CHANGE", "PeriodTargets", forbidden.TargetValue, $"{forbidden.ReportingPeriod.PeriodType} is an original period and cannot be changed by a revision import.", forbidden.ReportingPeriod.PeriodType.ToString())); continue; }
-                var periodChanged = plan.Rows.Any(desired => currentPeriods.Any(current => current.ReportingPeriodId == desired.ReportingPeriod.Id && ((current.IsTargetRevised ? current.RevisedTargetValue : current.TargetValue) != desired.TargetValue || (current.RevisedUnitKind ?? current.UnitKind) != desired.UnitKind || (current.IsBudgetRevised ? current.RevisedBudgetValue : current.BudgetValue) != desired.BudgetValue)));
+                var periodChanged = plan.Rows.Any(desired => currentPeriods.Any(current => current.ReportingPeriodId == desired.ReportingPeriod.Id && ((current.IsTargetRevised ? current.RevisedTargetValue : current.TargetValue) != desired.TargetValue || (current.IsTargetRevised ? current.RevisedUnitKind ?? current.UnitKind : current.UnitKind) != desired.UnitKind || (current.IsTargetRevised ? current.RevisedOpmsUnitId ?? current.OpmsUnitId : current.OpmsUnitId) != desired.OpmsUnitId || current.Direction != desired.Direction || current.PerformanceDirectionId != desired.PerformanceDirectionId || (current.IsBudgetRevised ? current.RevisedBudgetValue : current.BudgetValue) != desired.BudgetValue)));
                 status = Equivalent(match, normalized) && !periodChanged ? OpmsImportRowStatus.Unchanged : OpmsImportRowStatus.Changed;
             }
             result.Add(new OpmsImportRow { SourceRowNumber = source.SourceRowNumber, Reference = indicator, Status = status,
@@ -468,6 +483,17 @@ public sealed class OpmsImportsController(
     {
         if (string.Equals(original, revised, StringComparison.Ordinal)) return;
         context.KpiFieldRevisions.Add(new KpiFieldRevision { MunicipalityId = target.MunicipalityId!.Value, OpmsTargetId = target.Id, FieldName = field, OriginalValue = original, RevisedValue = revised, Reason = request.Reason.Trim(), ApprovalReference = request.ApprovalReference!.Trim(), EffectiveAt = request.EffectiveAt!.Value, RevisedByUserId = userId });
+    }
+    private void AddPeriodRevision(PerformancePeriodTarget target, string field, string? original, string? revised, CommitOpmsImportRequest request, string userId)
+    {
+        if (string.Equals(original, revised, StringComparison.Ordinal)) return;
+        context.PerformanceTargetRevisions.Add(new PerformanceTargetRevision
+        {
+            MunicipalityId = target.MunicipalityId, PerformancePeriodTargetId = target.Id, FieldName = field,
+            OriginalValue = original, RevisedValue = revised, Reason = request.Reason.Trim(),
+            ApprovalReference = request.ApprovalReference!.Trim(), EffectiveAt = request.EffectiveAt!.Value,
+            RevisedByUserId = userId
+        });
     }
     private static bool Equivalent(OpmsTarget x, NormalizedRow y) =>
         (x.IsIndicatorNumberRevised ? x.RevisedIndicatorNumber : x.IndicatorNumber) == y.IndicatorNumber &&

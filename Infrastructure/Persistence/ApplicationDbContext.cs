@@ -2294,6 +2294,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     private void EnforceAppendOnlyRecords()
     {
         EnforceSecurityRegistryHistory();
+        EnforcePerformancePeriodTargetHistory();
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
@@ -3136,6 +3137,51 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             RequireGovernanceAudit(nameof(SecurityNavigationItem), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
         }
     }
+
+    private void EnforcePerformancePeriodTargetHistory()
+    {
+        if (ChangeTracker.Entries<PerformancePeriodTarget>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Canonical performance-period target history cannot be hard deleted; record a governed deactivation revision instead.");
+
+        var allowedProperties = new[]
+        {
+            nameof(PerformancePeriodTarget.IsTargetRevised), nameof(PerformancePeriodTarget.RevisedTargetValue),
+            nameof(PerformancePeriodTarget.RevisedOpmsUnitId), nameof(PerformancePeriodTarget.RevisedUnitKind),
+            nameof(PerformancePeriodTarget.PerformanceDirectionId), nameof(PerformancePeriodTarget.Direction),
+            nameof(PerformancePeriodTarget.IsBudgetRevised), nameof(PerformancePeriodTarget.RevisedBudgetValue),
+            nameof(PerformancePeriodTarget.Description), nameof(PerformancePeriodTarget.IsActive),
+            nameof(PerformancePeriodTarget.RowVersion)
+        };
+        foreach (var entry in ChangeTracker.Entries<PerformancePeriodTarget>().Where(entry => entry.State == EntityState.Modified))
+        {
+            EnsureOnlyProperties(entry, allowedProperties,
+                "Canonical performance-period target identity, ownership, period, KPI, original values and creation evidence are immutable.");
+            foreach (var property in entry.Properties.Where(property => property.IsModified
+                         && property.Metadata.Name != nameof(PerformancePeriodTarget.RowVersion)))
+            {
+                var original = RevisionValue(property.OriginalValue);
+                var revised = RevisionValue(property.CurrentValue);
+                var matching = ChangeTracker.Entries<PerformanceTargetRevision>().Count(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                    && candidate.Entity.PerformancePeriodTargetId == entry.Entity.Id
+                    && candidate.Entity.FieldName == property.Metadata.Name
+                    && candidate.Entity.OriginalValue == original
+                    && candidate.Entity.RevisedValue == revised
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.ApprovalReference)
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.RevisedByUserId));
+                if (matching != 1)
+                    throw new InvalidOperationException($"Performance-period target field '{property.Metadata.Name}' requires one exact same-transaction revision record.");
+            }
+        }
+    }
+
+    private static string? RevisionValue(object? value) => value switch
+    {
+        null => null,
+        IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+        _ => value.ToString()
+    };
 
     private void RejectRewrites<TEntity>(string message) where TEntity : class
     {
