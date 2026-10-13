@@ -111,6 +111,20 @@ public sealed class ControlledSeedSecurityTests
         context.ChangeTracker.Clear();
 
         await DbInitializer.SeedDepartmentsAndUnitsAsync(context);
+        await context.Departments.IgnoreQueryFilters()
+            .Where(item => item.MunicipalityId == null && item.Code == "ITS")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Name, "Administrator-renamed Platform Directorate")
+                .SetProperty(item => item.Description, "Administrator-owned platform description")
+                .SetProperty(item => item.IsActive, false));
+        await context.Units.IgnoreQueryFilters()
+            .Where(item => item.MunicipalityId == null && item.Code == "ITS-ROADS")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Name, "Administrator-renamed Platform Roads Unit")
+                .SetProperty(item => item.IsActive, false));
+        context.ChangeTracker.Clear();
+
+        await DbInitializer.SeedDepartmentsAndUnitsAsync(context);
         await DbInitializer.SeedDepartmentsAndUnitsAsync(context);
         context.ChangeTracker.Clear();
 
@@ -121,10 +135,166 @@ public sealed class ControlledSeedSecurityTests
         (await context.Units.IgnoreQueryFilters()
             .SingleAsync(item => item.MunicipalityId == municipality.Id && item.Code == "ITS-ROADS"))
             .Name.Should().Be("Administrator-owned Roads Unit");
+        var platformDepartmentResult = await context.Departments.IgnoreQueryFilters()
+            .SingleAsync(item => item.MunicipalityId == null && item.Code == "ITS");
+        platformDepartmentResult.Name.Should().Be("Administrator-renamed Platform Directorate");
+        platformDepartmentResult.Description.Should().Be("Administrator-owned platform description");
+        platformDepartmentResult.IsActive.Should().BeFalse();
+        var platformUnitResult = await context.Units.IgnoreQueryFilters()
+            .SingleAsync(item => item.MunicipalityId == null && item.Code == "ITS-ROADS");
+        platformUnitResult.Name.Should().Be("Administrator-renamed Platform Roads Unit");
+        platformUnitResult.IsActive.Should().BeFalse();
         (await context.Departments.IgnoreQueryFilters()
             .CountAsync(item => item.MunicipalityId == null && item.Code == "ITS")).Should().Be(1);
         (await context.Units.IgnoreQueryFilters()
             .CountAsync(item => item.MunicipalityId == null && item.Code == "ITS-ROADS")).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Lookup_seed_is_additive_and_preserves_administrator_configuration()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+
+        var municipality = new Municipality { Code = "BLUE-HILLS", Name = "Blue Hills Municipality" };
+        var financialYear = new FinancialYear
+        {
+            Code = "2024/25",
+            Name = "2024/2025",
+            StartDate = new DateTime(2024, 7, 1),
+            EndDate = new DateTime(2025, 6, 30)
+        };
+        context.AddRange(municipality, financialYear);
+        await context.SaveChangesAsync();
+        var municipalityYear = new MunicipalityFinancialYear
+        {
+            MunicipalityId = municipality.Id,
+            FinancialYearId = financialYear.Id,
+            IsCurrent = true,
+            IsActive = true,
+            EffectiveFrom = financialYear.StartDate
+        };
+        var departments = new[]
+        {
+            new Department { MunicipalityId = municipality.Id, Code = "ITS", Name = "Technical Services" },
+            new Department { MunicipalityId = municipality.Id, Code = "COM", Name = "Community Services" },
+            new Department { MunicipalityId = municipality.Id, Code = "CORP", Name = "Corporate Services" }
+        };
+        context.Add(municipalityYear);
+        context.AddRange(departments);
+        await context.SaveChangesAsync();
+        var legacyVote = new VoteNumber
+        {
+            MunicipalityId = municipality.Id,
+            MunicipalityFinancialYearId = null,
+            Code = "V001",
+            Number = "LEGACY-VOTE",
+            Name = "Administrator-owned Historical Vote",
+            DepartmentId = departments.Single(item => item.Code == "ITS").Id,
+            Amount = 765432.10m,
+            IsActive = false
+        };
+        context.VoteNumbers.Add(legacyVote);
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedLookupTablesAsync(context);
+
+        var alternateGoalId = await context.StrategicGoals.Where(item => item.Code == "SG1").Select(item => item.Id).SingleAsync();
+        var alternateDepartmentId = departments.Single(item => item.Code == "COM").Id;
+        await context.Periods.Where(item => item.Code == "2024/25")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Name, "Administrator Financial Period")
+                .SetProperty(item => item.StartDate, new DateTime(2024, 8, 1))
+                .SetProperty(item => item.EndDate, new DateTime(2025, 5, 31))
+                .SetProperty(item => item.FiscalYear, "ADMIN-FY")
+                .SetProperty(item => item.IsActive, false));
+        await context.StrategicGoals.Where(item => item.Code == "SG2")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Name, "Administrator Strategic Goal")
+                .SetProperty(item => item.Description, "Administrator goal description")
+                .SetProperty(item => item.IsActive, false));
+        await context.StrategicObjectives.Where(item => item.Code == "SO1.1")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Name, "Administrator Strategic Objective")
+                .SetProperty(item => item.StrategicGoalId, alternateGoalId)
+                .SetProperty(item => item.IsActive, false));
+        await context.BudgetSources.Where(item => item.Code == "MIG")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Name, "Administrator Funding Source")
+                .SetProperty(item => item.IsActive, false));
+        await context.BudgetTypes.Where(item => item.Code == "CAPEX")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Name, "Administrator Budget Classification")
+                .SetProperty(item => item.IsActive, false));
+        await context.UnitOfMeasures.Where(item => item.Code == "KM")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Name, "Administrator Distance Unit")
+                .SetProperty(item => item.Symbol, "admin-km")
+                .SetProperty(item => item.IsActive, false));
+        await context.Wards.IgnoreQueryFilters()
+            .Where(item => item.MunicipalityId == municipality.Id && item.Code == "W1")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Name, "Administrator Ward One")
+                .SetProperty(item => item.LegacyMunicipality, "Administrator Municipality Label")
+                .SetProperty(item => item.IsActive, false));
+        await context.VoteNumbers.IgnoreQueryFilters()
+            .Where(item => item.MunicipalityId == municipality.Id &&
+                           item.MunicipalityFinancialYearId == municipalityYear.Id &&
+                           item.Code == "V001")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Number, "ADMIN-VOTE")
+                .SetProperty(item => item.Name, "Administrator Roads Vote")
+                .SetProperty(item => item.DepartmentId, alternateDepartmentId)
+                .SetProperty(item => item.Amount, 123456.78m)
+                .SetProperty(item => item.IsActive, false));
+        context.ChangeTracker.Clear();
+
+        await DbInitializer.SeedLookupTablesAsync(context);
+        await DbInitializer.SeedLookupTablesAsync(context);
+        context.ChangeTracker.Clear();
+
+        var period = await context.Periods.SingleAsync(item => item.Code == "2024/25");
+        period.Name.Should().Be("Administrator Financial Period");
+        period.StartDate.Should().Be(new DateTime(2024, 8, 1));
+        period.EndDate.Should().Be(new DateTime(2025, 5, 31));
+        period.FiscalYear.Should().Be("ADMIN-FY");
+        period.IsActive.Should().BeFalse();
+        var goal = await context.StrategicGoals.SingleAsync(item => item.Code == "SG2");
+        goal.Name.Should().Be("Administrator Strategic Goal");
+        goal.Description.Should().Be("Administrator goal description");
+        goal.IsActive.Should().BeFalse();
+        var objective = await context.StrategicObjectives.SingleAsync(item => item.Code == "SO1.1");
+        objective.Name.Should().Be("Administrator Strategic Objective");
+        objective.StrategicGoalId.Should().Be(alternateGoalId);
+        objective.IsActive.Should().BeFalse();
+        (await context.BudgetSources.SingleAsync(item => item.Code == "MIG")).Should().Match<BudgetSource>(item => item.Name == "Administrator Funding Source" && !item.IsActive);
+        (await context.BudgetTypes.SingleAsync(item => item.Code == "CAPEX")).Should().Match<BudgetType>(item => item.Name == "Administrator Budget Classification" && !item.IsActive);
+        var unitResult = await context.UnitOfMeasures.SingleAsync(item => item.Code == "KM");
+        unitResult.Name.Should().Be("Administrator Distance Unit");
+        unitResult.Symbol.Should().Be("admin-km");
+        unitResult.IsActive.Should().BeFalse();
+        var wardResult = await context.Wards.IgnoreQueryFilters().SingleAsync(item => item.MunicipalityId == municipality.Id && item.Code == "W1");
+        wardResult.Name.Should().Be("Administrator Ward One");
+        wardResult.LegacyMunicipality.Should().Be("Administrator Municipality Label");
+        wardResult.IsActive.Should().BeFalse();
+        var voteResult = await context.VoteNumbers.IgnoreQueryFilters().SingleAsync(item =>
+            item.MunicipalityId == municipality.Id &&
+            item.MunicipalityFinancialYearId == municipalityYear.Id &&
+            item.Code == "V001");
+        voteResult.Number.Should().Be("ADMIN-VOTE");
+        voteResult.Name.Should().Be("Administrator Roads Vote");
+        voteResult.DepartmentId.Should().Be(departments.Single(item => item.Code == "COM").Id);
+        voteResult.Amount.Should().Be(123456.78m);
+        voteResult.IsActive.Should().BeFalse();
+        var historicalVoteResult = await context.VoteNumbers.IgnoreQueryFilters().SingleAsync(item => item.Id == legacyVote.Id);
+        historicalVoteResult.MunicipalityFinancialYearId.Should().BeNull();
+        historicalVoteResult.Number.Should().Be("LEGACY-VOTE");
+        historicalVoteResult.Name.Should().Be("Administrator-owned Historical Vote");
+        historicalVoteResult.Amount.Should().Be(765432.10m);
+        historicalVoteResult.IsActive.Should().BeFalse();
     }
 
     [Fact]

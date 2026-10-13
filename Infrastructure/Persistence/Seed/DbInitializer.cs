@@ -193,9 +193,9 @@ public static class DbInitializer
 
         foreach (var departmentSeed in GetDepartmentSeeds())
         {
-            if (!byCode.TryGetValue(departmentSeed.Code, out var department))
+            if (!byCode.ContainsKey(departmentSeed.Code))
             {
-                department = new Department
+                var department = new Department
                 {
                     Code = departmentSeed.Code,
                     Name = departmentSeed.Name,
@@ -203,11 +203,6 @@ public static class DbInitializer
                 };
                 context.Departments.Add(department);
                 byCode[departmentSeed.Code] = department;
-            }
-            else
-            {
-                department.Name = departmentSeed.Name;
-                department.Description = departmentSeed.Description;
             }
         }
 
@@ -224,19 +219,16 @@ public static class DbInitializer
 
             foreach (var unitSeed in departmentSeed.Units)
             {
-                if (!unitsByCode.TryGetValue(unitSeed.Code, out var unit))
+                if (!unitsByCode.ContainsKey(unitSeed.Code))
                 {
-                    context.Units.Add(new Unit
+                    var unit = new Unit
                     {
                         DepartmentId = department.Id,
                         Code = unitSeed.Code,
                         Name = unitSeed.Name
-                    });
-                }
-                else
-                {
-                    unit.Name = unitSeed.Name;
-                    unit.DepartmentId = department.Id;
+                    };
+                    context.Units.Add(unit);
+                    unitsByCode[unitSeed.Code] = unit;
                 }
             }
         }
@@ -874,15 +866,17 @@ public static class DbInitializer
         IReadOnlyList<DemoScopeSeed> Scopes,
         IReadOnlyList<DemoAssignmentSeed> Assignments);
 
-    private static async Task SeedLookupTablesAsync(ApplicationDbContext context)
+    internal static async Task SeedLookupTablesAsync(ApplicationDbContext context)
     {
+        // Startup seeds are additive baseline data. Once a row exists it is
+        // administrator-owned configuration and must never be reset on restart.
         // Seed Periods
         var existingPeriods = await context.Periods.ToDictionaryAsync(p => p.Code, StringComparer.OrdinalIgnoreCase);
         foreach (var periodSeed in GetPeriodSeeds())
         {
-            if (!existingPeriods.TryGetValue(periodSeed.Code, out var period))
+            if (!existingPeriods.ContainsKey(periodSeed.Code))
             {
-                period = new Period
+                var period = new Period
                 {
                     Code = periodSeed.Code,
                     Name = periodSeed.Name,
@@ -892,15 +886,7 @@ public static class DbInitializer
                     IsActive = periodSeed.IsActive
                 };
                 context.Periods.Add(period);
-            }
-            else
-            {
-                period.Code = periodSeed.Code;
-                period.Name = periodSeed.Name;
-                period.StartDate = periodSeed.StartDate;
-                period.EndDate = periodSeed.EndDate;
-                period.FiscalYear = periodSeed.FiscalYear;
-                period.IsActive = periodSeed.IsActive;
+                existingPeriods[periodSeed.Code] = period;
             }
         }
         await context.SaveChangesAsync();
@@ -909,9 +895,9 @@ public static class DbInitializer
         var existingGoals = await context.StrategicGoals.ToDictionaryAsync(g => g.Code, StringComparer.OrdinalIgnoreCase);
         foreach (var goalSeed in GetStrategicGoalSeeds())
         {
-            if (!existingGoals.TryGetValue(goalSeed.Code, out var goal))
+            if (!existingGoals.ContainsKey(goalSeed.Code))
             {
-                goal = new StrategicGoal
+                var goal = new StrategicGoal
                 {
                     Name = goalSeed.Name,
                     Code = goalSeed.Code,
@@ -919,12 +905,7 @@ public static class DbInitializer
                     IsActive = goalSeed.IsActive
                 };
                 context.StrategicGoals.Add(goal);
-            }
-            else
-            {
-                goal.Name = goalSeed.Name;
-                goal.Description = goalSeed.Description;
-                goal.IsActive = goalSeed.IsActive;
+                existingGoals[goalSeed.Code] = goal;
             }
         }
         await context.SaveChangesAsync();
@@ -934,9 +915,9 @@ public static class DbInitializer
         var existingObjectives = await context.StrategicObjectives.ToDictionaryAsync(o => o.Code, StringComparer.OrdinalIgnoreCase);
         foreach (var objSeed in GetStrategicObjectiveSeeds())
         {
-            if (!existingObjectives.TryGetValue(objSeed.Code, out var obj))
+            if (!existingObjectives.ContainsKey(objSeed.Code))
             {
-                obj = new StrategicObjective
+                var obj = new StrategicObjective
                 {
                     Name = objSeed.Name,
                     Code = objSeed.Code,
@@ -944,12 +925,7 @@ public static class DbInitializer
                     IsActive = objSeed.IsActive
                 };
                 context.StrategicObjectives.Add(obj);
-            }
-            else
-            {
-                obj.Name = objSeed.Name;
-                obj.StrategicGoalId = goals[objSeed.StrategicGoalCode].Id;
-                obj.IsActive = objSeed.IsActive;
+                existingObjectives[objSeed.Code] = obj;
             }
         }
         await context.SaveChangesAsync();
@@ -958,20 +934,16 @@ public static class DbInitializer
         var existingBudgetSources = await context.BudgetSources.ToDictionaryAsync(b => b.Code, StringComparer.OrdinalIgnoreCase);
         foreach (var sourceSeed in GetBudgetSourceSeeds())
         {
-            if (!existingBudgetSources.TryGetValue(sourceSeed.Code, out var source))
+            if (!existingBudgetSources.ContainsKey(sourceSeed.Code))
             {
-                source = new BudgetSource
+                var source = new BudgetSource
                 {
                     Name = sourceSeed.Name,
                     Code = sourceSeed.Code,
                     IsActive = sourceSeed.IsActive
                 };
                 context.BudgetSources.Add(source);
-            }
-            else
-            {
-                source.Name = sourceSeed.Name;
-                source.IsActive = sourceSeed.IsActive;
+                existingBudgetSources[sourceSeed.Code] = source;
             }
         }
         await context.SaveChangesAsync();
@@ -980,20 +952,16 @@ public static class DbInitializer
         var existingBudgetTypes = await context.BudgetTypes.ToDictionaryAsync(b => b.Code, StringComparer.OrdinalIgnoreCase);
         foreach (var typeSeed in GetBudgetTypeSeeds())
         {
-            if (!existingBudgetTypes.TryGetValue(typeSeed.Code, out var type))
+            if (!existingBudgetTypes.ContainsKey(typeSeed.Code))
             {
-                type = new BudgetType
+                var type = new BudgetType
                 {
                     Name = typeSeed.Name,
                     Code = typeSeed.Code,
                     IsActive = typeSeed.IsActive
                 };
                 context.BudgetTypes.Add(type);
-            }
-            else
-            {
-                type.Name = typeSeed.Name;
-                type.IsActive = typeSeed.IsActive;
+                existingBudgetTypes[typeSeed.Code] = type;
             }
         }
         await context.SaveChangesAsync();
@@ -1002,9 +970,9 @@ public static class DbInitializer
         var existingUoms = await context.UnitOfMeasures.ToDictionaryAsync(u => u.Code, StringComparer.OrdinalIgnoreCase);
         foreach (var uomSeed in GetUnitOfMeasureSeeds())
         {
-            if (!existingUoms.TryGetValue(uomSeed.Code, out var uom))
+            if (!existingUoms.ContainsKey(uomSeed.Code))
             {
-                uom = new UnitOfMeasure
+                var uom = new UnitOfMeasure
                 {
                     Name = uomSeed.Name,
                     Code = uomSeed.Code,
@@ -1012,12 +980,7 @@ public static class DbInitializer
                     IsActive = uomSeed.IsActive
                 };
                 context.UnitOfMeasures.Add(uom);
-            }
-            else
-            {
-                uom.Name = uomSeed.Name;
-                uom.Symbol = uomSeed.Symbol;
-                uom.IsActive = uomSeed.IsActive;
+                existingUoms[uomSeed.Code] = uom;
             }
         }
         await context.SaveChangesAsync();
@@ -1030,9 +993,9 @@ public static class DbInitializer
             var municipality = municipalities.SingleOrDefault(item => string.Equals(item.Code, wardSeed.Municipality, StringComparison.OrdinalIgnoreCase) || string.Equals(item.Name, wardSeed.Municipality, StringComparison.OrdinalIgnoreCase));
             if (municipality == null) continue;
             var wardKey = $"{municipality.Id}:{wardSeed.Code}";
-            if (!existingWards.TryGetValue(wardKey, out var ward))
+            if (!existingWards.ContainsKey(wardKey))
             {
-                ward = new Ward
+                var ward = new Ward
                 {
                     MunicipalityId = municipality.Id,
                     Name = wardSeed.Name,
@@ -1041,12 +1004,7 @@ public static class DbInitializer
                     IsActive = wardSeed.IsActive
                 };
                 context.Wards.Add(ward);
-            }
-            else
-            {
-                ward.Name = wardSeed.Name;
-                ward.LegacyMunicipality = municipality.Name;
-                ward.IsActive = wardSeed.IsActive;
+                existingWards[wardKey] = ward;
             }
         }
         await context.SaveChangesAsync();
@@ -1073,9 +1031,10 @@ public static class DbInitializer
             if (voteSeed.DepartmentCode == null || !departments.TryGetValue(voteSeed.DepartmentCode, out var department) || !department.MunicipalityId.HasValue) continue;
             var municipalityId = department.MunicipalityId.Value;
             if (!currentVoteYears.TryGetValue(municipalityId, out var municipalityFinancialYearId)) continue;
-            var candidates = existingVotes.Where(item => item.MunicipalityId == municipalityId && string.Equals(item.Code, voteSeed.Code, StringComparison.OrdinalIgnoreCase)).ToArray();
-            var vote = candidates.SingleOrDefault(item => item.MunicipalityFinancialYearId == municipalityFinancialYearId)
-                ?? (candidates.Count(item => item.MunicipalityFinancialYearId == null) == 1 ? candidates.Single(item => item.MunicipalityFinancialYearId == null) : null);
+            var vote = existingVotes.SingleOrDefault(item =>
+                item.MunicipalityId == municipalityId &&
+                item.MunicipalityFinancialYearId == municipalityFinancialYearId &&
+                string.Equals(item.Code, voteSeed.Code, StringComparison.OrdinalIgnoreCase));
             if (vote == null)
             {
                 vote = new VoteNumber
@@ -1091,15 +1050,6 @@ public static class DbInitializer
                 };
                 context.VoteNumbers.Add(vote);
                 existingVotes.Add(vote);
-            }
-            else
-            {
-                vote.MunicipalityFinancialYearId = municipalityFinancialYearId;
-                vote.Number = voteSeed.Code;
-                vote.Name = voteSeed.Name;
-                vote.DepartmentId = department.Id;
-                vote.Amount = voteSeed.Amount;
-                vote.IsActive = voteSeed.IsActive;
             }
         }
         await context.SaveChangesAsync();
