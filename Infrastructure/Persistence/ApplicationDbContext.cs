@@ -2308,6 +2308,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceOpmsTargetTemplateHistory();
         EnforceIpmsTargetTemplateHistory();
         EnforceEvidenceLifecycle();
+        RejectRewrites<IdpDocument>("IDP document identity, plan/version association, file metadata, retention, approval and upload evidence are immutable; upload a new governed document version instead.");
         EnforceIdpPlanHistory();
         EnforceImportBatchHistory();
         EnforceIdpDefinitionHistory();
