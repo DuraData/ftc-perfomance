@@ -4006,6 +4006,8 @@ New submission rating writes are now canonical-only. OPMS/IPMS save requests and
 
 An executable regression contract proves both save request types reject the legacy member, both retired endpoints return 410 without adding a generic score, both actions are excluded from API discovery, and production controller/seeder/client sources cannot reintroduce any identified legacy write or standalone action. Focused retirement verification passes **3/3** and the affected submission workspace passes **21/21**. Complete Debug and Release regression each pass **719 backend tests with 1 explicit SQL Server-only skip and 0 failures**; frontend regression passes **369/369 across 76 files**, accessibility **2/2**, TypeScript and ESLint pass, and Release compilation reports **0 warnings and 0 errors**. Vite transforms **2,110 modules**, and the enforced **78-chunk/402.1-KiB** bundle budget passes. Backend and frontend dependency audits report no vulnerabilities. With the Production/SQL Server provider selected, EF reports no model drift and emits the unchanged **681,765-byte** idempotent migration chain; the recovery-drill safety contract validates. No schema migration, Docker process, cloud resource or paid resource was introduced. R-33 remains partial because a controlled, non-inventive reconciliation of historical generic and embedded score evidence is still required.
 
+Implementation commit `d5125ce` was pushed directly to both `codex/dev` and `main`. GitHub Actions run `38328411911` executed exact commit `d5125cee28ef1f1858adb555f69b7eaff2be1fb3`; all **18/18** quality/security steps passed in **6m00s**, and check-run `115072364178` exposed no annotations.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
