@@ -1387,6 +1387,43 @@ export interface TargetNormalizationResultDto {
   alreadyNormalizedTargets: number;
 }
 
+export type LegacyRatingSourceKind = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface LegacyRatingCandidateDto {
+  workflowActionPublicId: string;
+  actionCode: string;
+  stageCode: string;
+  stageName: string;
+  ratingSchemePublicId: string;
+  ratingSchemeCode: string;
+  ratingValuePublicId: string;
+  ratingValue: number;
+  ratingLabel: string;
+  actorName: string;
+  occurredAt: string;
+  hasMatchingCanonicalRating: boolean;
+}
+
+export interface LegacyRatingReconciliationPreviewDto {
+  submissionKind: 1 | 2;
+  submissionPublicId: string;
+  sourceKind: LegacyRatingSourceKind;
+  sourceKey: string;
+  sourceScore: number;
+  sourceActorName: string;
+  sourceOccurredAt?: string | null;
+  status: 'Blocked' | 'Ready' | 'RequiresMapping' | 'Reconciled';
+  statusReason: string;
+  candidates: LegacyRatingCandidateDto[];
+  reconciliationPublicId?: string | null;
+}
+
+export interface LegacyRatingReconciliationResultDto {
+  reconciliationPublicId: string;
+  stageRatingPublicId: string;
+  usedExistingRating: boolean;
+}
+
 export interface LoginRequest {
   email?: string | null;
   password: string;

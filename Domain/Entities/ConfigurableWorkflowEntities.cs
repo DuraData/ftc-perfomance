@@ -223,3 +223,53 @@ public class SubmissionStageRating
     public RatingSchemeValue RatingSchemeValue { get; set; } = null!;
     public ApplicationUser RatedByUser { get; set; } = null!;
 }
+
+public enum LegacyRatingSourceKind
+{
+    GenericSubmissionScore = 1,
+    SubmitterScore = 2,
+    VerifierScore = 3,
+    ApproverScore = 4,
+    PmsScore = 5,
+    AuditorScore = 6
+}
+
+/// <summary>
+/// Append-only evidence that an explicitly identified legacy score was reconciled to a
+/// configured workflow action and its canonical stage-rating record. The legacy source is
+/// retained unchanged; its relevant values are snapshotted here for later audit.
+/// </summary>
+public class LegacySubmissionRatingReconciliation
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public SubmissionKind SubmissionKind { get; set; }
+    public string SubmissionId { get; set; } = string.Empty;
+    public LegacyRatingSourceKind SourceKind { get; set; }
+    public string SourceKey { get; set; } = string.Empty;
+    public decimal SourceScore { get; set; }
+    public string SourceActorUserIdSnapshot { get; set; } = string.Empty;
+    public DateTime? SourceOccurredAtSnapshot { get; set; }
+    public string? SourceCommentSnapshot { get; set; }
+    public long SubmissionWorkflowInstanceId { get; set; }
+    public long SubmissionWorkflowActionId { get; set; }
+    public long WorkflowStageDefinitionId { get; set; }
+    public long RatingSchemeId { get; set; }
+    public long RatingSchemeValueId { get; set; }
+    public long SubmissionStageRatingId { get; set; }
+    public bool UsedExistingRating { get; set; }
+    public string ReconciledByUserId { get; set; } = string.Empty;
+    public DateTime ReconciledAt { get; set; } = DateTime.UtcNow;
+    public string Reason { get; set; } = string.Empty;
+    public string CorrelationId { get; set; } = string.Empty;
+
+    public Municipality Municipality { get; set; } = null!;
+    public SubmissionWorkflowInstance SubmissionWorkflowInstance { get; set; } = null!;
+    public SubmissionWorkflowAction SubmissionWorkflowAction { get; set; } = null!;
+    public WorkflowStageDefinition WorkflowStageDefinition { get; set; } = null!;
+    public RatingScheme RatingScheme { get; set; } = null!;
+    public RatingSchemeValue RatingSchemeValue { get; set; } = null!;
+    public SubmissionStageRating SubmissionStageRating { get; set; } = null!;
+    public ApplicationUser ReconciledByUser { get; set; } = null!;
+}

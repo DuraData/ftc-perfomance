@@ -161,6 +161,9 @@ import type {
   UnitOfMeasure,
   TargetNormalizationPreviewDto,
   TargetNormalizationResultDto,
+  LegacyRatingSourceKind,
+  LegacyRatingReconciliationPreviewDto,
+  LegacyRatingReconciliationResultDto,
   PerformanceDashboardDto,
   WorkflowQueueDto,
   WorkflowQueueName,
@@ -1558,6 +1561,25 @@ export async function getTargetNormalizationPreview(targetKind: 1 | 2, page = 1,
 
 export async function executeTargetNormalization(payload: { targetKind: 1 | 2; targetPublicIds: string[]; reason: string }): Promise<ApiResponse<TargetNormalizationResultDto>> {
   return post<TargetNormalizationResultDto>('/v1/target-normalization/execute', payload);
+}
+
+export async function getLegacyRatingReconciliationPreview(
+  submissionKind: 1 | 2,
+  sourceKind: LegacyRatingSourceKind,
+  page = 1,
+  pageSize = 25,
+): Promise<ApiResponse<PagedResult<LegacyRatingReconciliationPreviewDto>>> {
+  return get<PagedResult<LegacyRatingReconciliationPreviewDto>>(`/v1/workflow/rating-reconciliation/preview?submissionKind=${submissionKind}&sourceKind=${sourceKind}&page=${page}&pageSize=${pageSize}`);
+}
+
+export async function executeLegacyRatingReconciliation(payload: {
+  submissionKind: 1 | 2;
+  sourceKind: LegacyRatingSourceKind;
+  sourceKey: string;
+  workflowActionPublicId: string;
+  reason: string;
+}): Promise<ApiResponse<LegacyRatingReconciliationResultDto>> {
+  return post<LegacyRatingReconciliationResultDto>('/v1/workflow/rating-reconciliation/execute', payload);
 }
 
 export async function getPerformanceTargetRevisionsPage(publicId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<PerformanceTargetRevisionDto>>> {

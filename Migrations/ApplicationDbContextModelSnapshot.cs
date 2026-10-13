@@ -5163,6 +5163,114 @@ namespace FTCERP.Host.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.LegacySubmissionRatingReconciliation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("RatingSchemeId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("RatingSchemeValueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("ReconciledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReconciledByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("SourceActorUserIdSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("SourceCommentSnapshot")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("SourceKey")
+                        .IsRequired()
+                        .HasMaxLength(550)
+                        .HasColumnType("nvarchar(550)");
+
+                    b.Property<int>("SourceKind")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("SourceOccurredAtSnapshot")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("SourceScore")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("SubmissionId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SubmissionKind")
+                        .HasColumnType("int");
+
+                    b.Property<long>("SubmissionStageRatingId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SubmissionWorkflowActionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SubmissionWorkflowInstanceId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("UsedExistingRating")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("WorkflowStageDefinitionId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("RatingSchemeId");
+
+                    b.HasIndex("RatingSchemeValueId");
+
+                    b.HasIndex("ReconciledByUserId");
+
+                    b.HasIndex("SubmissionStageRatingId");
+
+                    b.HasIndex("SubmissionWorkflowActionId");
+
+                    b.HasIndex("SubmissionWorkflowInstanceId");
+
+                    b.HasIndex("WorkflowStageDefinitionId");
+
+                    b.HasIndex("MunicipalityId", "SourceKey")
+                        .IsUnique();
+
+                    b.ToTable("LegacySubmissionRatingReconciliations");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.LegacySubmissionValueArchive", b =>
                 {
                     b.Property<long>("Id")
@@ -14147,6 +14255,73 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("OpmsTarget");
 
                     b.Navigation("RevisedByUser");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.LegacySubmissionRatingReconciliation", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.RatingScheme", "RatingScheme")
+                        .WithMany()
+                        .HasForeignKey("RatingSchemeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.RatingSchemeValue", "RatingSchemeValue")
+                        .WithMany()
+                        .HasForeignKey("RatingSchemeValueId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "ReconciledByUser")
+                        .WithMany()
+                        .HasForeignKey("ReconciledByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.SubmissionStageRating", "SubmissionStageRating")
+                        .WithMany()
+                        .HasForeignKey("SubmissionStageRatingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.SubmissionWorkflowAction", "SubmissionWorkflowAction")
+                        .WithMany()
+                        .HasForeignKey("SubmissionWorkflowActionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.SubmissionWorkflowInstance", "SubmissionWorkflowInstance")
+                        .WithMany()
+                        .HasForeignKey("SubmissionWorkflowInstanceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.WorkflowStageDefinition", "WorkflowStageDefinition")
+                        .WithMany()
+                        .HasForeignKey("WorkflowStageDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("RatingScheme");
+
+                    b.Navigation("RatingSchemeValue");
+
+                    b.Navigation("ReconciledByUser");
+
+                    b.Navigation("SubmissionStageRating");
+
+                    b.Navigation("SubmissionWorkflowAction");
+
+                    b.Navigation("SubmissionWorkflowInstance");
+
+                    b.Navigation("WorkflowStageDefinition");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.LegacySubmissionValueArchive", b =>

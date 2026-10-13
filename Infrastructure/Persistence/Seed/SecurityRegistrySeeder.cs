@@ -106,6 +106,7 @@ public static class SecurityRegistrySeeder
             Action("AUTHENTICATION.LINK_IDENTITIES", "Link Enterprise Identities", "AUTHENTICATION"),
             Action("AUTHENTICATION.VIEW_EVENTS", "View Authentication Events", "AUTHENTICATION"),
             Action("WORKFLOW.CONFIGURE", "Configure Workflow and Reporting Windows", "OPMS_WORKFLOW"),
+            Action("WORKFLOW.RECONCILE_LEGACY_RATINGS", "Reconcile Legacy Submission Ratings", "OPMS_WORKFLOW"),
             Action("NOTIFICATION_POLICY.ACTIVATE", "Activate Notification Policy", "NOTIFICATION_POLICY"),
             Action("NOTIFICATION_POLICY.COPY", "Copy Notification Policy", "NOTIFICATION_POLICY"),
             Action("NOTIFICATION_POLICY.SET_DELIVERY_STATE", "Pause or Resume Notification Delivery", "NOTIFICATION_POLICY"),
@@ -707,6 +708,7 @@ public static class SecurityRegistrySeeder
         mappings["IDP.Risk.Manage"] = [.. mappings["IDP.Risk.Manage"],
             "STRATEGIC_RISK.LinkReason.UPDATE", "STRATEGIC_RISK.UnlinkReason.UPDATE"];
         mappings["Configuration.Manage"] = [.. mappings["Configuration.Manage"],
+            "WORKFLOW.RECONCILE_LEGACY_RATINGS",
             "STRATEGIC_DOCUMENT.ApprovalReference.READ", "STRATEGIC_DOCUMENT.ApprovalReference.UPDATE",
             "STRATEGIC_DOCUMENT.EventReason.UPDATE"];
         mappings["IDP.Participation.Manage"] = [.. mappings["IDP.Participation.Manage"],

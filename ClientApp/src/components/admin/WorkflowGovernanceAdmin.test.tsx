@@ -34,12 +34,14 @@ const api = vi.hoisted(() => ({
   testNotificationPolicy: vi.fn(),
   getTargetNormalizationPreview: vi.fn(),
   executeTargetNormalization: vi.fn(),
+  getLegacyRatingReconciliationPreview: vi.fn(),
+  executeLegacyRatingReconciliation: vi.fn(),
 }));
 const security = vi.hoisted(() => ({ permissions: new Set<string>() }));
 
 vi.mock('../../api/api', () => api);
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
-vi.mock('../../context/AppContext', () => ({ useApp: () => ({ permissions: ['OPMS_KPI.NORMALIZE_LEGACY'], pushToast: vi.fn() }) }));
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ permissions: ['OPMS_KPI.NORMALIZE_LEGACY', 'WORKFLOW.RECONCILE_LEGACY_RATINGS'], pushToast: vi.fn() }) }));
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({
   canRead: (resource: string) => security.permissions.has(`${resource}.READ`),
   canCreate: (resource: string) => security.permissions.has(`${resource}.CREATE`),
@@ -78,6 +80,7 @@ describe('WorkflowGovernanceAdminPage', () => {
     api.getNotificationPoliciesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getWorkingCalendarHolidaysPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getTargetNormalizationPreview.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 50, totalCount: 0, totalPages: 0 } });
+    api.getLegacyRatingReconciliationPreview.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getReportingWindowExceptionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
@@ -175,6 +178,10 @@ describe('WorkflowGovernanceAdminPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Data Cutover' }));
     await waitFor(() => expect(api.getTargetNormalizationPreview).toHaveBeenCalledWith(1, 1, 50));
     expect(screen.getByText('Normalized target cutover')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rating Cutover' }));
+    await waitFor(() => expect(api.getLegacyRatingReconciliationPreview).toHaveBeenCalledWith(1, 1, 1, 25));
+    expect(screen.getByText('Historical rating reconciliation')).toBeInTheDocument();
   });
 
   it('pages and searches workflow versions through the bounded register contract', async () => {

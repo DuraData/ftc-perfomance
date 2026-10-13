@@ -117,6 +117,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     public DbSet<RatingScheme> RatingSchemes { get; set; } = null!;
     public DbSet<RatingSchemeValue> RatingSchemeValues { get; set; } = null!;
     public DbSet<SubmissionStageRating> SubmissionStageRatings { get; set; } = null!;
+    public DbSet<LegacySubmissionRatingReconciliation> LegacySubmissionRatingReconciliations { get; set; } = null!;
     public DbSet<TechnicalIndicatorDescription> TechnicalIndicatorDescriptions { get; set; } = null!;
     public DbSet<TidSourceDocument> TidSourceDocuments { get; set; } = null!;
     public DbSet<StrategicDocumentType> StrategicDocumentTypes { get; set; } = null!;
@@ -415,6 +416,23 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<SubmissionStageRating>().HasOne(x => x.RatingScheme).WithMany().HasForeignKey(x => x.RatingSchemeId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<SubmissionStageRating>().HasOne(x => x.RatingSchemeValue).WithMany().HasForeignKey(x => x.RatingSchemeValueId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<SubmissionStageRating>().HasOne(x => x.RatedByUser).WithMany().HasForeignKey(x => x.RatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasIndex(x => x.PublicId).IsUnique();
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasIndex(x => new { x.MunicipalityId, x.SourceKey }).IsUnique();
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasIndex(x => x.SubmissionStageRatingId);
+        builder.Entity<LegacySubmissionRatingReconciliation>().Property(x => x.SourceKey).HasMaxLength(550);
+        builder.Entity<LegacySubmissionRatingReconciliation>().Property(x => x.SourceScore).HasPrecision(18, 4);
+        builder.Entity<LegacySubmissionRatingReconciliation>().Property(x => x.SourceActorUserIdSnapshot).HasMaxLength(450);
+        builder.Entity<LegacySubmissionRatingReconciliation>().Property(x => x.SourceCommentSnapshot).HasMaxLength(2000);
+        builder.Entity<LegacySubmissionRatingReconciliation>().Property(x => x.Reason).HasMaxLength(1000);
+        builder.Entity<LegacySubmissionRatingReconciliation>().Property(x => x.CorrelationId).HasMaxLength(100);
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasOne(x => x.Municipality).WithMany().HasForeignKey(x => x.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasOne(x => x.SubmissionWorkflowInstance).WithMany().HasForeignKey(x => x.SubmissionWorkflowInstanceId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasOne(x => x.SubmissionWorkflowAction).WithMany().HasForeignKey(x => x.SubmissionWorkflowActionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasOne(x => x.WorkflowStageDefinition).WithMany().HasForeignKey(x => x.WorkflowStageDefinitionId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasOne(x => x.RatingScheme).WithMany().HasForeignKey(x => x.RatingSchemeId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasOne(x => x.RatingSchemeValue).WithMany().HasForeignKey(x => x.RatingSchemeValueId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasOne(x => x.SubmissionStageRating).WithMany().HasForeignKey(x => x.SubmissionStageRatingId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasOne(x => x.ReconciledByUser).WithMany().HasForeignKey(x => x.ReconciledByUserId).OnDelete(DeleteBehavior.Restrict);
 
         builder.Entity<LoginAuditLog>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<LoginAuditLog>().HasIndex(item => new { item.MunicipalityId, item.LoggedAt });
@@ -459,6 +477,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<RatingScheme>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<RatingSchemeValue>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
         builder.Entity<SubmissionStageRating>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
+        builder.Entity<LegacySubmissionRatingReconciliation>().HasQueryFilter(item => TenantFilterBypass || item.MunicipalityId == CurrentMunicipalityIdOrSentinel);
 
         builder.Entity<ApplicationRole>().HasIndex(item => item.PublicId).IsUnique();
         builder.Entity<ApplicationRole>().HasIndex(item => new { item.MunicipalityId, item.RoleCode }).IsUnique();
@@ -2132,7 +2151,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive)
             , typeof(MunicipalityConsolidationPolicy), typeof(PerformanceSuggestionEvent)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
-            typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating)
+            typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating), typeof(LegacySubmissionRatingReconciliation)
             , typeof(EvidenceBlob), typeof(PoeFile), typeof(PoeEvidenceAssessment), typeof(PoeEvidenceReplacement), typeof(PoeLegalHoldEvent), typeof(PoeDisposalEvent), typeof(Notification), typeof(AuditTrail), typeof(BusinessEventOutbox), typeof(NotificationDeliveryAttempt), typeof(IdempotencyRequest), typeof(IdpPlan), typeof(IdpImportBatch), typeof(GovernedRecordLifecycleEvent), typeof(TechnicalIndicatorDescription), typeof(TidSourceDocument), typeof(StrategicDocumentType), typeof(StrategicDocument), typeof(StrategicDocumentEvent),
             typeof(C88CatalogueVersion), typeof(C88MunicipalityConfiguration), typeof(C88CatalogueItem), typeof(C88Indicator), typeof(C88DataElement), typeof(C88IndicatorApplicability), typeof(C88ComplianceQuestion), typeof(C88IndicatorPlan), typeof(C88ReportingCalendar), typeof(C88IndicatorReport), typeof(C88DataElementValue), typeof(C88ComplianceResponse), typeof(C88Assignment), typeof(C88WorkflowDefinition), typeof(C88WorkflowStage), typeof(C88WorkflowAction), typeof(C88OpmsMapping),
             typeof(AuthenticationConfiguration), typeof(AuthenticationPolicy), typeof(UserAuthenticator), typeof(AuthenticationEvent),
@@ -2495,6 +2514,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         }
         if (ChangeTracker.Entries<SubmissionStageRating>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Submission stage rating history is append-only.");
+        if (ChangeTracker.Entries<LegacySubmissionRatingReconciliation>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Legacy submission rating reconciliation evidence is append-only.");
         if (ChangeTracker.Entries<InternalAuditAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Internal Audit assessment history is append-only.");
         foreach (var entry in ChangeTracker.Entries<InternalAuditAssessmentConfiguration>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
