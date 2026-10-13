@@ -58,7 +58,7 @@ export function RoleAccessMatrixPage() {
   useEffect(() => { const timeout = window.setTimeout(() => { setPage(1); setSearch(searchInput.trim()); }, 300); return () => window.clearTimeout(timeout); }, [searchInput]);
 
   return (
-    <AppShell title="Role Access Matrix" subtitle="Role permissions, scope profile, menus, actions, reports, and demo users">
+    <AppShell title="Role Access Matrix" subtitle="Role permissions, scope profile, menus, actions, reports, and assigned users">
       <Card className="overflow-hidden">
         <div className="grid gap-3 border-b border-secondary-200 p-4 dark:border-secondary-700 md:grid-cols-3">
           <Input label="Search role access matrix" value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Role code, name or description" />

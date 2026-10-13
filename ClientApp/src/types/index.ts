@@ -1505,16 +1505,6 @@ export interface AdminUserDetail {
   roles: AdminRole[];
 }
 
-export interface DemoUser {
-  role: string;
-  fullName: string;
-  department: string;
-  position: string;
-  email: string;
-  userName: string;
-  password: string;
-}
-
 export interface AdminPermission {
   id: number;
   module: string;

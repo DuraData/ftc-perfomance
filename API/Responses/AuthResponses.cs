@@ -35,9 +35,6 @@ public record UserResponse(Guid PublicId, string UserName, string FirstName, str
 
 public record UserDetailResponse(UserResponse User, RoleResponse[] Roles);
 
-public record DemoUserResponse(string Role, string FullName, string Department, string Position, string Email, string UserName, string Password);
-
-
 public record UserScopeResponse(
     Guid PublicId,
     string ScopeType,

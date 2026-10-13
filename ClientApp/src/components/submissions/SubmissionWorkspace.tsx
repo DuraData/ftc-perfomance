@@ -682,7 +682,7 @@ export function SubmissionWorkspace({
 
   const smallTitle = `${titlePrefix}`;
   const pageTitle = `Submission: ${submissionType}-${currentSubmission.quarter}-${currentSubmission.id.padStart(4, '0')}`;
-  const scoreDisplay = score !== undefined ? `${score} / 5` : currentSubmission.status === 'approved' ? '4 / 5' : '-';
+  const scoreDisplay = score != null ? `${score} / 5` : '-';
 
   const updateDraftSubmission = (updater: (current: SubmissionRecord) => SubmissionRecord) => {
     setDraftSubmission(prev => updater(prev));
@@ -1114,8 +1114,7 @@ export function SubmissionWorkspace({
             existingFiles={uploadedFileItems}
             maxFiles={undefined}
             disabled={currentSubmission.isDisabled || evidenceBusy || !canUploadEvidence}
-            showDocumentType={false}
-            onUpload={canUploadEvidence ? (files) => { void uploadEvidence(files); } : undefined}
+            onUpload={canUploadEvidence ? uploadEvidence : undefined}
             onRescan={canUploadEvidence ? (attachmentId) => { void mutateEvidence(() => submissionType === 'OPMS' ? rescanOpmsSubmissionAttachment(submission.id, attachmentId) : rescanIpmsSubmissionAttachment(submission.id, attachmentId), 'Evidence scan completed'); } : undefined}
             onAssess={security.canExecute(`${submissionType}_POE.ASSESS`) ? (attachmentId, outcome, comment) => { void mutateEvidence(() => submissionType === 'OPMS' ? assessOpmsSubmissionAttachment(submission.id, attachmentId, { outcome, comment }) : assessIpmsSubmissionAttachment(submission.id, attachmentId, { outcome, comment }), 'Evidence assessment recorded'); } : undefined}
             canAssessComment={security.canEditField(poeResourceCode, 'AssessmentComment')}

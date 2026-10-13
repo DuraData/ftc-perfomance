@@ -477,7 +477,6 @@ function AttachmentsTab({ target }: { target: OPMSTarget }) {
       existingFiles={existingFiles}
       maxFiles={undefined}
       disabled
-      documentTypes={[{ value: 'strategy', label: 'Strategy' }, { value: 'budget', label: 'Budget' }]}
     />
   );
 }

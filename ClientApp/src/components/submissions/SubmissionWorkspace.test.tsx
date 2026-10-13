@@ -158,6 +158,15 @@ describe('SubmissionWorkspace member security', () => {
     expect(varianceField).not.toHaveTextContent('-2%');
   });
 
+  it('does not invent a submitter score for an approved submission without recorded score evidence', () => {
+    security.canReadField.mockImplementation((_resource: string, member: string) => member === 'SubmitterScore');
+    render(<SubmissionWorkspace submission={{ ...submission, status: 'approved', submitterScore: undefined } as OPMSSubmission} submissionType="OPMS" />);
+
+    const scoreField = screen.getByText('Submitter Score').parentElement;
+    expect(scoreField).toHaveTextContent('Submitter Score-');
+    expect(scoreField).not.toHaveTextContent('4 / 5');
+  });
+
   it('shows only permitted actions that apply to the current workflow state', () => {
     security.canExecute.mockReturnValue(true);
     security.canEditField.mockImplementation((_resource: string, member: string) =>

@@ -370,7 +370,6 @@ function AttachmentsTab({ target }: { target: IPMSTarget }) {
       existingFiles={existingFiles}
       maxFiles={undefined}
       disabled
-      documentTypes={[{ value: 'strategy', label: 'Strategy' }, { value: 'budget', label: 'Budget' }]}
     />
   );
 }

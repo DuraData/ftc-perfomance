@@ -27,7 +27,7 @@ interface UploadedFile {
 }
 
 interface FileUploadProps {
-  onUpload?: (files: File[]) => void;
+  onUpload?: (files: File[]) => void | Promise<void>;
   onRemove?: (fileId: string) => void;
   onRescan?: (fileId: string) => void;
   onAssess?: (fileId: string, outcome: 1 | 2 | 3, comment?: string) => void;
@@ -40,21 +40,9 @@ interface FileUploadProps {
   maxFiles?: number;
   maxSize?: number; // in MB
   acceptedTypes?: string[];
-  showDocumentType?: boolean;
-  documentTypes?: { value: string; label: string }[];
   previewable?: boolean;
   disabled?: boolean;
 }
-
-const defaultDocumentTypes = [
-  { value: 'evidence', label: 'Evidence Document' },
-  { value: 'report', label: 'Report' },
-  { value: 'photo', label: 'Photograph' },
-  { value: 'invoice', label: 'Invoice' },
-  { value: 'contract', label: 'Contract' },
-  { value: 'certificate', label: 'Certificate' },
-  { value: 'other', label: 'Other' },
-];
 
 function getFileIcon(type: string) {
   if (type.startsWith('image/')) return <Image className="w-8 h-8 text-blue-500" />;
@@ -85,14 +73,13 @@ export function FileUpload({
   maxFiles,
   maxSize = 10,
   acceptedTypes,
-  showDocumentType = true,
-  documentTypes = defaultDocumentTypes,
   previewable = true,
   disabled = false,
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>(existingFiles);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [assessmentOutcomes, setAssessmentOutcomes] = useState<Record<string, 1 | 2 | 3>>({});
   const [assessmentComments, setAssessmentComments] = useState<Record<string, string>>({});
   const [replacementIds, setReplacementIds] = useState<Record<string, string>>({});
@@ -125,7 +112,7 @@ export function FileUpload({
     e.stopPropagation();
   }, []);
 
-  const processFiles = useCallback((newFiles: FileList | File[]) => {
+  const processFiles = useCallback(async (newFiles: FileList | File[]) => {
     const fileArray = Array.from(newFiles);
     const currentCount = files.length;
 
@@ -134,51 +121,29 @@ export function FileUpload({
       return;
     }
 
-    fileArray.forEach(file => {
+    const validFiles = fileArray.filter(file => {
       if (file.size > maxSize * 1024 * 1024) {
         alert(`File ${file.name} exceeds maximum size of ${maxSize}MB`);
-        return;
+        return false;
       }
 
       if (acceptedTypes && !acceptedTypes.some(type => file.type.match(type))) {
         alert(`File type ${file.type} not allowed`);
-        return;
+        return false;
       }
-
-      const uploadedFile: UploadedFile = {
-        id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        progress: 0,
-      };
-
-      setFiles(prev => [...prev, uploadedFile]);
-
-      // Simulate upload progress
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += Math.random() * 30;
-        if (progress >= 100) {
-          progress = 100;
-          clearInterval(interval);
-          setFiles(prev =>
-            prev.map(f =>
-              f.id === uploadedFile.id
-                ? { ...f, progress: 100, uploadedAt: new Date().toISOString() }
-                : f
-            )
-          );
-        } else {
-          setUploadProgress(prev => ({
-            ...prev,
-            [uploadedFile.id]: progress,
-          }));
-        }
-      }, 200);
+      return true;
     });
 
-    onUpload?.(fileArray);
+    if (!onUpload || validFiles.length === 0) return;
+    setUploadError('');
+    setIsUploading(true);
+    try {
+      await onUpload(validFiles);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'The selected files could not be uploaded.');
+    } finally {
+      setIsUploading(false);
+    }
   }, [files.length, maxFiles, maxSize, acceptedTypes, onUpload]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -188,13 +153,13 @@ export function FileUpload({
 
     if (disabled) return;
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFiles(e.dataTransfer.files);
+      void processFiles(e.dataTransfer.files);
     }
   }, [disabled, processFiles]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      processFiles(e.target.files);
+      void processFiles(e.target.files);
     }
   };
 
@@ -203,14 +168,9 @@ export function FileUpload({
     onRemove?.(fileId);
   };
 
-  const handleDocumentTypeChange = (fileId: string, documentType: string) => {
-    setFiles(prev =>
-      prev.map(f => (f.id === fileId ? { ...f, documentType } : f))
-    );
-  };
-
   return (
     <div className="space-y-4">
+      {uploadError && <div role="alert" className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-700">{uploadError}</div>}
       {/* Drop zone */}
       {onUpload && <div
         onDragEnter={handleDragEnter}
@@ -228,7 +188,7 @@ export function FileUpload({
           type="file"
           multiple
           onChange={handleFileSelect}
-          disabled={disabled}
+          disabled={disabled || isUploading}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           accept={acceptedTypes?.join(',')}
         />
@@ -240,8 +200,10 @@ export function FileUpload({
           </div>
           <div>
             <p className="text-sm font-medium text-secondary-700 dark:text-secondary-300">
-              Drop files here or{' '}
+              {isUploading ? 'Uploading selected files…' : 'Drop files here or '}
+              {!isUploading && (
               <span className="text-primary-600 dark:text-primary-400">browse</span>
+              )}
             </p>
             <p className="text-xs text-secondary-500 dark:text-secondary-400 mt-1">
               {maxFiles === undefined ? 'Unlimited files' : `Max ${maxFiles} files`}, up to {maxSize}MB each
@@ -290,38 +252,20 @@ export function FileUpload({
                 </div>}
 
                 {/* Progress bar */}
-                {(file.progress ?? uploadProgress[file.id]) !== undefined &&
-                  (file.progress ?? uploadProgress[file.id]) < 100 && (
+                {file.progress !== undefined && file.progress < 100 && (
                   <div className="mt-2">
                     <div className="h-1 bg-secondary-200 dark:bg-secondary-700 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-primary-600 rounded-full transition-all duration-300"
-                        style={{ width: `${file.progress ?? uploadProgress[file.id] ?? 0}%` }}
+                        style={{ width: `${file.progress}%` }}
                       />
                     </div>
                     <p className="text-xs text-secondary-500 mt-1">
-                      Uploading... {Math.round(file.progress ?? uploadProgress[file.id] ?? 0)}%
+                      Uploading... {Math.round(file.progress)}%
                     </p>
                   </div>
                 )}
 
-                {/* Document type selector */}
-                {showDocumentType && !disabled && onUpload && (file.progress ?? 100) >= 100 && (
-                  <div className="mt-2">
-                    <select
-                      value={file.documentType || ''}
-                      onChange={(e) => handleDocumentTypeChange(file.id, e.target.value)}
-                      className="text-xs py-1 px-2 border border-secondary-200 dark:border-secondary-600 rounded bg-white dark:bg-secondary-700 text-secondary-700 dark:text-secondary-300"
-                    >
-                      <option value="">Select document type...</option>
-                      {documentTypes.map(dt => (
-                        <option key={dt.value} value={dt.value}>
-                          {dt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
 
               {/* Actions */}

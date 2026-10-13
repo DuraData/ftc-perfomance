@@ -1,7 +1,50 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FileUpload } from './FileUpload';
 
 describe('FileUpload evidence scan state', () => {
+  it('waits for the real upload and never fabricates a persisted file or progress result', async () => {
+    let completeUpload!: () => void;
+    const onUpload = vi.fn(() => new Promise<void>(resolve => { completeUpload = resolve; }));
+    const { container } = render(<FileUpload onUpload={onUpload} existingFiles={[]} />);
+    const file = new File(['governed evidence'], 'signed-evidence.pdf', { type: 'application/pdf' });
+
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } });
+
+    await waitFor(() => expect(onUpload).toHaveBeenCalledWith([file]));
+    expect(screen.getByText('Uploading selected files…')).toBeInTheDocument();
+    expect(screen.queryByText('signed-evidence.pdf')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Uploading\.\.\. \d+%/)).not.toBeInTheDocument();
+
+    completeUpload();
+    await waitFor(() => expect(screen.getByText(/Drop files here/i)).toBeInTheDocument());
+    expect(screen.queryByText('signed-evidence.pdf')).not.toBeInTheDocument();
+  });
+
+  it('renders a service error without creating a fake file when the real upload rejects', async () => {
+    const onUpload = vi.fn().mockRejectedValue(new Error('Evidence service unavailable.'));
+    const { container } = render(<FileUpload onUpload={onUpload} existingFiles={[]} />);
+    const file = new File(['evidence'], 'failed-evidence.pdf', { type: 'application/pdf' });
+
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Evidence service unavailable.');
+    expect(screen.queryByText('failed-evidence.pdf')).not.toBeInTheDocument();
+  });
+
+  it('sends only files that pass the production validation boundary', async () => {
+    const onUpload = vi.fn().mockResolvedValue(undefined);
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    const { container } = render(<FileUpload onUpload={onUpload} acceptedTypes={['application/pdf']} existingFiles={[]} />);
+    const allowed = new File(['evidence'], 'allowed.pdf', { type: 'application/pdf' });
+    const rejected = new File(['image'], 'rejected.png', { type: 'image/png' });
+
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [allowed, rejected] } });
+
+    await waitFor(() => expect(onUpload).toHaveBeenCalledWith([allowed]));
+    expect(alert).toHaveBeenCalledWith('File type image/png not allowed');
+    alert.mockRestore();
+  });
+
   it('renders persisted files without fake mutation controls and links an authorized download', () => {
     render(<FileUpload disabled existingFiles={[{
       id: 'evidence-readonly', name: 'signed-register.pdf', size: 256, type: 'application/pdf', progress: 100,
