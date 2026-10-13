@@ -30,26 +30,37 @@ public sealed class DashboardDrilldownTests
         await context.SaveChangesAsync();
 
         var achieved = Target("drill-achieved", "IPMS-ACHIEVED");
+        var atRisk = Target("drill-at-risk", "IPMS-AT-RISK");
         var outstanding = Target("drill-outstanding", "IPMS-OUTSTANDING");
         achieved.MunicipalityId = municipality.Id;
+        atRisk.MunicipalityId = municipality.Id;
         outstanding.MunicipalityId = municipality.Id;
-        context.IpmsTargets.AddRange(achieved, outstanding);
+        context.IpmsTargets.AddRange(achieved, atRisk, outstanding);
         await context.SaveChangesAsync();
         context.PerformancePeriodTargets.AddRange(
             PeriodTarget(municipality.Id, q1.Id, achieved.Id, user.Id),
+            PeriodTarget(municipality.Id, q1.Id, atRisk.Id, user.Id),
             PeriodTarget(municipality.Id, q1.Id, outstanding.Id, user.Id));
         context.IpmsSubmissions.AddRange(
             new IpmsSubmission
             {
                 Id = "drill-completed", MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, IpmsTargetId = achieved.Id,
+                Quarter = "Q1", Status = "draft", BaseState = SubmissionBaseStates.Submitted
+            },
+            new IpmsSubmission
+            {
+                Id = "drill-rework", MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, IpmsTargetId = atRisk.Id,
                 Quarter = "Q1", Status = "completed", BaseState = SubmissionBaseStates.Submitted
             },
             new IpmsSubmission
             {
                 Id = "drill-draft", MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, IpmsTargetId = outstanding.Id,
-                Quarter = "Q1", Status = "draft", BaseState = SubmissionBaseStates.InProgress
+                Quarter = "Q1", Status = "completed", BaseState = SubmissionBaseStates.InProgress
             });
         await context.SaveChangesAsync();
+        await SeedCanonicalWorkflowAsync(context, municipality, municipalityYear, SubmissionKind.Ipms,
+            ("drill-completed", WorkflowInstanceState.Completed),
+            ("drill-rework", WorkflowInstanceState.Rework));
         var completedSubmissionPublicId = await context.IpmsSubmissions
             .Where(item => item.Id == "drill-completed").Select(item => item.PublicId).SingleAsync();
 
@@ -87,13 +98,34 @@ public sealed class DashboardDrilldownTests
         var achievedPage = Assert.IsType<ApiResponse<PagedResponse<IpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(achievedResult.Result).Value).Data!;
         Assert.Equal(achieved.PublicId, Assert.Single(achievedPage.Items).PublicId);
 
+        var atRiskResult = await targets.GetTargetsPage(Query(municipalityYear.PublicId, q1.PublicId, "at-risk"));
+        var atRiskPage = Assert.IsType<ApiResponse<PagedResponse<IpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(atRiskResult.Result).Value).Data!;
+        Assert.Equal(atRisk.PublicId, Assert.Single(atRiskPage.Items).PublicId);
+
         var outstandingResult = await targets.GetTargetsPage(Query(municipalityYear.PublicId, q1.PublicId, "outstanding"));
         var outstandingPage = Assert.IsType<ApiResponse<PagedResponse<IpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(outstandingResult.Result).Value).Data!;
         Assert.Equal(outstanding.PublicId, Assert.Single(outstandingPage.Items).PublicId);
 
         var approvedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "approved"));
         var approvedPage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(approvedResult.Result).Value).Data!;
-        Assert.Equal(completedSubmissionPublicId, Assert.Single(approvedPage.Items).PublicId);
+        var approvedSubmission = Assert.Single(approvedPage.Items);
+        Assert.Equal(completedSubmissionPublicId, approvedSubmission.PublicId);
+        Assert.Equal("completed", approvedSubmission.Status);
+
+        var returnedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "returned"));
+        var returnedPage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(returnedResult.Result).Value).Data!;
+        Assert.Equal("returned_for_info", Assert.Single(returnedPage.Items).Status);
+
+        var statusSearch = new PagedQueryRequest
+        {
+            MunicipalityFinancialYearPublicId = municipalityYear.PublicId,
+            ReportingPeriodPublicId = q1.PublicId,
+            Search = "completed",
+            SortBy = "status"
+        };
+        var searchResult = await submissions.GetSubmissionsPage(statusSearch);
+        var searchPage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(searchResult.Result).Value).Data!;
+        Assert.Equal(completedSubmissionPublicId, Assert.Single(searchPage.Items).PublicId);
 
         access.Setup(service => service.GetQueryScopeAsync(user, "IPMS_KPI.READ"))
             .ReturnsAsync(new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
@@ -141,24 +173,34 @@ public sealed class DashboardDrilldownTests
         await context.SaveChangesAsync();
 
         var achieved = OpmsTarget("opms-drill-achieved", "OPMS-ACHIEVED", municipality.Id);
+        var atRisk = OpmsTarget("opms-drill-at-risk", "OPMS-AT-RISK", municipality.Id);
         var outstanding = OpmsTarget("opms-drill-outstanding", "OPMS-OUTSTANDING", municipality.Id);
-        context.OpmsTargets.AddRange(achieved, outstanding);
+        context.OpmsTargets.AddRange(achieved, atRisk, outstanding);
         await context.SaveChangesAsync();
         context.PerformancePeriodTargets.AddRange(
             OpmsPeriodTarget(municipality.Id, q1.Id, achieved.Id, user.Id),
+            OpmsPeriodTarget(municipality.Id, q1.Id, atRisk.Id, user.Id),
             OpmsPeriodTarget(municipality.Id, q1.Id, outstanding.Id, user.Id));
         context.OpmsSubmissions.AddRange(
             new OpmsSubmission
             {
                 Id = "opms-drill-completed", MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, OpmsTargetId = achieved.Id,
+                Quarter = "Q1", Status = "draft", BaseState = SubmissionBaseStates.Submitted
+            },
+            new OpmsSubmission
+            {
+                Id = "opms-drill-rework", MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, OpmsTargetId = atRisk.Id,
                 Quarter = "Q1", Status = "completed", BaseState = SubmissionBaseStates.Submitted
             },
             new OpmsSubmission
             {
                 Id = "opms-drill-draft", MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, OpmsTargetId = outstanding.Id,
-                Quarter = "Q1", Status = "draft", BaseState = SubmissionBaseStates.InProgress
+                Quarter = "Q1", Status = "completed", BaseState = SubmissionBaseStates.InProgress
             });
         await context.SaveChangesAsync();
+        await SeedCanonicalWorkflowAsync(context, municipality, municipalityYear, SubmissionKind.Opms,
+            ("opms-drill-completed", WorkflowInstanceState.Completed),
+            ("opms-drill-rework", WorkflowInstanceState.Rework));
         var completedSubmissionPublicId = await context.OpmsSubmissions
             .Where(item => item.Id == "opms-drill-completed").Select(item => item.PublicId).SingleAsync();
 
@@ -196,13 +238,34 @@ public sealed class DashboardDrilldownTests
         var achievedPage = Assert.IsType<ApiResponse<PagedResponse<OpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(achievedResult.Result).Value).Data!;
         Assert.Equal(achieved.PublicId, Assert.Single(achievedPage.Items).PublicId);
 
+        var atRiskResult = await targets.GetTargetsPage(Query(municipalityYear.PublicId, q1.PublicId, "at-risk"));
+        var atRiskPage = Assert.IsType<ApiResponse<PagedResponse<OpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(atRiskResult.Result).Value).Data!;
+        Assert.Equal(atRisk.PublicId, Assert.Single(atRiskPage.Items).PublicId);
+
         var outstandingResult = await targets.GetTargetsPage(Query(municipalityYear.PublicId, q1.PublicId, "outstanding"));
         var outstandingPage = Assert.IsType<ApiResponse<PagedResponse<OpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(outstandingResult.Result).Value).Data!;
         Assert.Equal(outstanding.PublicId, Assert.Single(outstandingPage.Items).PublicId);
 
         var approvedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "approved"));
         var approvedPage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(approvedResult.Result).Value).Data!;
-        Assert.Equal(completedSubmissionPublicId, Assert.Single(approvedPage.Items).PublicId);
+        var approvedSubmission = Assert.Single(approvedPage.Items);
+        Assert.Equal(completedSubmissionPublicId, approvedSubmission.PublicId);
+        Assert.Equal("completed", approvedSubmission.Status);
+
+        var returnedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "returned"));
+        var returnedPage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(returnedResult.Result).Value).Data!;
+        Assert.Equal("returned_for_info", Assert.Single(returnedPage.Items).Status);
+
+        var statusSearch = new PagedQueryRequest
+        {
+            MunicipalityFinancialYearPublicId = municipalityYear.PublicId,
+            ReportingPeriodPublicId = q1.PublicId,
+            Search = "completed",
+            SortBy = "status"
+        };
+        var searchResult = await submissions.GetSubmissionsPage(statusSearch);
+        var searchPage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(searchResult.Result).Value).Data!;
+        Assert.Equal(completedSubmissionPublicId, Assert.Single(searchPage.Items).PublicId);
 
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
             .ReturnsAsync(new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
@@ -275,6 +338,38 @@ public sealed class DashboardDrilldownTests
         TargetValue = "10",
         CreatedByUserId = userId
     };
+
+    private static async Task SeedCanonicalWorkflowAsync(
+        FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context,
+        Municipality municipality,
+        MunicipalityFinancialYear municipalityYear,
+        SubmissionKind kind,
+        params (string SubmissionId, WorkflowInstanceState State)[] submissions)
+    {
+        var definition = new WorkflowDefinition
+        {
+            MunicipalityId = municipality.Id,
+            MunicipalityFinancialYearId = municipalityYear.Id,
+            SubmissionKind = kind,
+            Code = $"{kind.ToString().ToUpperInvariant()}-DRILLDOWN",
+            Name = $"{kind} drill-down workflow",
+            EffectiveFrom = municipalityYear.EffectiveFrom
+        };
+        context.WorkflowDefinitions.Add(definition);
+        foreach (var submission in submissions)
+        {
+            context.SubmissionWorkflowInstances.Add(new SubmissionWorkflowInstance
+            {
+                MunicipalityId = municipality.Id,
+                WorkflowDefinition = definition,
+                SubmissionKind = kind,
+                SubmissionId = submission.SubmissionId,
+                State = submission.State,
+                CompletedAt = submission.State == WorkflowInstanceState.Completed ? DateTime.UtcNow : null
+            });
+        }
+        await context.SaveChangesAsync();
+    }
 
     private static ControllerContext ControllerContext(string userId) => new()
     {

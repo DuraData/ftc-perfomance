@@ -12,6 +12,56 @@ public static class PerformanceApiSupport
     internal static string ResolveWorkflowStatus(string requestedStatus, SubmissionWorkflowInstance? instance) =>
         instance?.State == WorkflowInstanceState.Completed ? "completed" : requestedStatus;
 
+    internal static IQueryable<OpmsSubmissionStatusProjection> ProjectCanonicalStatuses(
+        ApplicationDbContext context,
+        IQueryable<OpmsSubmission> query) =>
+        query.Select(item => new OpmsSubmissionStatusProjection
+        {
+            Submission = item,
+            Status = context.SubmissionWorkflowInstances
+                .Where(instance => instance.SubmissionKind == SubmissionKind.Opms && instance.SubmissionId == item.Id)
+                .Select(instance => instance.State == WorkflowInstanceState.Completed ? "completed"
+                    : instance.State == WorkflowInstanceState.Cancelled ? "cancelled"
+                    : instance.State == WorkflowInstanceState.Rework ? "returned_for_info"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".VERIFY") ? "pending_verification"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".APPROVE") ? "pending_approval"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".PMS_REVIEW") ? "approved"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".INTERNAL_AUDIT") ? "reviewed"
+                    : "submitted")
+                .FirstOrDefault() ?? (item.BaseState == SubmissionBaseStates.InProgress ? "draft" : "submitted")
+        });
+
+    internal static IQueryable<IpmsSubmissionStatusProjection> ProjectCanonicalStatuses(
+        ApplicationDbContext context,
+        IQueryable<IpmsSubmission> query) =>
+        query.Select(item => new IpmsSubmissionStatusProjection
+        {
+            Submission = item,
+            Status = context.SubmissionWorkflowInstances
+                .Where(instance => instance.SubmissionKind == SubmissionKind.Ipms && instance.SubmissionId == item.Id)
+                .Select(instance => instance.State == WorkflowInstanceState.Completed ? "completed"
+                    : instance.State == WorkflowInstanceState.Cancelled ? "cancelled"
+                    : instance.State == WorkflowInstanceState.Rework ? "returned_for_info"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".VERIFY") ? "pending_verification"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".APPROVE") ? "pending_approval"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".PMS_REVIEW") ? "approved"
+                    : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".INTERNAL_AUDIT") ? "reviewed"
+                    : "submitted")
+                .FirstOrDefault() ?? (item.BaseState == SubmissionBaseStates.InProgress ? "draft" : "submitted")
+        });
+
+    internal sealed class OpmsSubmissionStatusProjection
+    {
+        public required OpmsSubmission Submission { get; init; }
+        public string Status { get; init; } = string.Empty;
+    }
+
+    internal sealed class IpmsSubmissionStatusProjection
+    {
+        public required IpmsSubmission Submission { get; init; }
+        public string Status { get; init; } = string.Empty;
+    }
+
     internal static async Task HydrateFinancialYearsAsync(ApplicationDbContext context, IEnumerable<ReportingPeriod?> reportingPeriods)
     {
         var periods = reportingPeriods.Where(period => period != null).Cast<ReportingPeriod>().DistinctBy(period => period.Id).ToArray();
@@ -384,13 +434,16 @@ public static class PerformanceApiSupport
         };
 
     public static OpmsSubmissionResponse ToResponse(this OpmsSubmission submission) =>
+        submission.ToResponse(submission.Status);
+
+    public static OpmsSubmissionResponse ToResponse(this OpmsSubmission submission, string canonicalStatus) =>
         new(
             submission.PublicId,
             submission.OpmsTarget.PublicId,
             PerformanceRevisionResolver.EffectiveTargetName(submission.OpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
             PerformanceRevisionResolver.EffectiveIndicatorNumber(submission.OpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
             submission.ReportingPeriod?.Code ?? submission.Quarter,
-            submission.Status,
+            canonicalStatus,
             submission.SubmitterStatus,
             submission.VerifierStatus,
             submission.ApproverStatus,
@@ -471,13 +524,16 @@ public static class PerformanceApiSupport
         };
 
     public static IpmsSubmissionResponse ToResponse(this IpmsSubmission submission) =>
+        submission.ToResponse(submission.Status);
+
+    public static IpmsSubmissionResponse ToResponse(this IpmsSubmission submission, string canonicalStatus) =>
         new(
             submission.PublicId,
             submission.IpmsTarget.PublicId,
             PerformanceRevisionResolver.EffectiveTargetName(submission.IpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
             PerformanceRevisionResolver.EffectiveIndicatorNumber(submission.IpmsTarget, PerformanceRevisionResolver.ResolvePeriodType(submission.ReportingPeriod?.PeriodType, submission.Quarter)),
             submission.ReportingPeriod?.Code ?? submission.Quarter,
-            submission.Status,
+            canonicalStatus,
             submission.SubmitterStatus,
             submission.VerifierStatus,
             submission.ApproverStatus,

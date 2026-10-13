@@ -86,11 +86,12 @@ public class IpmsTargetsController : ControllerBase
                     || submissionScope.TargetIds.Contains(item.IpmsTargetId)
                     || submissionScope.KpiIds.Contains(item.IpmsTargetId));
             scopedSubmissions = scopedSubmissions.Where(item => item.ReportingPeriod != null && item.ReportingPeriod.PublicId == request.ReportingPeriodPublicId!.Value);
+            var canonicalSubmissions = PerformanceApiSupport.ProjectCanonicalStatuses(_context, scopedSubmissions);
             var matchedTargetIds = request.NormalizedDashboardFilter switch
             {
-                "achieved" => scopedSubmissions.Where(item => item.Status == "completed" || item.Status == "approved").Select(item => item.IpmsTargetId).Distinct(),
-                "at-risk" => scopedSubmissions.Where(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected").Select(item => item.IpmsTargetId).Distinct(),
-                _ => scopedSubmissions.Where(item => item.BaseState == SubmissionBaseStates.Submitted && !item.IsDisabled).Select(item => item.IpmsTargetId).Distinct()
+                "achieved" => canonicalSubmissions.Where(item => item.Status == "completed" || item.Status == "approved").Select(item => item.Submission.IpmsTargetId).Distinct(),
+                "at-risk" => canonicalSubmissions.Where(item => item.Status == "returned_for_info").Select(item => item.Submission.IpmsTargetId).Distinct(),
+                _ => canonicalSubmissions.Where(item => item.Submission.BaseState == SubmissionBaseStates.Submitted && !item.Submission.IsDisabled).Select(item => item.Submission.IpmsTargetId).Distinct()
             };
             query = request.NormalizedDashboardFilter == "outstanding"
                 ? query.Where(item => !item.IsWithdrawn && !matchedTargetIds.Contains(item.Id))

@@ -105,28 +105,33 @@ public class IpmsSubmissionsController : ControllerBase
                 && item.ReportingPeriod.MunicipalityFinancialYear.PublicId == request.MunicipalityFinancialYearPublicId.Value);
         if (request.ReportingPeriodPublicId.HasValue)
             query = query.Where(item => item.ReportingPeriod != null && item.ReportingPeriod.PublicId == request.ReportingPeriodPublicId.Value);
-        query = request.NormalizedDashboardFilter switch
+        var projectedQuery = PerformanceApiSupport.ProjectCanonicalStatuses(_context, query);
+        projectedQuery = request.NormalizedDashboardFilter switch
         {
-            "draft" => query.Where(item => item.Status == "draft"),
-            "submitted" => query.Where(item => item.Status == "submitted"),
-            "returned" => query.Where(item => item.Status == "returned_for_info" || item.Status == "rejected" || item.Status == "verify_rejected"),
-            "approved" => query.Where(item => item.Status == "approved" || item.Status == "completed"),
-            _ => query
+            "draft" => projectedQuery.Where(item => item.Status == "draft"),
+            "submitted" => projectedQuery.Where(item => item.Status == "submitted"),
+            "returned" => projectedQuery.Where(item => item.Status == "returned_for_info"),
+            "approved" => projectedQuery.Where(item => item.Status == "approved" || item.Status == "completed"),
+            _ => projectedQuery
         };
         if (request.NormalizedSearch.Length > 0)
-            query = query.Where(item =>
-                item.IpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch)
-                || item.IpmsTarget.TargetName.Contains(request.NormalizedSearch)
-                || (item.ReportingPeriod != null
-                    && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
-                    && ((item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null && item.IpmsTarget.RevisedIndicatorNumber.Contains(request.NormalizedSearch))
-                        || (item.IpmsTarget.IsTargetNameRevised && item.IpmsTarget.RevisedTargetName != null && item.IpmsTarget.RevisedTargetName.Contains(request.NormalizedSearch))))
+            projectedQuery = projectedQuery.Where(item =>
+                item.Submission.IpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch)
+                || item.Submission.IpmsTarget.TargetName.Contains(request.NormalizedSearch)
+                || (item.Submission.ReportingPeriod != null
+                    && (item.Submission.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.Submission.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.Submission.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                    && ((item.Submission.IpmsTarget.IsIndicatorNumberRevised && item.Submission.IpmsTarget.RevisedIndicatorNumber != null && item.Submission.IpmsTarget.RevisedIndicatorNumber.Contains(request.NormalizedSearch))
+                        || (item.Submission.IpmsTarget.IsTargetNameRevised && item.Submission.IpmsTarget.RevisedTargetName != null && item.Submission.IpmsTarget.RevisedTargetName.Contains(request.NormalizedSearch))))
                 || item.Status.Contains(request.NormalizedSearch)
-                || (item.ReportingPeriod != null && (item.ReportingPeriod.Code.Contains(request.NormalizedSearch) || item.ReportingPeriod.Name.Contains(request.NormalizedSearch))));
+                || (item.Submission.ReportingPeriod != null && (item.Submission.ReportingPeriod.Code.Contains(request.NormalizedSearch) || item.Submission.ReportingPeriod.Name.Contains(request.NormalizedSearch))));
 
-        var totalCount = await query.CountAsync();
-        query = ApplySubmissionOrdering(query, request.NormalizedSortBy, request.Descending);
-        var items = await query.Skip(request.Offset).Take(request.PageSize)
+        var totalCount = await projectedQuery.CountAsync();
+        projectedQuery = ApplySubmissionOrdering(projectedQuery, request.NormalizedSortBy, request.Descending);
+        var pageRows = await projectedQuery.Skip(request.Offset).Take(request.PageSize)
+            .Select(item => new { item.Submission.Id, item.Status })
+            .ToListAsync();
+        var pageIds = pageRows.Select(item => item.Id).ToArray();
+        var items = await _context.IpmsSubmissions.AsNoTracking().Where(item => pageIds.Contains(item.Id))
             .Include(item => item.IpmsTarget).ThenInclude(target => target.Department)
             .Include(item => item.IpmsTarget).ThenInclude(target => target.Unit)
             .Include(item => item.IpmsTarget).ThenInclude(target => target.UnitOfMeasure)
@@ -139,9 +144,10 @@ public class IpmsSubmissionsController : ControllerBase
             .AsSplitQuery().ToListAsync();
         await PerformanceApiSupport.HydrateFinancialYearsAsync(_context, items.Select(item => item.ReportingPeriod));
         await TargetPeriodCutover.HydrateCanonicalRowsAsync(_context, items.Select(item => item.IpmsTarget).ToArray());
-        var responses = new List<IpmsSubmissionResponse>(items.Count);
-        foreach (var item in items)
-            responses.Add(await ToAuthorizedResponseAsync(item, user));
+        var itemsById = items.ToDictionary(item => item.Id, StringComparer.Ordinal);
+        var responses = new List<IpmsSubmissionResponse>(pageRows.Count);
+        foreach (var row in pageRows)
+            responses.Add(await ToAuthorizedResponseAsync(itemsById[row.Id], user, row.Status));
         return Ok(new ApiResponse<PagedResponse<IpmsSubmissionResponse>>(true,
             PagedResponse<IpmsSubmissionResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
@@ -149,21 +155,24 @@ public class IpmsSubmissionsController : ControllerBase
     private static readonly HashSet<string> SubmissionSortFields = ["createdat", "status", "quarter", "indicatornumber"];
     private static readonly HashSet<string> SubmissionDashboardFilters = ["", "draft", "submitted", "returned", "approved"];
 
-    private static IQueryable<IpmsSubmission> ApplySubmissionOrdering(IQueryable<IpmsSubmission> query, string sortBy, bool descending) =>
+    private static IQueryable<PerformanceApiSupport.IpmsSubmissionStatusProjection> ApplySubmissionOrdering(
+        IQueryable<PerformanceApiSupport.IpmsSubmissionStatusProjection> query,
+        string sortBy,
+        bool descending) =>
         (sortBy, descending) switch
         {
-            ("status", false) => query.OrderBy(item => item.Status).ThenBy(item => item.PublicId),
-            ("status", true) => query.OrderByDescending(item => item.Status).ThenBy(item => item.PublicId),
-            ("quarter", false) => query.OrderBy(item => item.ReportingPeriod == null ? string.Empty : item.ReportingPeriod.Code).ThenBy(item => item.PublicId),
-            ("quarter", true) => query.OrderByDescending(item => item.ReportingPeriod == null ? string.Empty : item.ReportingPeriod.Code).ThenBy(item => item.PublicId),
-            ("indicatornumber", false) => query.OrderBy(item => item.ReportingPeriod != null
-                && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
-                && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
-            ("indicatornumber", true) => query.OrderByDescending(item => item.ReportingPeriod != null
-                && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
-                && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber).ThenBy(item => item.PublicId),
-            (_, false) => query.OrderBy(item => item.CreatedAt).ThenBy(item => item.PublicId),
-            _ => query.OrderByDescending(item => item.CreatedAt).ThenBy(item => item.PublicId)
+            ("status", false) => query.OrderBy(item => item.Status).ThenBy(item => item.Submission.PublicId),
+            ("status", true) => query.OrderByDescending(item => item.Status).ThenBy(item => item.Submission.PublicId),
+            ("quarter", false) => query.OrderBy(item => item.Submission.ReportingPeriod == null ? string.Empty : item.Submission.ReportingPeriod.Code).ThenBy(item => item.Submission.PublicId),
+            ("quarter", true) => query.OrderByDescending(item => item.Submission.ReportingPeriod == null ? string.Empty : item.Submission.ReportingPeriod.Code).ThenBy(item => item.Submission.PublicId),
+            ("indicatornumber", false) => query.OrderBy(item => item.Submission.ReportingPeriod != null
+                && (item.Submission.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.Submission.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.Submission.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                && item.Submission.IpmsTarget.IsIndicatorNumberRevised && item.Submission.IpmsTarget.RevisedIndicatorNumber != null ? item.Submission.IpmsTarget.RevisedIndicatorNumber : item.Submission.IpmsTarget.IndicatorNumber).ThenBy(item => item.Submission.PublicId),
+            ("indicatornumber", true) => query.OrderByDescending(item => item.Submission.ReportingPeriod != null
+                && (item.Submission.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.Submission.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.Submission.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
+                && item.Submission.IpmsTarget.IsIndicatorNumberRevised && item.Submission.IpmsTarget.RevisedIndicatorNumber != null ? item.Submission.IpmsTarget.RevisedIndicatorNumber : item.Submission.IpmsTarget.IndicatorNumber).ThenBy(item => item.Submission.PublicId),
+            (_, false) => query.OrderBy(item => item.Submission.CreatedAt).ThenBy(item => item.Submission.PublicId),
+            _ => query.OrderByDescending(item => item.Submission.CreatedAt).ThenBy(item => item.Submission.PublicId)
         };
 
     [HttpGet("{id:guid}")]
@@ -1291,10 +1300,15 @@ public class IpmsSubmissionsController : ControllerBase
         return null;
     }
 
-    private async Task<IpmsSubmissionResponse> ToAuthorizedResponseAsync(IpmsSubmission submission, ApplicationUser user)
+    private async Task<IpmsSubmissionResponse> ToAuthorizedResponseAsync(IpmsSubmission submission, ApplicationUser user, string? canonicalStatus = null)
     {
+        canonicalStatus ??= await PerformanceApiSupport.ProjectCanonicalStatuses(
+                _context,
+                _context.IpmsSubmissions.AsNoTracking().Where(item => item.Id == submission.Id))
+            .Select(item => item.Status)
+            .SingleAsync();
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var response = ToAuthorizedResponse(submission, permissions);
+        var response = ToAuthorizedResponse(submission, permissions, canonicalStatus);
         var scope = BuildScope(submission);
         var projectionAccess = await GetProjectionMemberAccessAsync(user, scope);
         var withdrawnActor = projectionAccess.Contains("WithdrawalActor") && !string.IsNullOrWhiteSpace(submission.WithdrawnByUserId)
@@ -1484,9 +1498,9 @@ public class IpmsSubmissionsController : ControllerBase
             await CanReadAsync("DueDateExtensionActor"));
     }
 
-    private static IpmsSubmissionResponse ToAuthorizedResponse(IpmsSubmission submission, HashSet<string> permissions)
+    private static IpmsSubmissionResponse ToAuthorizedResponse(IpmsSubmission submission, HashSet<string> permissions, string canonicalStatus)
     {
-        var response = submission.ToResponse();
+        var response = submission.ToResponse(canonicalStatus);
         if (!permissions.Contains("IPMS_SUBMISSION.ActualPerformance.READ"))
             response = response with { ActualPerformance = null, ActualExpenditure = null, SystemSuggestedActualPerformance = null, WasSystemSuggestionEdited = false, SuggestionGeneratedDate = null, SuggestionEditedByUserPublicId = null, SuggestionEditedByName = null, SuggestionEditedAt = null, SuggestionEditReason = null, AchievementPercent = null, TargetAchieved = null };
         if (!permissions.Contains("IPMS_SUBMISSION.Variance.READ")) response = response with { Variance = null };
