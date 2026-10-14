@@ -4374,6 +4374,8 @@ Self-service profile audit now uses the same stable public user identity and exa
 
 Adversarial relational coverage proves request-identity rewrite rejection, incomplete terminal-state rejection, successful exact response persistence followed by immutable replay bytes, forged failure-response rejection and denial of active-row deletion while permitting expired retention cleanup. The existing middleware scenarios continue to prove successful replay without duplicate execution, request-body/query conflict, mandatory safe keys, tenant context, municipality isolation and fail-closed ambiguous failure. Focused verification passes **11/11**, and the complete backend regression passes **898 tests with 1 explicit native SQL Server-only skip and 0 failures**. No model, migration, provider-specific runtime branch or public API change is introduced.
 
+Inspection of the first pushed quality run exposed a newly published high/moderate advisory against the transitively resolved `System.Security.Cryptography.Pkcs` 9.0.4 even though the legacy `dotnet list package --vulnerable` command returned success. The host now pins the current .NET 10 servicing package `System.Security.Cryptography.Pkcs` 10.0.13, and the CI audit captures its output and fails explicitly whenever NuGet reports a vulnerable package instead of relying on the command exit code alone. Fresh host and test restores now report **no vulnerable packages**; the rebuilt test assembly has zero warnings/errors and again passes **898 tests with the single native SQL Server-only skip**.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**

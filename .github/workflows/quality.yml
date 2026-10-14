@@ -38,7 +38,16 @@ jobs:
         shell: pwsh
         run: ./tools/Invoke-OpmsSqlServerRecoveryDrill.ps1 -ValidateOnly
       - name: Audit backend dependencies
-        run: dotnet list FTCERP.Host.csproj package --vulnerable --include-transitive
+        shell: pwsh
+        run: |
+          $audit = dotnet list FTCERP.Host.csproj package --vulnerable --include-transitive 2>&1
+          $audit | Write-Output
+          if ($LASTEXITCODE -ne 0) {
+            throw "The backend dependency audit command failed with exit code $LASTEXITCODE."
+          }
+          if (($audit -join "`n") -match 'has the following vulnerable packages') {
+            throw "The backend dependency audit found one or more vulnerable packages."
+          }
       - name: Install frontend
         working-directory: ClientApp
         run: npm ci
