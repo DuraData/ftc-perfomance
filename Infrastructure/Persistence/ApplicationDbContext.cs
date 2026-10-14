@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using System.Security.Cryptography;
+using System.Text;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Security;
 
@@ -2348,6 +2350,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
         EnforceRefreshTokenHistory();
+        EnforceIdempotencyRequestHistory();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetWard>();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetAdditionalAssignee>();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetVoteNumber>();
@@ -3846,6 +3849,81 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             }
 
             throw new InvalidOperationException("Refresh-session identity, token digest, user, session, expiry, security stamp, authentication method and creation evidence are immutable.");
+        }
+    }
+
+    private void EnforceIdempotencyRequestHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries<IdempotencyRequest>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                var row = entry.Entity;
+                var expectedScope = row.MunicipalityId.HasValue ? $"municipality:{row.MunicipalityId.Value}" : "system";
+                var expectedIdentityHash = string.IsNullOrWhiteSpace(row.UserId) || string.IsNullOrWhiteSpace(row.Method)
+                    || string.IsNullOrWhiteSpace(row.Route) || string.IsNullOrWhiteSpace(row.IdempotencyKey)
+                    ? null
+                    : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                        $"{expectedScope}\n{row.UserId}\n{row.Method}\n{row.Route}\n{row.IdempotencyKey}")));
+                if (row.PublicId == Guid.Empty
+                    || row.ScopeKey != expectedScope || row.ScopeKey.Length > 64
+                    || row.IdentityHash?.Length != 64 || row.IdentityHash.Any(character => !Uri.IsHexDigit(character))
+                    || !string.Equals(row.IdentityHash, expectedIdentityHash, StringComparison.Ordinal)
+                    || string.IsNullOrWhiteSpace(row.UserId) || row.UserId.Length > 450
+                    || !string.Equals(row.Method, "POST", StringComparison.OrdinalIgnoreCase)
+                    || string.IsNullOrWhiteSpace(row.Route) || row.Route.Length > 600
+                    || string.IsNullOrWhiteSpace(row.IdempotencyKey) || row.IdempotencyKey.Length is < 8 or > 128
+                    || row.IdempotencyKey.Any(character => !char.IsAsciiLetterOrDigit(character) && character is not ('-' or '_' or '.' or ':'))
+                    || row.RequestHash?.Length != 64 || row.RequestHash.Any(character => !Uri.IsHexDigit(character))
+                    || row.State != IdempotencyRequestStates.InProgress
+                    || row.ResponseStatusCode.HasValue
+                    || row.ResponseContentType != null
+                    || row.ResponseLocation != null
+                    || row.ResponseETag != null
+                    || row.ResponseBody != null
+                    || row.CompletedAt.HasValue
+                    || row.ExpiresAt <= row.CreatedAt
+                    || string.IsNullOrWhiteSpace(row.CorrelationId) || row.CorrelationId.Length > 100)
+                    throw new InvalidOperationException("Idempotency records must begin as a complete, response-free in-progress request identity.");
+                continue;
+            }
+
+            if (entry.State == EntityState.Deleted)
+            {
+                if (entry.OriginalValues.GetValue<DateTime>(nameof(IdempotencyRequest.ExpiresAt)) > DateTime.UtcNow)
+                    throw new InvalidOperationException("Active idempotency replay history cannot be hard deleted before its retention period expires.");
+                continue;
+            }
+
+            if (entry.State != EntityState.Modified) continue;
+
+            EnsureOnlyProperties(entry,
+                [nameof(IdempotencyRequest.State), nameof(IdempotencyRequest.ResponseStatusCode),
+                    nameof(IdempotencyRequest.ResponseContentType), nameof(IdempotencyRequest.ResponseLocation),
+                    nameof(IdempotencyRequest.ResponseETag), nameof(IdempotencyRequest.ResponseBody),
+                    nameof(IdempotencyRequest.CompletedAt), nameof(IdempotencyRequest.RowVersion)],
+                "Idempotency request identity, ownership, request digest, retention and correlation evidence are immutable.");
+
+            var originalState = entry.OriginalValues.GetValue<string>(nameof(IdempotencyRequest.State));
+            var currentState = entry.CurrentValues.GetValue<string>(nameof(IdempotencyRequest.State));
+            var statusCode = entry.CurrentValues.GetValue<int?>(nameof(IdempotencyRequest.ResponseStatusCode));
+            var completedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(IdempotencyRequest.CompletedAt));
+            var responseBody = entry.CurrentValues.GetValue<byte[]?>(nameof(IdempotencyRequest.ResponseBody));
+            if (originalState != IdempotencyRequestStates.InProgress
+                || currentState is not (IdempotencyRequestStates.Completed or IdempotencyRequestStates.Failed)
+                || statusCode is < 100 or > 599
+                || !completedAt.HasValue
+                || completedAt.Value < entry.OriginalValues.GetValue<DateTime>(nameof(IdempotencyRequest.CreatedAt))
+                || responseBody == null)
+                throw new InvalidOperationException("Idempotency request state may advance exactly once from in-progress to a complete persisted response.");
+
+            if (currentState == IdempotencyRequestStates.Failed
+                && (statusCode != StatusCodes.Status500InternalServerError
+                    || entry.CurrentValues.GetValue<string?>(nameof(IdempotencyRequest.ResponseContentType)) != "application/problem+json"
+                    || responseBody.Length == 0
+                    || entry.CurrentValues.GetValue<string?>(nameof(IdempotencyRequest.ResponseLocation)) != null
+                    || entry.CurrentValues.GetValue<string?>(nameof(IdempotencyRequest.ResponseETag)) != null))
+                throw new InvalidOperationException("A failed idempotency request requires its exact terminal problem response evidence.");
         }
     }
 
