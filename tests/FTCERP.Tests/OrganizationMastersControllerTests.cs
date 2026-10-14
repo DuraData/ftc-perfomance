@@ -152,11 +152,15 @@ public sealed class OrganizationMastersControllerTests
         await using var staleContext = new ApplicationDbContext(options, new TenantContext(tenantAId, "stale-editor"));
         var currentWard = await tenantAContext.Wards.SingleAsync();
         var staleWard = await staleContext.Wards.SingleAsync();
+        var currentBefore = System.Text.Json.JsonSerializer.Serialize(WardSnapshot(currentWard));
         currentWard.Name = "Ward A updated";
-        tenantAContext.AuditTrails.Add(GovernanceAudit(tenantAId, "tenant-a", nameof(Ward), currentWard.PublicId, "Ward A", "Ward A updated"));
+        tenantAContext.AuditTrails.Add(GovernanceAudit(tenantAId, "tenant-a", nameof(Ward), currentWard.PublicId,
+            currentBefore, System.Text.Json.JsonSerializer.Serialize(WardSnapshot(currentWard))));
         await tenantAContext.SaveChangesAsync();
+        var staleBefore = System.Text.Json.JsonSerializer.Serialize(WardSnapshot(staleWard));
         staleWard.Name = "Stale overwrite";
-        staleContext.AuditTrails.Add(GovernanceAudit(tenantAId, "stale-editor", nameof(Ward), staleWard.PublicId, "Ward A", "Stale overwrite"));
+        staleContext.AuditTrails.Add(GovernanceAudit(tenantAId, "stale-editor", nameof(Ward), staleWard.PublicId,
+            staleBefore, System.Text.Json.JsonSerializer.Serialize(WardSnapshot(staleWard))));
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => staleContext.SaveChangesAsync());
 
         tenantAContext.Wards.Add(new Ward { MunicipalityId = tenantAId, LegacyMunicipality = "Reference A", Code = "W01", Name = "Duplicate", RowVersion = [1] });
@@ -437,6 +441,65 @@ public sealed class OrganizationMastersControllerTests
     }
 
     [Fact]
+    public async Task Organization_master_identity_and_source_evidence_cannot_be_rewritten()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 722;
+        await SeedOrganizationRoots(options, municipalityId);
+        await using var context = new ApplicationDbContext(options, new TenantContext(municipalityId, "organization-governor"));
+
+        var department = await context.Departments.SingleAsync();
+        department.PublicId = Guid.NewGuid();
+        var departmentRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("Department identity and municipality ownership are immutable", departmentRewrite.Message);
+
+        context.ChangeTracker.Clear();
+        var unit = await context.Units.SingleAsync();
+        unit.PublicId = Guid.NewGuid();
+        var unitRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("Unit identity and municipality ownership are immutable", unitRewrite.Message);
+
+        context.ChangeTracker.Clear();
+        var position = await context.Positions.SingleAsync();
+        position.PublicId = Guid.NewGuid();
+        var positionRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("Position identity and municipality ownership are immutable", positionRewrite.Message);
+
+        context.ChangeTracker.Clear();
+        var ward = await context.Wards.SingleAsync();
+        ward.LegacyMunicipality = "Forged legacy source";
+        var wardRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("Ward identity, municipality ownership and legacy source evidence are immutable", wardRewrite.Message);
+
+        context.ChangeTracker.Clear();
+        var vote = await context.VoteNumbers.SingleAsync();
+        vote.PublicId = Guid.NewGuid();
+        var voteRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("Vote-number identity and municipality ownership are immutable", voteRewrite.Message);
+    }
+
+    [Fact]
+    public async Task Organization_master_rejects_forged_audit_snapshots()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 723;
+        await SeedOrganizationRoots(options, municipalityId);
+        await using var context = new ApplicationDbContext(options, new TenantContext(municipalityId, "organization-governor"));
+        var department = await context.Departments.SingleAsync();
+        department.Name = "Forged Finance";
+        context.AuditTrails.Add(GovernanceAudit(municipalityId, "organization-governor", nameof(Department), department.PublicId,
+            "{\"Code\":\"FORGED\",\"Name\":\"Finance\",\"Description\":null,\"IsActive\":true,\"EffectiveFrom\":\"2037-07-01T00:00:00\",\"EffectiveTo\":null}",
+            "{\"Code\":\"FORGED\",\"Name\":\"Forged Finance\",\"Description\":null,\"IsActive\":true,\"EffectiveFrom\":\"2037-07-01T00:00:00\",\"EffectiveTo\":null}"));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("one exact same-transaction reasoned before/after audit", exception.Message);
+    }
+
+    [Fact]
     public async Task CreateAssignment_uses_governed_position_and_preserves_its_snapshot()
     {
         var tenant = new TenantContext(73, "org-admin");
@@ -483,6 +546,29 @@ public sealed class OrganizationMastersControllerTests
     }
 
     private static ApplicationDbContext NewContext(ITenantContext tenant) => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options, tenant);
+    private static object WardSnapshot(Ward item) => new
+    {
+        item.Code, item.Name, item.IsActive, item.EffectiveFrom, item.EffectiveTo
+    };
+    private static async Task SeedOrganizationRoots(DbContextOptions<ApplicationDbContext> options, long municipalityId)
+    {
+        await using var setup = new ApplicationDbContext(options, new SystemTenantContext());
+        await setup.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Id = municipalityId, Code = $"ORG-{municipalityId}", Name = "Organization Municipality" };
+        var year = new FinancialYear { Code = "2037/38", Name = "2037/38", StartDate = new DateTime(2037, 7, 1), EndDate = new DateTime(2038, 6, 30) };
+        var department = new Department { MunicipalityId = municipalityId, Code = "FIN", Name = "Finance", EffectiveFrom = year.StartDate };
+        setup.AddRange(municipality, year, department);
+        await setup.SaveChangesAsync();
+        var municipalityYear = new MunicipalityFinancialYear { MunicipalityId = municipalityId, FinancialYearId = year.Id, EffectiveFrom = year.StartDate };
+        setup.MunicipalityFinancialYears.Add(municipalityYear);
+        await setup.SaveChangesAsync();
+        setup.AddRange(
+            new Unit { MunicipalityId = municipalityId, DepartmentId = department.Id, Code = "BUD", Name = "Budget", EffectiveFrom = year.StartDate },
+            new Position { MunicipalityId = municipalityId, DepartmentId = department.Id, Code = "CFO", Name = "Chief Financial Officer", EffectiveFrom = year.StartDate },
+            new Ward { MunicipalityId = municipalityId, LegacyMunicipality = municipality.Name, Code = "W01", Name = "Ward One", EffectiveFrom = year.StartDate },
+            new VoteNumber { MunicipalityId = municipalityId, MunicipalityFinancialYearId = municipalityYear.Id, DepartmentId = department.Id, Code = "V01", Number = "001", Name = "Operating Vote", EffectiveFrom = year.StartDate });
+        await setup.SaveChangesAsync();
+    }
     private static AuditTrail GovernanceAudit(long municipalityId, string changedBy, string entityName, Guid publicId, string oldValue, string newValue) => new()
     {
         MunicipalityId = municipalityId, EntityName = entityName, EntityId = publicId.ToString(), Action = "Update",
@@ -494,7 +580,7 @@ public sealed class OrganizationMastersControllerTests
         var entity = await set.SingleAsync();
         mutate(entity);
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
-        Assert.Contains("same-transaction reasoned before/after audit evidence", exception.Message);
+        Assert.Contains("one exact same-transaction reasoned before/after audit", exception.Message);
         context.ChangeTracker.Clear();
     }
     private static async Task AssertHardDeleteRejected<TEntity>(ApplicationDbContext context, DbSet<TEntity> set) where TEntity : class

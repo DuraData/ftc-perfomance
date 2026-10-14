@@ -2347,6 +2347,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceMunicipalityRootHistory();
         EnforceApplicationUserRootHistory();
         EnforceTenantCalendarHistory();
+        EnforceOrganizationMasterHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
@@ -2490,22 +2491,6 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Municipal-employee history cannot be hard deleted.");
         foreach (var entry in ChangeTracker.Entries<MunicipalEmployee>().Where(entry => entry.State == EntityState.Modified))
             RequireGovernanceAudit(nameof(MunicipalEmployee), entry.Entity.PublicId, entry.Entity.MunicipalityId);
-        if (ChangeTracker.Entries<Department>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<Unit>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<Position>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<Ward>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<VoteNumber>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Organization-master history cannot be hard deleted.");
-        foreach (var entry in ChangeTracker.Entries<Department>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(Department), entry.Entity.PublicId, entry.Entity.MunicipalityId);
-        foreach (var entry in ChangeTracker.Entries<Unit>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(Unit), entry.Entity.PublicId, entry.Entity.MunicipalityId);
-        foreach (var entry in ChangeTracker.Entries<Position>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(Position), entry.Entity.PublicId, entry.Entity.MunicipalityId);
-        foreach (var entry in ChangeTracker.Entries<Ward>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(Ward), entry.Entity.PublicId, entry.Entity.MunicipalityId);
-        foreach (var entry in ChangeTracker.Entries<VoteNumber>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(VoteNumber), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         if (ChangeTracker.Entries<StrategicDocumentType>().Any(entry => entry.State == EntityState.Deleted))
             throw new InvalidOperationException("Strategic-document type history cannot be hard deleted.");
         foreach (var entry in ChangeTracker.Entries<StrategicDocumentType>().Where(entry => entry.State == EntityState.Modified))
@@ -3693,6 +3678,121 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 entry.OriginalValues.GetValue<Guid>(nameof(SdbipLayer.PublicId)),
                 entry.OriginalValues.GetValue<long>(nameof(SdbipLayer.MunicipalityId)), snapshotFields);
         }
+    }
+
+    private void EnforceOrganizationMasterHistory()
+    {
+        if (ChangeTracker.Entries<Department>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<Unit>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<Position>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<Ward>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<VoteNumber>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Organization-master history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<Department>().Where(entry => entry.State == EntityState.Modified))
+        {
+            if (IsExactTenantOwnershipReconciliation(entry, nameof(Department))) continue;
+            var snapshotFields = new[]
+            {
+                nameof(Department.Code), nameof(Department.Name), nameof(Department.Description), nameof(Department.IsActive),
+                nameof(Department.EffectiveFrom), nameof(Department.EffectiveTo)
+            };
+            EnsureOnlyProperties(entry, [.. snapshotFields, nameof(Department.RowVersion)],
+                "Department identity and municipality ownership are immutable outside controlled legacy reconciliation.");
+            RequireExactRootAudit(entry, nameof(Department), entry.OriginalValues.GetValue<Guid>(nameof(Department.PublicId)),
+                entry.OriginalValues.GetValue<long?>(nameof(Department.MunicipalityId)), snapshotFields);
+        }
+
+        foreach (var entry in ChangeTracker.Entries<Unit>().Where(entry => entry.State == EntityState.Modified))
+        {
+            if (IsExactTenantOwnershipReconciliation(entry, nameof(Unit))) continue;
+            var snapshotFields = new[]
+            {
+                nameof(Domain.Entities.Unit.DepartmentId), nameof(Domain.Entities.Unit.Code), nameof(Domain.Entities.Unit.Name),
+                nameof(Domain.Entities.Unit.IsActive), nameof(Domain.Entities.Unit.EffectiveFrom), nameof(Domain.Entities.Unit.EffectiveTo)
+            };
+            EnsureOnlyProperties(entry, [.. snapshotFields, nameof(Domain.Entities.Unit.RowVersion)],
+                "Unit identity and municipality ownership are immutable outside controlled legacy reconciliation.");
+            RequireExactRootAudit(entry, nameof(Domain.Entities.Unit),
+                entry.OriginalValues.GetValue<Guid>(nameof(Domain.Entities.Unit.PublicId)),
+                entry.OriginalValues.GetValue<long?>(nameof(Domain.Entities.Unit.MunicipalityId)), snapshotFields);
+        }
+
+        foreach (var entry in ChangeTracker.Entries<Position>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(Position.DepartmentId), nameof(Position.UnitId), nameof(Position.Code), nameof(Position.Name),
+                nameof(Position.Grade), nameof(Position.IsActive), nameof(Position.EffectiveFrom), nameof(Position.EffectiveTo)
+            };
+            EnsureOnlyProperties(entry, [.. snapshotFields, nameof(Position.RowVersion)],
+                "Position identity and municipality ownership are immutable.");
+            RequireExactRootAudit(entry, nameof(Position), entry.OriginalValues.GetValue<Guid>(nameof(Position.PublicId)),
+                entry.OriginalValues.GetValue<long>(nameof(Position.MunicipalityId)), snapshotFields);
+        }
+
+        foreach (var entry in ChangeTracker.Entries<Ward>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(Ward.Code), nameof(Ward.Name), nameof(Ward.IsActive), nameof(Ward.EffectiveFrom), nameof(Ward.EffectiveTo)
+            };
+            EnsureOnlyProperties(entry, [.. snapshotFields, nameof(Ward.RowVersion)],
+                "Ward identity, municipality ownership and legacy source evidence are immutable.");
+            RequireExactRootAudit(entry, nameof(Ward), entry.OriginalValues.GetValue<Guid>(nameof(Ward.PublicId)),
+                entry.OriginalValues.GetValue<long>(nameof(Ward.MunicipalityId)), snapshotFields);
+        }
+
+        foreach (var entry in ChangeTracker.Entries<VoteNumber>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(VoteNumber.MunicipalityFinancialYearId), nameof(VoteNumber.DepartmentId), nameof(VoteNumber.Code),
+                nameof(VoteNumber.Number), nameof(VoteNumber.Name), nameof(VoteNumber.Amount), nameof(VoteNumber.IsActive),
+                nameof(VoteNumber.EffectiveFrom), nameof(VoteNumber.EffectiveTo)
+            };
+            EnsureOnlyProperties(entry, [.. snapshotFields, nameof(VoteNumber.RowVersion)],
+                "Vote-number identity and municipality ownership are immutable.");
+            RequireExactRootAudit(entry, nameof(VoteNumber), entry.OriginalValues.GetValue<Guid>(nameof(VoteNumber.PublicId)),
+                entry.OriginalValues.GetValue<long>(nameof(VoteNumber.MunicipalityId)), snapshotFields);
+        }
+    }
+
+    private bool IsExactTenantOwnershipReconciliation<TEntity>(EntityEntry<TEntity> entry, string entityName) where TEntity : class
+    {
+        if (!_tenantOwnershipReconciliationActive) return false;
+        var changed = entry.Properties.Where(property => property.IsModified && !property.Metadata.IsConcurrencyToken)
+            .Select(property => property.Metadata.Name).ToArray();
+        if (changed.Length != 1 || changed[0] != "MunicipalityId") return false;
+        var originalMunicipalityId = entry.OriginalValues["MunicipalityId"] as long?;
+        var currentMunicipalityId = entry.CurrentValues["MunicipalityId"] as long?;
+        var publicId = entry.OriginalValues.GetValue<Guid>("PublicId");
+        if (originalMunicipalityId.HasValue || currentMunicipalityId is not > 0
+            || _tenantContext is not { IsSystem: true, MunicipalityId: > 0 }
+            || currentMunicipalityId != _tenantContext.MunicipalityId)
+            throw new InvalidOperationException("Legacy organization ownership may be assigned only once to the selected municipality.");
+
+        var reconciliations = ChangeTracker.Entries<LegacyTenantOwnershipReconciliation>().Where(candidate =>
+            candidate.State == EntityState.Added
+            && candidate.Entity.EntityType == entityName
+            && candidate.Entity.EntityPublicId == publicId
+            && candidate.Entity.MunicipalityId == currentMunicipalityId
+            && !string.IsNullOrWhiteSpace(candidate.Entity.SourceEvidence)
+            && !string.IsNullOrWhiteSpace(candidate.Entity.ReconciledByUserId)
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && !string.IsNullOrWhiteSpace(candidate.Entity.CorrelationId)).ToArray();
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName
+            && candidate.Entity.EntityId == publicId.ToString()
+            && candidate.Entity.Action == "Update"
+            && candidate.Entity.MunicipalityId == currentMunicipalityId
+            && candidate.Entity.OldValue != null && candidate.Entity.NewValue != null
+            && reconciliations.Length == 1
+            && candidate.Entity.ChangedBy == reconciliations[0].Entity.ReconciledByUserId
+            && candidate.Entity.Reason == reconciliations[0].Entity.Reason).ToArray();
+        if (reconciliations.Length != 1 || audits.Length != 1)
+            throw new InvalidOperationException("Legacy organization ownership reconciliation requires exact same-transaction provenance and audit evidence.");
+        return true;
     }
 
     private void RequireExactRootAudit<TEntity>(EntityEntry<TEntity> entry, string entityName, Guid publicId,
