@@ -4384,6 +4384,8 @@ The OPMS and IPMS target roots previously rejected hard deletion but still permi
 
 Existing test harnesses that mocked away production audit persistence now use the real governance service, and historic-invalid-data tests inject their pre-existing compatibility state below the application boundary rather than weakening the runtime invariant. Five new relational adversarial tests prove original/identity rewrite rejection, unaudited edit rejection, forged withdrawal rejection, exact one-way withdrawal followed by terminal immutability and exact definition-revision evidence. The expanded affected regression passes **70/70** and the complete backend regression passes **903 tests with 1 explicit native SQL Server-only skip and 0 failures**. The Release host builds with **0 warnings and 0 errors**. No model, migration, provider-specific application branch, public API or frontend contract changes.
 
+Implementation commit `1cc51e1401c2594fa074bd34ebe16e87e7ecc770` is on both `codex/dev` and `main`. GitHub Actions run `38633218590`, job `116089800811`, verified that exact revision in **7m08s**: **903 backend tests passed, 1 explicit native SQL Server-only skip, 400/400 frontend tests across 80 files, 2/2 accessibility tests, zero build warnings/errors, no vulnerable backend packages, 2,113 transformed modules, a passing 77-chunk/401.6-KiB bundle budget, no detected secrets and zero annotations**. Migration generation, recovery-safety validation, TypeScript type-check, ESLint and the frontend dependency audit also passed.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
