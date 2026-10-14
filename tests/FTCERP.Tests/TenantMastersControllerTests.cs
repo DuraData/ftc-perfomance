@@ -203,7 +203,7 @@ public sealed class TenantMastersControllerTests
         };
 
         var createdResult = await controller.CreateEmployee(new SaveEmployeeRequest(
-            "E083", "Salary", "Protected", null, null, DateTime.UtcNow.AddDays(-1), null, "SAL-083",
+            "E083", "Salary", "Protected", null, user.PublicId, DateTime.UtcNow.AddDays(-1), null, "SAL-083",
             "Approved employee master creation"));
         var created = Assert.IsType<ApiResponse<EmployeeDto>>(Assert.IsType<OkObjectResult>(createdResult.Result).Value).Data!;
         Assert.Equal("SAL-083", created.SalaryReference);
@@ -219,6 +219,7 @@ public sealed class TenantMastersControllerTests
         Assert.Equal("Approved employee master creation", audits[0].Reason);
         Assert.Null(audits[0].OldValue);
         Assert.Contains("\"SalaryReference\":\"SAL-083\"", audits[0].NewValue);
+        Assert.Contains($"\"IdentityUserPublicId\":\"{user.PublicId}\"", audits[0].NewValue, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("Approved salary reference correction", audits[1].Reason);
         Assert.Contains("\"SalaryReference\":\"SAL-083\"", audits[1].OldValue);
         Assert.Contains("\"SalaryReference\":\"SAL-083-REVISED\"", audits[1].NewValue);
@@ -247,13 +248,75 @@ public sealed class TenantMastersControllerTests
         var employee = await context.MunicipalEmployees.SingleAsync();
         employee.LastName = "Silent rewrite";
         var rewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
-        Assert.Contains("same-transaction reasoned before/after audit evidence", rewrite.Message);
+        Assert.Contains("one exact same-transaction reasoned before/after audit", rewrite.Message);
 
         context.ChangeTracker.Clear();
         employee = await context.MunicipalEmployees.SingleAsync();
         context.MunicipalEmployees.Remove(employee);
         var deletion = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
         Assert.Contains("cannot be hard deleted", deletion.Message);
+    }
+
+    [Fact]
+    public async Task Employee_master_identity_and_employee_number_cannot_be_rewritten()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 85;
+        await SeedEmployeeRoot(options, municipalityId);
+        await using var context = new ApplicationDbContext(options, new TestTenantContext(municipalityId, "employee-governor"));
+
+        var employee = await context.MunicipalEmployees.SingleAsync();
+        employee.PublicId = Guid.NewGuid();
+        var identityRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("Municipal-employee identity, employee number and municipality ownership are immutable", identityRewrite.Message);
+
+        context.ChangeTracker.Clear();
+        employee = await context.MunicipalEmployees.SingleAsync();
+        employee.EmployeeNumber = "FORGED-EMPLOYEE-NUMBER";
+        var numberRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("Municipal-employee identity, employee number and municipality ownership are immutable", numberRewrite.Message);
+    }
+
+    [Fact]
+    public async Task Employee_master_rejects_forged_audit_snapshots()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 86;
+        var identityPublicId = await SeedEmployeeRoot(options, municipalityId);
+        await using var context = new ApplicationDbContext(options, new TestTenantContext(municipalityId, "employee-governor"));
+        var employee = await context.MunicipalEmployees.SingleAsync();
+        var forgedIdentityPublicId = Guid.NewGuid();
+        var oldValue = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            employee.EmployeeNumber, employee.SalaryReference, employee.FirstName, employee.LastName, employee.EmailAddress,
+            IdentityUserPublicId = forgedIdentityPublicId, employee.IsActive, employee.EffectiveFrom, employee.EffectiveTo
+        });
+        employee.LastName = "Forged Employee";
+        var newValue = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            employee.EmployeeNumber, employee.SalaryReference, employee.FirstName, employee.LastName, employee.EmailAddress,
+            IdentityUserPublicId = forgedIdentityPublicId, employee.IsActive, employee.EffectiveFrom, employee.EffectiveTo
+        });
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId,
+            EntityName = nameof(MunicipalEmployee),
+            EntityId = employee.PublicId.ToString(),
+            Action = "Update",
+            OldValue = oldValue,
+            NewValue = newValue,
+            ChangedBy = "employee-governor",
+            ChangedAt = DateTime.UtcNow,
+            Reason = "Approved employee master correction"
+        });
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("one exact same-transaction reasoned before/after audit", exception.Message);
+        Assert.NotEqual(identityPublicId, forgedIdentityPublicId);
     }
 
     [Fact]
@@ -451,6 +514,28 @@ public sealed class TenantMastersControllerTests
     {
         ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
     };
+
+    private static async Task<Guid> SeedEmployeeRoot(DbContextOptions<ApplicationDbContext> options, long municipalityId)
+    {
+        await using var setup = new ApplicationDbContext(options, new TestTenantContext(null, "system", true));
+        await setup.Database.EnsureCreatedAsync();
+        var identity = IdpTestFixture.CreateUser($"employee-{municipalityId}");
+        identity.MunicipalityId = municipalityId;
+        setup.AddRange(
+            new Municipality { Id = municipalityId, Code = $"EMP-{municipalityId}", Name = "Employee Municipality" },
+            identity,
+            new MunicipalEmployee
+            {
+                MunicipalityId = municipalityId,
+                EmployeeNumber = $"E{municipalityId}",
+                FirstName = "Protected",
+                LastName = "Employee",
+                IdentityUserId = identity.Id,
+                EffectiveFrom = new DateTime(2038, 7, 1)
+            });
+        await setup.SaveChangesAsync();
+        return identity.PublicId;
+    }
 
     private sealed class TestTenantContext(long? municipalityId, string userId, bool isSystem = false) : ITenantContext
     {

@@ -2348,6 +2348,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceApplicationUserRootHistory();
         EnforceTenantCalendarHistory();
         EnforceOrganizationMasterHistory();
+        EnforceMunicipalEmployeeHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
@@ -2487,10 +2488,6 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             if (!bindingChanged && !authenticatedChanged && !statusChanged)
                 throw new InvalidOperationException("Enterprise-authenticator history cannot be rewritten.");
         }
-        if (ChangeTracker.Entries<MunicipalEmployee>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Municipal-employee history cannot be hard deleted.");
-        foreach (var entry in ChangeTracker.Entries<MunicipalEmployee>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(MunicipalEmployee), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         if (ChangeTracker.Entries<StrategicDocumentType>().Any(entry => entry.State == EntityState.Deleted))
             throw new InvalidOperationException("Strategic-document type history cannot be hard deleted.");
         foreach (var entry in ChangeTracker.Entries<StrategicDocumentType>().Where(entry => entry.State == EntityState.Modified))
@@ -3755,6 +3752,75 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 "Vote-number identity and municipality ownership are immutable.");
             RequireExactRootAudit(entry, nameof(VoteNumber), entry.OriginalValues.GetValue<Guid>(nameof(VoteNumber.PublicId)),
                 entry.OriginalValues.GetValue<long>(nameof(VoteNumber.MunicipalityId)), snapshotFields);
+        }
+    }
+
+    private void EnforceMunicipalEmployeeHistory()
+    {
+        if (ChangeTracker.Entries<MunicipalEmployee>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Municipal-employee history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<MunicipalEmployee>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(MunicipalEmployee.EmployeeNumber), nameof(MunicipalEmployee.SalaryReference),
+                nameof(MunicipalEmployee.FirstName), nameof(MunicipalEmployee.LastName), nameof(MunicipalEmployee.EmailAddress),
+                nameof(MunicipalEmployee.IsActive), nameof(MunicipalEmployee.EffectiveFrom), nameof(MunicipalEmployee.EffectiveTo)
+            };
+            EnsureOnlyProperties(entry,
+                [nameof(MunicipalEmployee.SalaryReference), nameof(MunicipalEmployee.FirstName), nameof(MunicipalEmployee.LastName),
+                    nameof(MunicipalEmployee.EmailAddress), nameof(MunicipalEmployee.IdentityUserId), nameof(MunicipalEmployee.IsActive),
+                    nameof(MunicipalEmployee.EffectiveFrom), nameof(MunicipalEmployee.EffectiveTo), nameof(MunicipalEmployee.RowVersion)],
+                "Municipal-employee identity, employee number and municipality ownership are immutable.");
+
+            var publicId = entry.OriginalValues.GetValue<Guid>(nameof(MunicipalEmployee.PublicId));
+            var municipalityId = entry.OriginalValues.GetValue<long>(nameof(MunicipalEmployee.MunicipalityId));
+            var originalIdentityPublicId = ResolveIdentityUserPublicId(
+                entry.OriginalValues.GetValue<string?>(nameof(MunicipalEmployee.IdentityUserId)));
+            var currentIdentityPublicId = ResolveIdentityUserPublicId(
+                entry.CurrentValues.GetValue<string?>(nameof(MunicipalEmployee.IdentityUserId)));
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == nameof(MunicipalEmployee)
+                && candidate.Entity.EntityId == publicId.ToString()
+                && candidate.Entity.Action == "Update"
+                && candidate.Entity.MunicipalityId == municipalityId
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
+                && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
+                && EmployeeIdentitySnapshotMatches(candidate.Entity.OldValue, originalIdentityPublicId)
+                && EmployeeIdentitySnapshotMatches(candidate.Entity.NewValue, currentIdentityPublicId)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException("MunicipalEmployee changes require one exact same-transaction reasoned before/after audit.");
+        }
+    }
+
+    private Guid? ResolveIdentityUserPublicId(string? identityUserId)
+    {
+        if (string.IsNullOrWhiteSpace(identityUserId)) return null;
+        var tracked = ChangeTracker.Entries<ApplicationUser>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == identityUserId)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? Users.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == identityUserId)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private static bool EmployeeIdentitySnapshotMatches(string? json, Guid? expectedPublicId)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            if (!TryGetJsonProperty(document.RootElement, "IdentityUserPublicId", out var actual)) return false;
+            if (!expectedPublicId.HasValue) return actual.ValueKind == System.Text.Json.JsonValueKind.Null;
+            return actual.ValueKind == System.Text.Json.JsonValueKind.String
+                && actual.TryGetGuid(out var actualPublicId) && actualPublicId == expectedPublicId.Value;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
         }
     }
 
