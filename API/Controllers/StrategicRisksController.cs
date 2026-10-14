@@ -140,7 +140,20 @@ public sealed class StrategicRisksController(
             return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskDto>("Strategic risk owner update permission is required."));
         if (await DuplicateReference(normalized.Reference, entity.Id)) return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists."));
         var previousOwnerPublicId = entity.OwnerUserId == null ? (Guid?)null : await context.Users.Where(item => item.Id == entity.OwnerUserId).Select(item => (Guid?)item.PublicId).SingleOrDefaultAsync();
-        var before = new { entity.RiskReference, entity.RiskTitle, entity.RiskDescription, OwnerUserPublicId = previousOwnerPublicId, entity.EffectiveFromMunicipalityFinancialYearId, entity.EffectiveToMunicipalityFinancialYearId, entity.IsActive };
+        var previousYearIds = new[] { entity.EffectiveFromMunicipalityFinancialYearId, entity.EffectiveToMunicipalityFinancialYearId }
+            .Where(item => item.HasValue).Select(item => item!.Value).Distinct().ToArray();
+        var previousYears = await context.MunicipalityFinancialYears.Where(item => previousYearIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.PublicId }).ToArrayAsync();
+        var previousFromYearPublicId = entity.EffectiveFromMunicipalityFinancialYearId.HasValue
+            ? previousYears.Single(item => item.Id == entity.EffectiveFromMunicipalityFinancialYearId.Value).PublicId : (Guid?)null;
+        var previousToYearPublicId = entity.EffectiveToMunicipalityFinancialYearId.HasValue
+            ? previousYears.Single(item => item.Id == entity.EffectiveToMunicipalityFinancialYearId.Value).PublicId : (Guid?)null;
+        var before = new
+        {
+            entity.RiskReference, entity.RiskTitle, entity.RiskDescription, OwnerUserPublicId = previousOwnerPublicId,
+            EffectiveFromMunicipalityFinancialYearPublicId = previousFromYearPublicId,
+            EffectiveToMunicipalityFinancialYearPublicId = previousToYearPublicId, entity.IsActive
+        };
         context.Entry(entity).Property(item => item.RowVersion).OriginalValue = expected;
         entity.RiskReference = normalized.Reference;
         entity.RiskTitle = normalized.Title;

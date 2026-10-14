@@ -2350,6 +2350,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceOrganizationMasterHistory();
         EnforceMunicipalEmployeeHistory();
         EnforceStrategicDocumentTypeHistory();
+        EnforceStrategicRiskHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
@@ -2489,10 +2490,6 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             if (!bindingChanged && !authenticatedChanged && !statusChanged)
                 throw new InvalidOperationException("Enterprise-authenticator history cannot be rewritten.");
         }
-        if (ChangeTracker.Entries<StrategicRisk>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Strategic-risk master history cannot be hard deleted.");
-        foreach (var entry in ChangeTracker.Entries<StrategicRisk>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(StrategicRisk), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         RejectRewrites<StrategicRiskAssessment>("Strategic-risk assessment history is append-only.");
         RejectRewrites<StrategicRiskReview>("Strategic-risk review history is append-only.");
         if (ChangeTracker.Entries<StrategicRiskTreatment>().Any(entry => entry.State == EntityState.Deleted))
@@ -3838,6 +3835,90 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             RequireExactRootAudit(entry, nameof(StrategicDocumentType),
                 entry.OriginalValues.GetValue<Guid>(nameof(StrategicDocumentType.PublicId)),
                 entry.OriginalValues.GetValue<long>(nameof(StrategicDocumentType.MunicipalityId)), snapshotFields);
+        }
+    }
+
+    private void EnforceStrategicRiskHistory()
+    {
+        if (ChangeTracker.Entries<StrategicRisk>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Strategic-risk master history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<StrategicRisk>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(StrategicRisk.RiskReference), nameof(StrategicRisk.RiskTitle), nameof(StrategicRisk.RiskDescription),
+                nameof(StrategicRisk.IsActive)
+            };
+            EnsureOnlyProperties(entry,
+                [.. snapshotFields, nameof(StrategicRisk.OwnerUserId), nameof(StrategicRisk.EffectiveFromMunicipalityFinancialYearId),
+                    nameof(StrategicRisk.EffectiveToMunicipalityFinancialYearId), nameof(StrategicRisk.UpdatedAt),
+                    nameof(StrategicRisk.UpdatedByUserId), nameof(StrategicRisk.RowVersion)],
+                "Strategic-risk identity, municipality ownership and creation evidence are immutable.");
+
+            var publicId = entry.OriginalValues.GetValue<Guid>(nameof(StrategicRisk.PublicId));
+            var municipalityId = entry.OriginalValues.GetValue<long>(nameof(StrategicRisk.MunicipalityId));
+            var changedBy = entry.CurrentValues.GetValue<string?>(nameof(StrategicRisk.UpdatedByUserId));
+            if (string.IsNullOrWhiteSpace(changedBy)
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(StrategicRisk.UpdatedAt)).HasValue)
+                throw new InvalidOperationException("Strategic-risk changes require complete update actor and timestamp evidence.");
+
+            var originalOwnerPublicId = ResolveIdentityUserPublicId(entry.OriginalValues.GetValue<string?>(nameof(StrategicRisk.OwnerUserId)));
+            var currentOwnerPublicId = ResolveIdentityUserPublicId(entry.CurrentValues.GetValue<string?>(nameof(StrategicRisk.OwnerUserId)));
+            var originalFromYearPublicId = ResolveMunicipalityFinancialYearPublicId(
+                entry.OriginalValues.GetValue<long?>(nameof(StrategicRisk.EffectiveFromMunicipalityFinancialYearId)));
+            var currentFromYearPublicId = ResolveMunicipalityFinancialYearPublicId(
+                entry.CurrentValues.GetValue<long?>(nameof(StrategicRisk.EffectiveFromMunicipalityFinancialYearId)));
+            var originalToYearPublicId = ResolveMunicipalityFinancialYearPublicId(
+                entry.OriginalValues.GetValue<long?>(nameof(StrategicRisk.EffectiveToMunicipalityFinancialYearId)));
+            var currentToYearPublicId = ResolveMunicipalityFinancialYearPublicId(
+                entry.CurrentValues.GetValue<long?>(nameof(StrategicRisk.EffectiveToMunicipalityFinancialYearId)));
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == nameof(StrategicRisk)
+                && candidate.Entity.EntityId == publicId.ToString()
+                && candidate.Entity.Action == "Update"
+                && candidate.Entity.MunicipalityId == municipalityId
+                && candidate.Entity.ChangedBy == changedBy
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
+                && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
+                && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "OwnerUserPublicId", originalOwnerPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.NewValue, "OwnerUserPublicId", currentOwnerPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "EffectiveFromMunicipalityFinancialYearPublicId", originalFromYearPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.NewValue, "EffectiveFromMunicipalityFinancialYearPublicId", currentFromYearPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "EffectiveToMunicipalityFinancialYearPublicId", originalToYearPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.NewValue, "EffectiveToMunicipalityFinancialYearPublicId", currentToYearPublicId)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException("StrategicRisk changes require one exact same-transaction reasoned before/after audit.");
+        }
+    }
+
+    private Guid? ResolveMunicipalityFinancialYearPublicId(long? municipalityFinancialYearId)
+    {
+        if (!municipalityFinancialYearId.HasValue) return null;
+        var tracked = ChangeTracker.Entries<MunicipalityFinancialYear>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == municipalityFinancialYearId.Value)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? MunicipalityFinancialYears.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == municipalityFinancialYearId.Value)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private static bool NullableGuidSnapshotMatches(string? json, string field, Guid? expected)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            if (!TryGetJsonProperty(document.RootElement, field, out var actual)) return false;
+            if (!expected.HasValue) return actual.ValueKind == System.Text.Json.JsonValueKind.Null;
+            return actual.ValueKind == System.Text.Json.JsonValueKind.String
+                && actual.TryGetGuid(out var actualGuid) && actualGuid == expected.Value;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
         }
     }
 

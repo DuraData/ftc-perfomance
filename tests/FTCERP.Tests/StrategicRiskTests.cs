@@ -84,7 +84,7 @@ public sealed class StrategicRiskTests
         var directRisk = await context.StrategicRisks.SingleAsync(item => item.PublicId == risk.PublicId);
         directRisk.RiskTitle = "Unaudited rewrite";
         (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
-            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+            .WithMessage("*complete update actor and timestamp evidence*");
 
         context.ChangeTracker.Clear();
         context.StrategicRisks.Remove(await context.StrategicRisks.SingleAsync(item => item.PublicId == risk.PublicId));
@@ -101,6 +101,57 @@ public sealed class StrategicRiskTests
         context.OpmsKpiStrategicRisks.Remove(await context.OpmsKpiStrategicRisks.SingleAsync(item => item.PublicId == link.PublicId));
         (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
             .WithMessage("*cannot be hard deleted*");
+    }
+
+    [Fact]
+    public async Task Risk_master_rejects_identity_rewrites_and_forged_public_scope_audits()
+    {
+        const long municipalityId = 9113;
+        var user = IdpTestFixture.CreateUser("risk-root-governor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+        var risk = Data(await Controller(context, user, municipalityId).Create(Request("ROOT", "Governed root risk", seed.Year.PublicId)));
+
+        context.ChangeTracker.Clear();
+        var directRisk = await context.StrategicRisks.SingleAsync(item => item.PublicId == risk.PublicId);
+        directRisk.PublicId = Guid.NewGuid();
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*identity, municipality ownership and creation evidence are immutable*");
+
+        context.ChangeTracker.Clear();
+        directRisk = await context.StrategicRisks.SingleAsync(item => item.PublicId == risk.PublicId);
+        var originalTitle = directRisk.RiskTitle;
+        var forgedYearPublicId = Guid.NewGuid();
+        var before = new
+        {
+            directRisk.RiskReference,
+            directRisk.RiskTitle,
+            directRisk.RiskDescription,
+            OwnerUserPublicId = (Guid?)null,
+            EffectiveFromMunicipalityFinancialYearPublicId = forgedYearPublicId,
+            EffectiveToMunicipalityFinancialYearPublicId = forgedYearPublicId,
+            directRisk.IsActive
+        };
+        directRisk.RiskTitle = "Forged governed root risk";
+        directRisk.UpdatedAt = DateTime.UtcNow;
+        directRisk.UpdatedByUserId = user.Id;
+        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id))
+            .QueueAuditTrail(nameof(StrategicRisk), directRisk.PublicId.ToString(), "Update", before,
+                new
+                {
+                    directRisk.RiskReference,
+                    directRisk.RiskTitle,
+                    directRisk.RiskDescription,
+                    OwnerUserPublicId = (Guid?)null,
+                    EffectiveFromMunicipalityFinancialYearPublicId = forgedYearPublicId,
+                    EffectiveToMunicipalityFinancialYearPublicId = forgedYearPublicId,
+                    directRisk.IsActive
+                }, user.Id, null, "Approved strategic risk correction");
+
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact same-transaction reasoned before/after audit*");
+        originalTitle.Should().Be("Governed root risk");
+        forgedYearPublicId.Should().NotBe(seed.Year.PublicId);
     }
 
     [Fact]
