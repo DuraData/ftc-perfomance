@@ -2352,6 +2352,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceRefreshTokenHistory();
         EnforceIdempotencyRequestHistory();
         EnforcePerformanceTargetRootHistory();
+        EnforcePerformanceSubmissionRootHistory();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetWard>();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetAdditionalAssignee>();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetVoteNumber>();
@@ -4053,6 +4054,216 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
             RequireGovernanceAudit(entityName, entry.OriginalValues.GetValue<string>(nameof(OpmsTarget.Id)),
                 entry.OriginalValues.GetValue<long?>(nameof(OpmsTarget.MunicipalityId)), "Edit", requireOldValue: true);
+        }
+    }
+
+    private void EnforcePerformanceSubmissionRootHistory()
+    {
+        var entries = ChangeTracker.Entries()
+            .Where(entry => entry.Metadata.ClrType == typeof(OpmsSubmission) || entry.Metadata.ClrType == typeof(IpmsSubmission))
+            .ToArray();
+        foreach (var entry in entries)
+        {
+            var isOpms = entry.Metadata.ClrType == typeof(OpmsSubmission);
+            var entityName = isOpms ? nameof(OpmsSubmission) : nameof(IpmsSubmission);
+            var kind = isOpms ? SubmissionKind.Opms : SubmissionKind.Ipms;
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Performance-submission history cannot be hard deleted; withdraw the submission through its governed lifecycle instead.");
+            if (entry.State != EntityState.Modified) continue;
+
+            var changed = entry.Properties.Where(property => property.IsModified)
+                .Select(property => property.Metadata.Name)
+                .Where(name => name != nameof(OpmsSubmission.RowVersion))
+                .ToHashSet(StringComparer.Ordinal);
+            if (changed.Count == 0) continue;
+
+            var submissionId = entry.OriginalValues.GetValue<string>(nameof(OpmsSubmission.Id));
+            var originalMunicipalityId = entry.OriginalValues.GetValue<long?>(nameof(OpmsSubmission.MunicipalityId));
+            var currentMunicipalityId = entry.CurrentValues.GetValue<long?>(nameof(OpmsSubmission.MunicipalityId));
+
+            if (_tenantOwnershipReconciliationActive
+                && changed.SetEquals([nameof(OpmsSubmission.MunicipalityId)])
+                && !originalMunicipalityId.HasValue && currentMunicipalityId is > 0
+                && ChangeTracker.Entries<LegacyTenantOwnershipReconciliation>().Count(candidate =>
+                    candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == currentMunicipalityId
+                    && candidate.Entity.EntityType == entityName
+                    && candidate.Entity.EntityPublicId == entry.OriginalValues.GetValue<Guid>(nameof(OpmsSubmission.PublicId))
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.ReconciledByUserId)
+                    && candidate.Entity.ReconciledAt != default
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.CorrelationId)) == 1)
+                continue;
+
+            var periodChanged = changed.Contains(nameof(OpmsSubmission.ReportingPeriodId));
+            if (periodChanged)
+            {
+                var allowed = new HashSet<string>(
+                    [nameof(OpmsSubmission.ReportingPeriodId), nameof(OpmsSubmission.UpdatedBy), nameof(OpmsSubmission.UpdatedOn)],
+                    StringComparer.Ordinal);
+                var originalPeriodId = entry.OriginalValues.GetValue<long?>(nameof(OpmsSubmission.ReportingPeriodId));
+                var currentPeriodId = entry.CurrentValues.GetValue<long?>(nameof(OpmsSubmission.ReportingPeriodId));
+                var reconciliations = ChangeTracker.Entries<LegacySubmissionPeriodReconciliation>().Count(candidate =>
+                    candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == originalMunicipalityId
+                    && candidate.Entity.SubmissionKind == kind
+                    && (isOpms ? candidate.Entity.OpmsSubmissionId == submissionId && candidate.Entity.IpmsSubmissionId == null
+                        : candidate.Entity.IpmsSubmissionId == submissionId && candidate.Entity.OpmsSubmissionId == null)
+                    && candidate.Entity.ReportingPeriodId == currentPeriodId
+                    && candidate.Entity.ReconciledByUserId == entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.UpdatedBy))
+                    && candidate.Entity.ReconciledAt == entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsSubmission.UpdatedOn))
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.SourceQuarterSnapshot)
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.CorrelationId));
+                if (changed.Except(allowed).Any() || originalPeriodId.HasValue || currentPeriodId is not > 0 || reconciliations != 1)
+                    throw new InvalidOperationException("A legacy submission reporting period may be assigned exactly once with matching append-only reconciliation evidence.");
+                continue;
+            }
+
+            var immutable = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(OpmsSubmission.Id), nameof(OpmsSubmission.PublicId), nameof(OpmsSubmission.MunicipalityId),
+                nameof(OpmsSubmission.OpmsTargetId), nameof(OpmsSubmission.Quarter), nameof(OpmsSubmission.CreatedBy),
+                nameof(OpmsSubmission.CreatedOn), nameof(OpmsSubmission.CreatedAt), nameof(OpmsSubmission.OrganisationId)
+            };
+            immutable.Add(isOpms ? nameof(OpmsSubmission.OpmsTargetId) : nameof(IpmsSubmission.IpmsTargetId));
+            if (changed.Overlaps(immutable))
+                throw new InvalidOperationException("Performance-submission identity, tenant, target, legacy period label and creation evidence are immutable after creation.");
+
+            if (entry.OriginalValues.GetValue<bool>(nameof(OpmsSubmission.IsDisabled)))
+                throw new InvalidOperationException("A withdrawn performance submission is immutable.");
+
+            var withdrawalProperties = new HashSet<string>(
+                [nameof(OpmsSubmission.IsDisabled), nameof(OpmsSubmission.WithdrawalReason),
+                    nameof(OpmsSubmission.WithdrawnAt), nameof(OpmsSubmission.WithdrawnByUserId),
+                    nameof(OpmsSubmission.UpdatedBy), nameof(OpmsSubmission.UpdatedOn)], StringComparer.Ordinal);
+            if (changed.Overlaps(withdrawalProperties.Take(4)))
+            {
+                var reason = entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.WithdrawalReason));
+                var withdrawnAt = entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsSubmission.WithdrawnAt));
+                var actor = entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.WithdrawnByUserId));
+                var lifecycleCount = ChangeTracker.Entries<GovernedRecordLifecycleEvent>().Count(candidate =>
+                    candidate.State == EntityState.Added
+                    && candidate.Entity.AggregateType == entityName
+                    && candidate.Entity.AggregateId == submissionId
+                    && candidate.Entity.MunicipalityId == originalMunicipalityId
+                    && candidate.Entity.Action == GovernedLifecycleAction.Withdrawn
+                    && candidate.Entity.Reason == reason
+                    && candidate.Entity.ActorUserId == actor
+                    && candidate.Entity.OccurredAt == withdrawnAt
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.CorrelationId));
+                if (changed.Except(withdrawalProperties).Any()
+                    || !entry.CurrentValues.GetValue<bool>(nameof(OpmsSubmission.IsDisabled))
+                    || entry.OriginalValues.GetValue<string?>(nameof(OpmsSubmission.WithdrawalReason)) != null
+                    || entry.OriginalValues.GetValue<DateTime?>(nameof(OpmsSubmission.WithdrawnAt)).HasValue
+                    || entry.OriginalValues.GetValue<string?>(nameof(OpmsSubmission.WithdrawnByUserId)) != null
+                    || originalMunicipalityId is not > 0 || string.IsNullOrWhiteSpace(reason) || reason.Length > 1000
+                    || string.IsNullOrWhiteSpace(actor) || !withdrawnAt.HasValue
+                    || withdrawnAt < entry.OriginalValues.GetValue<DateTime>(nameof(OpmsSubmission.CreatedAt))
+                    || entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.UpdatedBy)) != actor
+                    || entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsSubmission.UpdatedOn)) != withdrawnAt
+                    || lifecycleCount != 1)
+                    throw new InvalidOperationException("Performance-submission withdrawal requires exact same-transaction tenant, reason, actor, time and lifecycle evidence.");
+                continue;
+            }
+
+            var dueDateProperties = new HashSet<string>(
+                [nameof(OpmsSubmission.DueDate), nameof(OpmsSubmission.ExtendedDueDate), nameof(OpmsSubmission.DueDateExtendedDays),
+                    nameof(OpmsSubmission.UpdatedBy), nameof(OpmsSubmission.UpdatedOn)], StringComparer.Ordinal);
+            if (changed.Overlaps([nameof(OpmsSubmission.DueDate), nameof(OpmsSubmission.ExtendedDueDate), nameof(OpmsSubmission.DueDateExtendedDays)]))
+            {
+                var originalDueDate = entry.OriginalValues.GetValue<DateTime?>(nameof(OpmsSubmission.DueDate));
+                var currentDueDate = entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsSubmission.DueDate));
+                var extensions = ChangeTracker.Entries<DueDateExtension>().Count(candidate =>
+                    candidate.State == EntityState.Added && candidate.Entity.MunicipalityId == originalMunicipalityId
+                    && candidate.Entity.SubmissionKind == kind && candidate.Entity.SubmissionId == submissionId
+                    && candidate.Entity.OriginalDueDate == originalDueDate && candidate.Entity.ExtendedDueDate == currentDueDate
+                    && candidate.Entity.ApprovedByUserId == entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.UpdatedBy))
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason));
+                if (changed.Except(dueDateProperties).Any() || !originalDueDate.HasValue || !currentDueDate.HasValue
+                    || currentDueDate <= originalDueDate || extensions != 1)
+                    throw new InvalidOperationException("A submission due date may advance only with one exact append-only extension record.");
+                RequireGovernanceAudit(entityName, submissionId, originalMunicipalityId, "ExtendDueDate", requireOldValue: true);
+                continue;
+            }
+
+            var suggestionProperties = new HashSet<string>(
+                [nameof(OpmsSubmission.SystemSuggestedActualPerformance), nameof(OpmsSubmission.WasSystemSuggestionEdited),
+                    nameof(OpmsSubmission.SuggestionCalculationTypeId), nameof(OpmsSubmission.SuggestionGeneratedDate),
+                    nameof(OpmsSubmission.SuggestionEditedByUserId), nameof(OpmsSubmission.SuggestionEditedAt),
+                    nameof(OpmsSubmission.SuggestionEditReason), nameof(OpmsSubmission.ActualPerformance),
+                    nameof(OpmsSubmission.Variance), nameof(OpmsSubmission.AchievementPercent), nameof(OpmsSubmission.TargetAchieved),
+                    nameof(OpmsSubmission.UpdatedBy), nameof(OpmsSubmission.UpdatedOn)], StringComparer.Ordinal);
+            var suggestionEvidenceProperties = new HashSet<string>(
+                [nameof(OpmsSubmission.SystemSuggestedActualPerformance), nameof(OpmsSubmission.WasSystemSuggestionEdited),
+                    nameof(OpmsSubmission.SuggestionCalculationTypeId), nameof(OpmsSubmission.SuggestionGeneratedDate),
+                    nameof(OpmsSubmission.SuggestionEditedByUserId), nameof(OpmsSubmission.SuggestionEditedAt),
+                    nameof(OpmsSubmission.SuggestionEditReason)], StringComparer.Ordinal);
+            var addedSuggestionEvents = ChangeTracker.Entries<PerformanceSuggestionEvent>().Where(candidate =>
+                candidate.State == EntityState.Added
+                && candidate.Entity.SubmissionKind == kind
+                && (isOpms ? candidate.Entity.OpmsSubmissionId == submissionId && candidate.Entity.IpmsSubmissionId == null
+                    : candidate.Entity.IpmsSubmissionId == submissionId && candidate.Entity.OpmsSubmissionId == null)).ToArray();
+            if (changed.Overlaps(suggestionEvidenceProperties) || addedSuggestionEvents.Length > 0)
+            {
+                var events = addedSuggestionEvents.Count(candidate =>
+                    candidate.Entity.MunicipalityId == originalMunicipalityId
+                    && candidate.Entity.SystemSuggestedActualPerformance == entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.SystemSuggestedActualPerformance))
+                    && candidate.Entity.ActualPerformance == entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.ActualPerformance))
+                    && candidate.Entity.WasSystemSuggestionEdited == entry.CurrentValues.GetValue<bool>(nameof(OpmsSubmission.WasSystemSuggestionEdited))
+                    && candidate.Entity.ActorUserId == entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.UpdatedBy))
+                    && candidate.Entity.OccurredAt == entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsSubmission.UpdatedOn))
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.CorrelationId));
+                if (changed.Except(suggestionProperties).Any() || events != 1)
+                    throw new InvalidOperationException("Consolidated submission values may change only with one exact append-only suggestion event.");
+                continue;
+            }
+
+            var workflowActionCount = ChangeTracker.Entries<SubmissionWorkflowAction>().Count(candidate =>
+                candidate.State == EntityState.Added
+                && candidate.Entity.MunicipalityId == originalMunicipalityId
+                && candidate.Entity.SubmissionWorkflowInstance != null
+                && candidate.Entity.SubmissionWorkflowInstance.SubmissionKind == kind
+                && candidate.Entity.SubmissionWorkflowInstance.SubmissionId == submissionId
+                && candidate.Entity.ActorUserId == entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.UpdatedBy))
+                && !string.IsNullOrWhiteSpace(candidate.Entity.ActionCode)
+                && candidate.Entity.OccurredAt != default
+                && !string.IsNullOrWhiteSpace(candidate.Entity.CorrelationId));
+            if (workflowActionCount == 1)
+            {
+                var workflowProperties = new HashSet<string>(
+                    [nameof(OpmsSubmission.BaseState), nameof(OpmsSubmission.Status),
+                        nameof(OpmsSubmission.SubmitterStatus), nameof(OpmsSubmission.VerifierStatus),
+                        nameof(OpmsSubmission.ApproverStatus), nameof(OpmsSubmission.PmsStatus), nameof(OpmsSubmission.AuditorStatus),
+                        nameof(OpmsSubmission.SubmittedAt), nameof(OpmsSubmission.SubmittedByUserId),
+                        nameof(OpmsSubmission.VerifierUserId), nameof(OpmsSubmission.VerifiedAt),
+                        nameof(OpmsSubmission.VerifierComments), nameof(OpmsSubmission.VerifierComment),
+                        nameof(OpmsSubmission.ApproverUserId), nameof(OpmsSubmission.ApprovedAt),
+                        nameof(OpmsSubmission.ApproverComments), nameof(OpmsSubmission.ApproverComment),
+                        nameof(OpmsSubmission.PmsOfficerUserId), nameof(OpmsSubmission.PmsReviewedAt),
+                        nameof(OpmsSubmission.PmsComments), nameof(OpmsSubmission.PmsComment),
+                        nameof(OpmsSubmission.PmsRecommendation), nameof(OpmsSubmission.PmsResponseDueDate),
+                        nameof(OpmsSubmission.PmsRfiComment), nameof(OpmsSubmission.AuditorUserId),
+                        nameof(OpmsSubmission.AuditedAt), nameof(OpmsSubmission.AuditorComments),
+                        nameof(OpmsSubmission.AuditorComment), nameof(OpmsSubmission.AuditorRecommendation),
+                        nameof(OpmsSubmission.AuditorResponseDueDate), nameof(OpmsSubmission.UpdatedBy),
+                        nameof(OpmsSubmission.UpdatedOn)], StringComparer.Ordinal);
+                if (changed.Except(workflowProperties).Any())
+                    throw new InvalidOperationException("A submission workflow action cannot rewrite draft values, calculations, due dates, identity or retired score projections.");
+                continue;
+            }
+
+            var draftEditProperties = new HashSet<string>(
+                [nameof(OpmsSubmission.ActualPerformance), nameof(OpmsSubmission.AchievementPercent),
+                    nameof(OpmsSubmission.TargetAchieved), nameof(OpmsSubmission.ActualExpenditure),
+                    nameof(OpmsSubmission.Variance), nameof(OpmsSubmission.VarianceReason),
+                    nameof(OpmsSubmission.CorrectiveMeasure), nameof(OpmsSubmission.PoeType),
+                    nameof(OpmsSubmission.UpdatedBy), nameof(OpmsSubmission.UpdatedOn)], StringComparer.Ordinal);
+            if (changed.Except(draftEditProperties).Any()
+                || SubmissionBaseStates.Normalize(entry.OriginalValues.GetValue<string>(nameof(OpmsSubmission.BaseState))) != SubmissionBaseStates.InProgress
+                || SubmissionBaseStates.Normalize(entry.CurrentValues.GetValue<string>(nameof(OpmsSubmission.BaseState))) != SubmissionBaseStates.InProgress)
+                throw new InvalidOperationException("Submission workflow, actor, decision, score, status and terminal projections may change only beside their exact append-only workflow action.");
+            RequireGovernanceAudit(entityName, submissionId, originalMunicipalityId, "Edit", requireOldValue: true);
         }
     }
 

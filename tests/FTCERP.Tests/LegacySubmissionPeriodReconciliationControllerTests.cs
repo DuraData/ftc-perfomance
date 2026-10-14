@@ -85,8 +85,11 @@ public sealed class LegacySubmissionPeriodReconciliationControllerTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var setup = await Seed(context);
-        setup.Submission.Quarter = "Unverified cycle";
-        await context.SaveChangesAsync();
+        // Inject a preserved pre-governance value below the application boundary. Production writes now
+        // protect the legacy label, while the reconciliation preview must still diagnose historic data.
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE OpmsSubmissions SET Quarter = {"Unverified cycle"} WHERE Id = {setup.Submission.Id}");
+        context.ChangeTracker.Clear();
         var other = new Municipality { Code = "PERIOD-OTHER", Name = "Other Municipality" };
         context.Municipalities.Add(other);
         await context.SaveChangesAsync();

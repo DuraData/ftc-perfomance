@@ -176,17 +176,25 @@ public sealed class PerformanceSuggestionServiceTests
         var yearId = await context.ReportingPeriods.Where(item => item.Id == seed.OpmsDestination.ReportingPeriodId)
             .Select(item => item.MunicipalityFinancialYearId).SingleAsync();
         var municipalityId = seed.OpmsDestination.MunicipalityId!.Value;
-        context.WorkflowDefinitions.AddRange(
-            new WorkflowDefinition { MunicipalityId = municipalityId, MunicipalityFinancialYearId = yearId, SubmissionKind = SubmissionKind.Opms, Code = "MEMBER-OPMS", Name = "OPMS member workflow", IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
-            new WorkflowDefinition { MunicipalityId = municipalityId, MunicipalityFinancialYearId = yearId, SubmissionKind = SubmissionKind.Ipms, Code = "MEMBER-IPMS", Name = "IPMS member workflow", IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        var opmsDefinition = new WorkflowDefinition { MunicipalityId = municipalityId, MunicipalityFinancialYearId = yearId, SubmissionKind = SubmissionKind.Opms, Code = "MEMBER-OPMS", Name = "OPMS member workflow", IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        opmsDefinition.Stages.Add(new WorkflowStageDefinition
+        {
+            MunicipalityId = municipalityId, Code = "PMS", Name = "PMS review", Sequence = 1,
+            RequiredActionCode = "OPMS_WORKFLOW.PMS_REVIEW", RequiredPermissionCode = "OPMS_WORKFLOW.PMS_REVIEW",
+            RequireDifferentActorFromSubmitter = false, IsTerminal = true
+        });
+        var ipmsDefinition = new WorkflowDefinition { MunicipalityId = municipalityId, MunicipalityFinancialYearId = yearId, SubmissionKind = SubmissionKind.Ipms, Code = "MEMBER-IPMS", Name = "IPMS member workflow", IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        ipmsDefinition.Stages.Add(new WorkflowStageDefinition
+        {
+            MunicipalityId = municipalityId, Code = "AUDIT", Name = "Internal audit", Sequence = 1,
+            RequiredActionCode = "IPMS_WORKFLOW.INTERNAL_AUDIT", RequiredPermissionCode = "IPMS_WORKFLOW.INTERNAL_AUDIT",
+            RequireDifferentActorFromSubmitter = false, IsTerminal = true
+        });
+        context.WorkflowDefinitions.AddRange(opmsDefinition, ipmsDefinition);
         await context.SaveChangesAsync();
-        var workflow = new Mock<IConfigurableWorkflowService>();
-        workflow.Setup(service => service.PrepareActionAsync(
-                It.IsAny<SubmissionKind>(), It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string>(), It.IsAny<WorkflowActionOutcome>(), It.IsAny<string?>(), It.IsAny<decimal?>(), It.IsAny<string?>()))
-            .ReturnsAsync(new WorkflowTransitionResult(true, "Allowed", new SubmissionWorkflowInstance { State = WorkflowInstanceState.Completed }, null));
-        var opms = CreateController(context, seed.User, access.Object, Mock.Of<IPerformanceSuggestionService>(), workflow.Object);
-        var ipms = CreateIpmsController(context, seed.User, access.Object, Mock.Of<IPerformanceSuggestionService>(), workflow.Object);
+        var workflow = new ConfigurableWorkflowService(context);
+        var opms = CreateController(context, seed.User, access.Object, Mock.Of<IPerformanceSuggestionService>(), workflow);
+        var ipms = CreateIpmsController(context, seed.User, access.Object, Mock.Of<IPerformanceSuggestionService>(), workflow);
         var dueAt = DateTime.UtcNow.AddDays(5);
 
         var review = new SubmissionWorkflowActionRequest(null, Recommendation: "Protected PMS recommendation",
@@ -344,8 +352,8 @@ public sealed class PerformanceSuggestionServiceTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context, includeQ2Actual: true, includeAnnual: false);
-        PopulateProjection(seed.OpmsDestination, seed.User.Id);
-        await context.SaveChangesAsync();
+        await PopulateHistoricProjection(context, seed.OpmsDestination, seed.User.Id);
+        context.ChangeTracker.Clear();
 
         var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_SUBMISSION.READ" };
         var access = ProjectionAccess(seed.User, permissions);
@@ -385,8 +393,8 @@ public sealed class PerformanceSuggestionServiceTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context, includeQ2Actual: true, includeAnnual: true);
-        PopulateProjection(seed.IpmsDestination!, seed.User.Id);
-        await context.SaveChangesAsync();
+        await PopulateHistoricProjection(context, seed.IpmsDestination!, seed.User.Id);
+        context.ChangeTracker.Clear();
 
         var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IPMS_SUBMISSION.READ" };
         var access = ProjectionAccess(seed.User, permissions);
@@ -494,24 +502,32 @@ public sealed class PerformanceSuggestionServiceTests
         return access;
     }
 
-    private static void PopulateProjection(OpmsSubmission submission, string userId)
+    private static Task PopulateHistoricProjection(ApplicationDbContext context, OpmsSubmission submission, string userId)
     {
-        submission.SubmittedByUserId = userId; submission.SubmitterScore = 1;
-        submission.VerifierUserId = userId; submission.VerifierComments = "Verification secret"; submission.VerifierComment = "Verification secret"; submission.VerifierScore = 2;
-        submission.ApproverUserId = userId; submission.ApproverComments = "Approval secret"; submission.ApproverComment = "Approval secret"; submission.ApproverScore = 3;
-        submission.PmsOfficerUserId = userId; submission.PmsComments = "PMS secret"; submission.PmsComment = "PMS secret"; submission.PmsRecommendation = "PMS recommendation secret"; submission.PmsScore = 4; submission.PmsRfiComment = "PMS RFI secret";
-        submission.AuditorUserId = userId; submission.AuditorComments = "Audit secret"; submission.AuditorComment = "Audit secret"; submission.AuditorRecommendation = "Audit recommendation secret"; submission.AuditorScore = 5;
-        submission.IsDisabled = true; submission.WithdrawalReason = "Withdrawal secret"; submission.WithdrawnAt = DateTime.UtcNow; submission.WithdrawnByUserId = userId; submission.CreatedBy = userId; submission.UpdatedBy = userId;
+        var withdrawnAt = DateTime.UtcNow;
+        return context.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE OpmsSubmissions SET SubmittedByUserId = {userId}, SubmitterScore = {1m},
+                VerifierUserId = {userId}, VerifierComments = {"Verification secret"}, VerifierComment = {"Verification secret"}, VerifierScore = {2m},
+                ApproverUserId = {userId}, ApproverComments = {"Approval secret"}, ApproverComment = {"Approval secret"}, ApproverScore = {3m},
+                PmsOfficerUserId = {userId}, PmsComments = {"PMS secret"}, PmsComment = {"PMS secret"}, PmsRecommendation = {"PMS recommendation secret"}, PmsScore = {4m}, PmsRfiComment = {"PMS RFI secret"},
+                AuditorUserId = {userId}, AuditorComments = {"Audit secret"}, AuditorComment = {"Audit secret"}, AuditorRecommendation = {"Audit recommendation secret"}, AuditorScore = {5m},
+                IsDisabled = {true}, WithdrawalReason = {"Withdrawal secret"}, WithdrawnAt = {withdrawnAt}, WithdrawnByUserId = {userId}, CreatedBy = {userId}, UpdatedBy = {userId}
+            WHERE Id = {submission.Id}
+            """);
     }
 
-    private static void PopulateProjection(IpmsSubmission submission, string userId)
+    private static Task PopulateHistoricProjection(ApplicationDbContext context, IpmsSubmission submission, string userId)
     {
-        submission.SubmittedByUserId = userId; submission.SubmitterScore = 1;
-        submission.VerifierUserId = userId; submission.VerifierComments = "Verification secret"; submission.VerifierComment = "Verification secret"; submission.VerifierScore = 2;
-        submission.ApproverUserId = userId; submission.ApproverComments = "Approval secret"; submission.ApproverComment = "Approval secret"; submission.ApproverScore = 3;
-        submission.PmsOfficerUserId = userId; submission.PmsComments = "PMS secret"; submission.PmsComment = "PMS secret"; submission.PmsRecommendation = "PMS recommendation secret"; submission.PmsScore = 4; submission.PmsRfiComment = "PMS RFI secret";
-        submission.AuditorUserId = userId; submission.AuditorComments = "Audit secret"; submission.AuditorComment = "Audit secret"; submission.AuditorRecommendation = "Audit recommendation secret"; submission.AuditorScore = 5;
-        submission.IsDisabled = true; submission.WithdrawalReason = "Withdrawal secret"; submission.WithdrawnAt = DateTime.UtcNow; submission.WithdrawnByUserId = userId; submission.CreatedBy = userId; submission.UpdatedBy = userId;
+        var withdrawnAt = DateTime.UtcNow;
+        return context.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE IpmsSubmissions SET SubmittedByUserId = {userId}, SubmitterScore = {1m},
+                VerifierUserId = {userId}, VerifierComments = {"Verification secret"}, VerifierComment = {"Verification secret"}, VerifierScore = {2m},
+                ApproverUserId = {userId}, ApproverComments = {"Approval secret"}, ApproverComment = {"Approval secret"}, ApproverScore = {3m},
+                PmsOfficerUserId = {userId}, PmsComments = {"PMS secret"}, PmsComment = {"PMS secret"}, PmsRecommendation = {"PMS recommendation secret"}, PmsScore = {4m}, PmsRfiComment = {"PMS RFI secret"},
+                AuditorUserId = {userId}, AuditorComments = {"Audit secret"}, AuditorComment = {"Audit secret"}, AuditorRecommendation = {"Audit recommendation secret"}, AuditorScore = {5m},
+                IsDisabled = {true}, WithdrawalReason = {"Withdrawal secret"}, WithdrawnAt = {withdrawnAt}, WithdrawnByUserId = {userId}, CreatedBy = {userId}, UpdatedBy = {userId}
+            WHERE Id = {submission.Id}
+            """);
     }
 
     private static async Task<SeedResult> SeedAsync(

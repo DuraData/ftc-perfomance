@@ -124,7 +124,10 @@ public sealed class InternalAuditAssessmentTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context, InternalAuditAssessmentModel.Detailed);
-        seed.Submission.AchievementPercent = 92.5m;
+        // Preserve a historic calculated result below the governed application boundary. Runtime
+        // submission edits now require their exact audit or consolidation/workflow evidence.
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE OpmsSubmissions SET AchievementPercent = {92.5m} WHERE Id = {seed.Submission.Id}");
         var workflow = await context.WorkflowDefinitions.SingleAsync();
         var scheme = new RatingScheme { MunicipalityId = seed.Municipality.Id, Code = "IA-AUTO", Name = "Automatic IA rating" };
         scheme.Values.Add(new RatingSchemeValue { MunicipalityId = seed.Municipality.Id, Value = 2, Label = "Below target", MinimumAchievementPercent = 0, MaximumAchievementPercent = 79.9999m, SortOrder = 1 });

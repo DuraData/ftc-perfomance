@@ -403,21 +403,15 @@ public sealed class PerformanceDashboardTests
 
         if (kind == SubmissionKind.Opms)
         {
-            var ids = states.Select(item => item.SubmissionId).ToArray();
-            foreach (var submission in await context.OpmsSubmissions.Where(item => ids.Contains(item.Id)).ToArrayAsync())
-            {
-                submission.MunicipalityId = municipality.Id;
-                submission.BaseState = SubmissionBaseStates.Submitted;
-            }
+            foreach (var state in states)
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE OpmsSubmissions SET MunicipalityId = {municipality.Id}, BaseState = {SubmissionBaseStates.Submitted} WHERE Id = {state.SubmissionId}");
         }
         else
         {
-            var ids = states.Select(item => item.SubmissionId).ToArray();
-            foreach (var submission in await context.IpmsSubmissions.Where(item => ids.Contains(item.Id)).ToArrayAsync())
-            {
-                submission.MunicipalityId = municipality.Id;
-                submission.BaseState = SubmissionBaseStates.Submitted;
-            }
+            foreach (var state in states)
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE IpmsSubmissions SET MunicipalityId = {municipality.Id}, BaseState = {SubmissionBaseStates.Submitted} WHERE Id = {state.SubmissionId}");
         }
 
         foreach (var state in states)
