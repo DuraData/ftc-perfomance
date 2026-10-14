@@ -2349,6 +2349,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceTenantCalendarHistory();
         EnforceOrganizationMasterHistory();
         EnforceMunicipalEmployeeHistory();
+        EnforceStrategicDocumentTypeHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
@@ -2488,10 +2489,6 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             if (!bindingChanged && !authenticatedChanged && !statusChanged)
                 throw new InvalidOperationException("Enterprise-authenticator history cannot be rewritten.");
         }
-        if (ChangeTracker.Entries<StrategicDocumentType>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Strategic-document type history cannot be hard deleted.");
-        foreach (var entry in ChangeTracker.Entries<StrategicDocumentType>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(StrategicDocumentType), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         if (ChangeTracker.Entries<StrategicRisk>().Any(entry => entry.State == EntityState.Deleted))
             throw new InvalidOperationException("Strategic-risk master history cannot be hard deleted.");
         foreach (var entry in ChangeTracker.Entries<StrategicRisk>().Where(entry => entry.State == EntityState.Modified))
@@ -3821,6 +3818,26 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         catch (System.Text.Json.JsonException)
         {
             return false;
+        }
+    }
+
+    private void EnforceStrategicDocumentTypeHistory()
+    {
+        if (ChangeTracker.Entries<StrategicDocumentType>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Strategic-document type history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<StrategicDocumentType>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(StrategicDocumentType.Code), nameof(StrategicDocumentType.Name), nameof(StrategicDocumentType.Description),
+                nameof(StrategicDocumentType.AllowsExternalLinks), nameof(StrategicDocumentType.IsActive), nameof(StrategicDocumentType.DisplayOrder)
+            };
+            EnsureOnlyProperties(entry, [.. snapshotFields, nameof(StrategicDocumentType.RowVersion)],
+                "Strategic-document type identity, municipality ownership and creation evidence are immutable.");
+            RequireExactRootAudit(entry, nameof(StrategicDocumentType),
+                entry.OriginalValues.GetValue<Guid>(nameof(StrategicDocumentType.PublicId)),
+                entry.OriginalValues.GetValue<long>(nameof(StrategicDocumentType.MunicipalityId)), snapshotFields);
         }
     }
 

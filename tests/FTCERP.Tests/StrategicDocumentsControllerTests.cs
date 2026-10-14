@@ -37,7 +37,7 @@ public class StrategicDocumentsControllerTests
 
         setup.Type.Name = "Unaudited rewrite";
         (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
-            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+            .WithMessage("*one exact same-transaction reasoned before/after audit*");
 
         context.ChangeTracker.Clear();
         var deletion = await context.StrategicDocumentTypes.SingleAsync(item => item.PublicId == setup.Type.PublicId);
@@ -47,15 +47,54 @@ public class StrategicDocumentsControllerTests
 
         context.ChangeTracker.Clear();
         var governed = await context.StrategicDocumentTypes.SingleAsync(item => item.PublicId == setup.Type.PublicId);
-        var before = new { governed.Code, governed.Name, governed.IsActive };
+        var before = new { governed.Code, governed.Name, governed.Description, governed.AllowsExternalLinks, governed.IsActive, governed.DisplayOrder };
         governed.Name = "Governed rewrite";
         new WorkflowGovernanceService(context, tenantContext: new FixedTenantContext(setup.Municipality.Id, false))
             .QueueAuditTrail(nameof(StrategicDocumentType), governed.PublicId.ToString(), "Update", before,
-                new { governed.Code, governed.Name, governed.IsActive }, setup.User.Id, null, "Correct controlled type");
+                new { governed.Code, governed.Name, governed.Description, governed.AllowsExternalLinks, governed.IsActive, governed.DisplayOrder },
+                setup.User.Id, null, "Correct controlled type");
         await context.SaveChangesAsync();
 
         (await context.StrategicDocumentTypes.AsNoTracking().SingleAsync(item => item.PublicId == setup.Type.PublicId))
             .Name.Should().Be("Governed rewrite");
+    }
+
+    [Fact]
+    public async Task ControlledTypes_RejectIdentityRewritesAndForgedAuditSnapshots()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context);
+
+        setup.Type.PublicId = Guid.NewGuid();
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*identity, municipality ownership and creation evidence are immutable*");
+
+        context.ChangeTracker.Clear();
+        var governed = await context.StrategicDocumentTypes.SingleAsync(item => item.Code == setup.Type.Code);
+        var before = new
+        {
+            Code = "FORGED",
+            governed.Name,
+            governed.Description,
+            governed.AllowsExternalLinks,
+            governed.IsActive,
+            governed.DisplayOrder
+        };
+        governed.Name = "Forged governed rewrite";
+        new WorkflowGovernanceService(context, tenantContext: new FixedTenantContext(setup.Municipality.Id, false))
+            .QueueAuditTrail(nameof(StrategicDocumentType), governed.PublicId.ToString(), "Update", before,
+                new
+                {
+                    Code = "FORGED",
+                    governed.Name,
+                    governed.Description,
+                    governed.AllowsExternalLinks,
+                    governed.IsActive,
+                    governed.DisplayOrder
+                }, setup.User.Id, null, "Approved controlled type correction");
+
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact same-transaction reasoned before/after audit*");
     }
 
     [Fact]
