@@ -2351,15 +2351,13 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceNotificationPreferenceHistory();
         EnforceRefreshTokenHistory();
         EnforceIdempotencyRequestHistory();
+        EnforcePerformanceTargetRootHistory();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetWard>();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetAdditionalAssignee>();
         EnforceOpmsTargetRelationshipHistory<OpmsTargetVoteNumber>();
         EnforceKpiBudgetSourceHistory<OpmsKpiBudgetSource>(nameof(OpmsKpiBudgetSource.OpmsTargetId));
         EnforceKpiBudgetSourceHistory<IpmsKpiBudgetSource>(nameof(IpmsKpiBudgetSource.IpmsTargetId));
         EnforceIpmsOpmsTargetLinkHistory();
-        if (ChangeTracker.Entries<OpmsTarget>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<IpmsTarget>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Performance-target history cannot be hard deleted; withdraw or deactivate the target through its governed lifecycle instead.");
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
@@ -3924,6 +3922,213 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     || entry.CurrentValues.GetValue<string?>(nameof(IdempotencyRequest.ResponseLocation)) != null
                     || entry.CurrentValues.GetValue<string?>(nameof(IdempotencyRequest.ResponseETag)) != null))
                 throw new InvalidOperationException("A failed idempotency request requires its exact terminal problem response evidence.");
+        }
+    }
+
+    private void EnforcePerformanceTargetRootHistory()
+    {
+        var entries = ChangeTracker.Entries()
+            .Where(entry => entry.Metadata.ClrType == typeof(OpmsTarget) || entry.Metadata.ClrType == typeof(IpmsTarget))
+            .ToArray();
+        foreach (var entry in entries)
+        {
+            var entityName = entry.Metadata.ClrType == typeof(OpmsTarget) ? nameof(OpmsTarget) : nameof(IpmsTarget);
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Performance-target history cannot be hard deleted; withdraw the target through its governed lifecycle instead.");
+            if (entry.State != EntityState.Modified) continue;
+
+            var changed = entry.Properties.Where(property => property.IsModified)
+                .Select(property => property.Metadata.Name)
+                .Where(name => name != nameof(OpmsTarget.RowVersion))
+                .ToHashSet(StringComparer.Ordinal);
+            if (changed.Count == 0) continue;
+
+            var immutable = new HashSet<string>(StringComparer.Ordinal)
+            {
+                nameof(OpmsTarget.Id), nameof(OpmsTarget.PublicId), nameof(OpmsTarget.MunicipalityId),
+                nameof(OpmsTarget.PeriodId), nameof(OpmsTarget.IndicatorNumber), nameof(OpmsTarget.TargetName),
+                nameof(OpmsTarget.KpiDescription), nameof(OpmsTarget.AnnualTarget), nameof(OpmsTarget.AnnualTargetDescription),
+                nameof(OpmsTarget.TargetUnitType), nameof(OpmsTarget.Q1Target), nameof(OpmsTarget.Q1Description),
+                nameof(OpmsTarget.Q1Budget), nameof(OpmsTarget.Q2Target), nameof(OpmsTarget.Q2Description),
+                nameof(OpmsTarget.Q2Budget), nameof(OpmsTarget.MidTermTarget), nameof(OpmsTarget.MidTermDescription),
+                nameof(OpmsTarget.MidTermBudget), nameof(OpmsTarget.Q3Target), nameof(OpmsTarget.Q3Description),
+                nameof(OpmsTarget.Q3Budget), nameof(OpmsTarget.Q3RevisedTarget), nameof(OpmsTarget.Q4Target),
+                nameof(OpmsTarget.Q4Description), nameof(OpmsTarget.Q4Budget), nameof(OpmsTarget.Q4RevisedTarget),
+                nameof(OpmsTarget.RevisedAnnualTarget), nameof(OpmsTarget.RevisedAnnualBudget), nameof(OpmsTarget.CreatedAt)
+            };
+            if (entry.Metadata.ClrType == typeof(OpmsTarget))
+            {
+                immutable.Add(nameof(OpmsTarget.LegacyWardIds));
+                immutable.Add(nameof(OpmsTarget.LegacyAdditionalAssigneeIds));
+                immutable.Add(nameof(OpmsTarget.LegacyVoteNumberIds));
+            }
+            if (changed.Overlaps(immutable))
+                throw new InvalidOperationException("Performance-target identity, tenant, governed originals and retired wide-period projection are immutable after creation.");
+
+            var originalWithdrawn = entry.OriginalValues.GetValue<bool>(nameof(OpmsTarget.IsWithdrawn));
+            if (originalWithdrawn)
+                throw new InvalidOperationException("A withdrawn performance target is immutable.");
+
+            var withdrawalProperties = new HashSet<string>(
+                [nameof(OpmsTarget.IsWithdrawn), nameof(OpmsTarget.ReasonForWithdrawal), nameof(OpmsTarget.WithdrawnAt), nameof(OpmsTarget.WithdrawnByUserId)],
+                StringComparer.Ordinal);
+            if (changed.Overlaps(withdrawalProperties))
+            {
+                if (changed.Except(withdrawalProperties).Any()
+                    || !entry.CurrentValues.GetValue<bool>(nameof(OpmsTarget.IsWithdrawn))
+                    || entry.OriginalValues.GetValue<string?>(nameof(OpmsTarget.ReasonForWithdrawal)) != null
+                    || entry.OriginalValues.GetValue<DateTime?>(nameof(OpmsTarget.WithdrawnAt)).HasValue
+                    || entry.OriginalValues.GetValue<string?>(nameof(OpmsTarget.WithdrawnByUserId)) != null)
+                    throw new InvalidOperationException("A performance target may be withdrawn exactly once without rewriting its definition.");
+
+                var targetId = entry.OriginalValues.GetValue<string>(nameof(OpmsTarget.Id));
+                var municipalityId = entry.OriginalValues.GetValue<long?>(nameof(OpmsTarget.MunicipalityId));
+                var reason = entry.CurrentValues.GetValue<string?>(nameof(OpmsTarget.ReasonForWithdrawal));
+                var withdrawnAt = entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsTarget.WithdrawnAt));
+                var actor = entry.CurrentValues.GetValue<string?>(nameof(OpmsTarget.WithdrawnByUserId));
+                var lifecycle = ChangeTracker.Entries<GovernedRecordLifecycleEvent>().Where(candidate =>
+                    candidate.State == EntityState.Added
+                    && candidate.Entity.AggregateType == entityName
+                    && candidate.Entity.AggregateId == targetId
+                    && candidate.Entity.MunicipalityId == municipalityId
+                    && candidate.Entity.Action == GovernedLifecycleAction.Withdrawn
+                    && candidate.Entity.Reason == reason
+                    && candidate.Entity.ActorUserId == actor
+                    && candidate.Entity.OccurredAt == withdrawnAt
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.CorrelationId)).ToArray();
+                if (!municipalityId.HasValue || municipalityId <= 0
+                    || string.IsNullOrWhiteSpace(reason) || reason.Length > 1000
+                    || string.IsNullOrWhiteSpace(actor) || !withdrawnAt.HasValue
+                    || withdrawnAt < entry.OriginalValues.GetValue<DateTime>(nameof(OpmsTarget.CreatedAt))
+                    || lifecycle.Length != 1)
+                    throw new InvalidOperationException("Performance-target withdrawal requires exact same-transaction tenant, reason, actor, time and lifecycle evidence.");
+                continue;
+            }
+
+            var definitionProperties = new HashSet<string>(
+                [nameof(OpmsTarget.IsIndicatorNumberRevised), nameof(OpmsTarget.RevisedIndicatorNumber),
+                    nameof(OpmsTarget.IsTargetNameRevised), nameof(OpmsTarget.RevisedTargetName),
+                    nameof(OpmsTarget.IsKpiDescriptionRevised), nameof(OpmsTarget.RevisedKpiDescription)], StringComparer.Ordinal);
+            var orderingProperties = new HashSet<string>(
+                [nameof(OpmsTarget.OriginalOrderNumber), nameof(OpmsTarget.RevisedOrderNumber)], StringComparer.Ordinal);
+            var definitionChanged = changed.Overlaps(definitionProperties);
+            var orderingChanged = changed.Overlaps(orderingProperties);
+            if (!definitionChanged && !orderingChanged && changed.SetEquals([nameof(OpmsTarget.IsRevised)]))
+            {
+                var targetId = entry.OriginalValues.GetValue<string>(nameof(OpmsTarget.Id));
+                var municipalityId = entry.OriginalValues.GetValue<long?>(nameof(OpmsTarget.MunicipalityId));
+                var governedImport = entry.Metadata.ClrType == typeof(OpmsTarget)
+                    && ChangeTracker.Entries<OpmsImportBatch>().Any(candidate => candidate.State == EntityState.Modified
+                        && candidate.Entity.MunicipalityId == municipalityId
+                        && candidate.OriginalValues.GetValue<OpmsImportBatchStatus>(nameof(OpmsImportBatch.Status)) == OpmsImportBatchStatus.Staged
+                        && candidate.CurrentValues.GetValue<OpmsImportBatchStatus>(nameof(OpmsImportBatch.Status)) == OpmsImportBatchStatus.Committed);
+                var periodIds = PerformancePeriodTargets.IgnoreQueryFilters().AsNoTracking()
+                    .Where(period => period.OpmsTargetId == targetId).Select(period => period.Id).ToHashSet();
+                var hasPeriodHistory = ChangeTracker.Entries<PerformanceTargetRevision>().Any(candidate => candidate.State == EntityState.Added
+                    && (periodIds.Contains(candidate.Entity.PerformancePeriodTargetId)
+                        || candidate.Entity.PerformancePeriodTarget?.OpmsTargetId == targetId));
+                if (!governedImport || !hasPeriodHistory
+                    || entry.OriginalValues.GetValue<bool>(nameof(OpmsTarget.IsRevised))
+                    || !entry.CurrentValues.GetValue<bool>(nameof(OpmsTarget.IsRevised)))
+                    throw new InvalidOperationException("The KPI revised marker may advance only beside governed import period-revision history.");
+                continue;
+            }
+            if (definitionChanged || orderingChanged)
+            {
+                var allowed = new HashSet<string>(definitionChanged ? definitionProperties : orderingProperties, StringComparer.Ordinal)
+                {
+                    nameof(OpmsTarget.IsRevised)
+                };
+                if (definitionChanged && orderingChanged || changed.Except(allowed).Any())
+                    throw new InvalidOperationException("KPI definition and ordering revisions must be recorded as separate governed changes.");
+                EnforceExactKpiFieldRevisions(entry, entityName, definitionChanged);
+                continue;
+            }
+
+            // The parent pointer is governed together with its append-preserved link row below. Let that
+            // stricter aggregate invariant validate creation, replacement, unlinking, tenant and actor evidence.
+            if (entry.Metadata.ClrType == typeof(IpmsTarget)
+                && changed.SetEquals([nameof(IpmsTarget.RelatedOpmsTargetId)]))
+                continue;
+
+            RequireGovernanceAudit(entityName, entry.OriginalValues.GetValue<string>(nameof(OpmsTarget.Id)),
+                entry.OriginalValues.GetValue<long?>(nameof(OpmsTarget.MunicipalityId)), "Edit", requireOldValue: true);
+        }
+    }
+
+    private void EnforceExactKpiFieldRevisions(EntityEntry entry, string entityName, bool definitionChanged)
+    {
+        var targetId = entry.OriginalValues.GetValue<string>(nameof(OpmsTarget.Id));
+        var municipalityId = entry.OriginalValues.GetValue<long?>(nameof(OpmsTarget.MunicipalityId));
+        if (!municipalityId.HasValue)
+            throw new InvalidOperationException("A KPI revision requires reconciled municipality ownership.");
+        var isOpms = entry.Metadata.ClrType == typeof(OpmsTarget);
+        var revisions = ChangeTracker.Entries<KpiFieldRevision>()
+            .Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.MunicipalityId == municipalityId
+                && (isOpms ? candidate.Entity.OpmsTargetId == targetId && candidate.Entity.IpmsTargetId == null
+                    : candidate.Entity.IpmsTargetId == targetId && candidate.Entity.OpmsTargetId == null))
+            .Select(candidate => candidate.Entity).ToList();
+
+        var expected = new List<(string[] Fields, string? Original, string? Revised)>();
+        if (definitionChanged)
+        {
+            AddDefinitionExpectation(nameof(OpmsTarget.IndicatorNumber), nameof(OpmsTarget.IsIndicatorNumberRevised), nameof(OpmsTarget.RevisedIndicatorNumber));
+            AddDefinitionExpectation(nameof(OpmsTarget.TargetName), nameof(OpmsTarget.IsTargetNameRevised), nameof(OpmsTarget.RevisedTargetName));
+            AddDefinitionExpectation(nameof(OpmsTarget.KpiDescription), nameof(OpmsTarget.IsKpiDescriptionRevised), nameof(OpmsTarget.RevisedKpiDescription));
+        }
+        else
+        {
+            AddOrderingExpectation(nameof(OpmsTarget.OriginalOrderNumber), [nameof(OpmsTarget.OriginalOrderNumber)]);
+            AddOrderingExpectation(nameof(OpmsTarget.RevisedOrderNumber), [nameof(OpmsTarget.RevisedOrderNumber), "OrderNumber"]);
+        }
+
+        if (expected.Count == 0 || revisions.Count != expected.Count)
+            throw new InvalidOperationException("Every effective KPI definition or ordering change requires one exact append-only field revision.");
+        foreach (var item in expected)
+        {
+            var matches = revisions.Where(revision => item.Fields.Contains(revision.FieldName, StringComparer.Ordinal)
+                && revision.OriginalValue == item.Original && revision.RevisedValue == item.Revised
+                && revision.PublicId != Guid.Empty && !string.IsNullOrWhiteSpace(revision.Reason)
+                && !string.IsNullOrWhiteSpace(revision.ApprovalReference) && revision.EffectiveAt != default
+                && !string.IsNullOrWhiteSpace(revision.RevisedByUserId) && revision.RecordedAt != default).ToArray();
+            if (matches.Length != 1)
+                throw new InvalidOperationException("Every effective KPI definition or ordering change requires one exact append-only field revision.");
+            revisions.Remove(matches[0]);
+        }
+
+        var action = definitionChanged ? "ReviseDefinitionFields" : "ReviseOrdering";
+        var hasDirectAudit = ChangeTracker.Entries<AuditTrail>().Any(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName && candidate.Entity.EntityId == targetId
+            && candidate.Entity.Action == action && candidate.Entity.MunicipalityId == municipalityId
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && candidate.Entity.OldValue != null && candidate.Entity.NewValue != null);
+        var hasImportCommit = isOpms && ChangeTracker.Entries<OpmsImportBatch>().Any(candidate => candidate.State == EntityState.Modified
+            && candidate.Entity.MunicipalityId == municipalityId
+            && candidate.OriginalValues.GetValue<OpmsImportBatchStatus>(nameof(OpmsImportBatch.Status)) == OpmsImportBatchStatus.Staged
+            && candidate.CurrentValues.GetValue<OpmsImportBatchStatus>(nameof(OpmsImportBatch.Status)) == OpmsImportBatchStatus.Committed);
+        if (!hasDirectAudit && !hasImportCommit)
+            throw new InvalidOperationException("KPI revisions require their reasoned target audit or governed import-commit evidence in the same transaction.");
+
+        void AddDefinitionExpectation(string originalProperty, string flagProperty, string revisedProperty)
+        {
+            var originalEffective = entry.OriginalValues.GetValue<bool>(flagProperty)
+                ? entry.OriginalValues.GetValue<string?>(revisedProperty)
+                : entry.OriginalValues.GetValue<string>(originalProperty);
+            var currentEffective = entry.CurrentValues.GetValue<bool>(flagProperty)
+                ? entry.CurrentValues.GetValue<string?>(revisedProperty)
+                : entry.CurrentValues.GetValue<string>(originalProperty);
+            if (!string.Equals(originalEffective, currentEffective, StringComparison.Ordinal))
+                expected.Add(([originalProperty], originalEffective, currentEffective));
+        }
+
+        void AddOrderingExpectation(string property, string[] fieldNames)
+        {
+            var original = entry.OriginalValues.GetValue<int>(property);
+            var current = entry.CurrentValues.GetValue<int>(property);
+            if (original != current)
+                expected.Add((fieldNames, original.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    current.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         }
     }
 

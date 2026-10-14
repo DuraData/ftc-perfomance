@@ -329,6 +329,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         entity.InternalReference = "INTERNAL-SECRET";
         entity.FmsLink = "FMS-SECRET";
         entity.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = seed.Municipality.Id, BudgetSourceId = source.Id, Amount = 125.50m, AllocatedByUserId = seed.User.Id });
+        context.AuditTrails.Add(TargetEditAudit(nameof(OpmsTarget), entity.Id, seed.Municipality.Id, seed.User.Id, "Seed protected OPMS members."));
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
         var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -378,6 +379,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var entity = await context.IpmsTargets.SingleAsync(item => item.PublicId == created.PublicId);
         entity.InternalReference = "EMPLOYEE-SECRET";
         entity.GovernedBudgetSources.Add(new IpmsKpiBudgetSource { MunicipalityId = seed.Municipality.Id, BudgetSourceId = source.Id, Amount = 75m, AllocatedByUserId = seed.User.Id });
+        context.AuditTrails.Add(TargetEditAudit(nameof(IpmsTarget), entity.Id, seed.Municipality.Id, seed.User.Id, "Seed protected IPMS members."));
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
         var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -765,7 +767,7 @@ public sealed class NormalizedTargetWriteCutoverTests
     }
 
     private static OpmsTargetsController Controller(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId,
-        ISet<string>? deniedPermissions = null, bool persistGovernance = false)
+        ISet<string>? deniedPermissions = null, bool persistGovernance = true)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
@@ -787,6 +789,18 @@ public sealed class NormalizedTargetWriteCutoverTests
         };
     }
 
+    private static AuditTrail TargetEditAudit(string entityName, string entityId, long municipalityId, string userId, string reason) => new()
+    {
+        MunicipalityId = municipalityId,
+        EntityName = entityName,
+        EntityId = entityId,
+        Action = "Edit",
+        OldValue = "{}",
+        NewValue = "{}",
+        ChangedBy = userId,
+        Reason = reason
+    };
+
     private static void AssertGuidRoute<TController>(string methodName, string expectedTemplate)
     {
         var methods = typeof(TController).GetMethods().Where(method => method.Name == methodName).ToArray();
@@ -800,7 +814,7 @@ public sealed class NormalizedTargetWriteCutoverTests
     }
 
     private static IpmsTargetsController IpmsController(FTCERP.Host.Infrastructure.Persistence.ApplicationDbContext context, ApplicationUser user, long municipalityId,
-        ISet<string>? deniedPermissions = null, bool persistGovernance = false)
+        ISet<string>? deniedPermissions = null, bool persistGovernance = true)
     {
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))

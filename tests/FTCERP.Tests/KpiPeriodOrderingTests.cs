@@ -549,9 +549,9 @@ public sealed class KpiPeriodOrderingTests
             .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(allowed(code), allowed(code) ? "Allowed" : "Denied", allowed(code) ? [code] : [], [], []));
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
             .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
-        var governance = new Mock<IWorkflowGovernanceService>();
-        governance.Setup(service => service.WriteAuditTrailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), user.Id, It.IsAny<string?>())).Returns(Task.CompletedTask);
-        return new OpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, governance.Object, new TenantContext(municipalityId, user.Id), new PerformanceUnitEngine())
+        var tenant = new TenantContext(municipalityId, user.Id);
+        var governance = new WorkflowGovernanceService(context, tenantContext: tenant);
+        return new OpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, governance, tenant, new PerformanceUnitEngine())
         {
             ControllerContext = ControllerContext(user.Id)
         };
@@ -574,9 +574,9 @@ public sealed class KpiPeriodOrderingTests
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
             .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => new AccessDecisionResult(allowed(code), allowed(code) ? "Allowed" : "Denied", allowed(code) ? [code] : [], [], []));
-        var governance = new Mock<IWorkflowGovernanceService>();
-        governance.Setup(service => service.WriteAuditTrailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object?>(), user.Id, It.IsAny<string?>())).Returns(Task.CompletedTask);
-        return new IpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, governance.Object, new TenantContext(municipalityId, user.Id), new PerformanceUnitEngine())
+        var tenant = new TenantContext(municipalityId, user.Id);
+        var governance = new WorkflowGovernanceService(context, tenantContext: tenant);
+        return new IpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object, governance, tenant, new PerformanceUnitEngine())
         {
             ControllerContext = ControllerContext(user.Id)
         };

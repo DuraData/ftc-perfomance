@@ -44,8 +44,9 @@ public sealed class TargetNormalizationControllerTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var (municipality, user, target) = await SeedAsync(context);
-        target.RevisedAnnualTarget = 110m;
-        await context.SaveChangesAsync();
+        await context.Database.ExecuteSqlInterpolatedAsync($"UPDATE OpmsTargets SET RevisedAnnualTarget = {110m} WHERE Id = {target.Id}");
+        context.ChangeTracker.Clear();
+        target = await context.OpmsTargets.SingleAsync(item => item.Id == target.Id);
 
         var result = await Controller(context, municipality.Id, user, Mock.Of<IWorkflowGovernanceService>())
             .Execute(new TargetNormalizationRequest(SubmissionKind.Opms, [new TargetNormalizationSelection(target.PublicId, Convert.ToBase64String(target.RowVersion))], "Attempted cutover"));
