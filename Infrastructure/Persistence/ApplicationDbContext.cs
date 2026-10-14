@@ -2346,6 +2346,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforcePermissionProjectionHistory();
         EnforceMunicipalityRootHistory();
         EnforceApplicationUserRootHistory();
+        EnforceTenantCalendarHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
@@ -2485,19 +2486,6 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             if (!bindingChanged && !authenticatedChanged && !statusChanged)
                 throw new InvalidOperationException("Enterprise-authenticator history cannot be rewritten.");
         }
-        if (ChangeTracker.Entries<FinancialYear>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<MunicipalityFinancialYear>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<ReportingPeriod>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<SdbipLayer>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Tenant calendar and SDBIP master history cannot be hard deleted.");
-        foreach (var entry in ChangeTracker.Entries<FinancialYear>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(FinancialYear), entry.Entity.PublicId, null);
-        foreach (var entry in ChangeTracker.Entries<MunicipalityFinancialYear>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(MunicipalityFinancialYear), entry.Entity.PublicId, entry.Entity.MunicipalityId);
-        foreach (var entry in ChangeTracker.Entries<ReportingPeriod>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(ReportingPeriod), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
-        foreach (var entry in ChangeTracker.Entries<SdbipLayer>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(SdbipLayer), entry.Entity.PublicId, entry.Entity.MunicipalityId);
         if (ChangeTracker.Entries<MunicipalEmployee>().Any(entry => entry.State == EntityState.Deleted))
             throw new InvalidOperationException("Municipal-employee history cannot be hard deleted.");
         foreach (var entry in ChangeTracker.Entries<MunicipalEmployee>().Where(entry => entry.State == EntityState.Modified))
@@ -3626,6 +3614,122 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             return TryGetJsonProperty(document.RootElement, field, out var value)
                 && value.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
                 && value.GetBoolean() == expected;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
+    private void EnforceTenantCalendarHistory()
+    {
+        if (ChangeTracker.Entries<FinancialYear>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<MunicipalityFinancialYear>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<ReportingPeriod>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<SdbipLayer>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Tenant calendar and SDBIP master history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<FinancialYear>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(FinancialYear.Code), nameof(FinancialYear.Name), nameof(FinancialYear.StartDate),
+                nameof(FinancialYear.EndDate), nameof(FinancialYear.IsActive)
+            };
+            EnsureOnlyProperties(entry, [.. snapshotFields, nameof(FinancialYear.RowVersion)],
+                "Financial-year identity and public identity are immutable.");
+            RequireExactRootAudit(entry, nameof(FinancialYear), entry.OriginalValues.GetValue<Guid>(nameof(FinancialYear.PublicId)),
+                null, snapshotFields);
+        }
+
+        foreach (var entry in ChangeTracker.Entries<MunicipalityFinancialYear>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(MunicipalityFinancialYear.FinancialYearId), nameof(MunicipalityFinancialYear.IsCurrent),
+                nameof(MunicipalityFinancialYear.IsActive), nameof(MunicipalityFinancialYear.EffectiveFrom),
+                nameof(MunicipalityFinancialYear.EffectiveTo)
+            };
+            EnsureOnlyProperties(entry,
+                [nameof(MunicipalityFinancialYear.IsCurrent), nameof(MunicipalityFinancialYear.IsActive),
+                    nameof(MunicipalityFinancialYear.EffectiveFrom), nameof(MunicipalityFinancialYear.EffectiveTo),
+                    nameof(MunicipalityFinancialYear.RowVersion)],
+                "Municipality-financial-year identity, tenant and financial-year association are immutable.");
+            RequireExactRootAudit(entry, nameof(MunicipalityFinancialYear),
+                entry.OriginalValues.GetValue<Guid>(nameof(MunicipalityFinancialYear.PublicId)),
+                entry.OriginalValues.GetValue<long>(nameof(MunicipalityFinancialYear.MunicipalityId)), snapshotFields);
+        }
+
+        foreach (var entry in ChangeTracker.Entries<ReportingPeriod>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(ReportingPeriod.MunicipalityFinancialYearId), nameof(ReportingPeriod.Code), nameof(ReportingPeriod.Name),
+                nameof(ReportingPeriod.PeriodType), nameof(ReportingPeriod.Sequence), nameof(ReportingPeriod.StartDate),
+                nameof(ReportingPeriod.EndDate), nameof(ReportingPeriod.IsActive)
+            };
+            EnsureOnlyProperties(entry,
+                [nameof(ReportingPeriod.Name), nameof(ReportingPeriod.PeriodType), nameof(ReportingPeriod.Sequence),
+                    nameof(ReportingPeriod.StartDate), nameof(ReportingPeriod.EndDate), nameof(ReportingPeriod.IsActive),
+                    nameof(ReportingPeriod.RowVersion)],
+                "Reporting-period identity, parent financial year and canonical code are immutable.");
+            RequireExactRootAudit(entry, nameof(ReportingPeriod),
+                entry.OriginalValues.GetValue<Guid>(nameof(ReportingPeriod.PublicId)), _tenantContext?.MunicipalityId, snapshotFields);
+        }
+
+        foreach (var entry in ChangeTracker.Entries<SdbipLayer>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(SdbipLayer.Code), nameof(SdbipLayer.Name), nameof(SdbipLayer.Description),
+                nameof(SdbipLayer.DisplayOrder), nameof(SdbipLayer.IsActive), nameof(SdbipLayer.MunicipalityFinancialYearId)
+            };
+            EnsureOnlyProperties(entry,
+                [nameof(SdbipLayer.Code), nameof(SdbipLayer.Name), nameof(SdbipLayer.Description),
+                    nameof(SdbipLayer.DisplayOrder), nameof(SdbipLayer.IsActive), nameof(SdbipLayer.UpdatedAt),
+                    nameof(SdbipLayer.RowVersion)],
+                "SDBIP-layer identity, tenant, financial-year association and creation evidence are immutable.");
+            RequireExactRootAudit(entry, nameof(SdbipLayer),
+                entry.OriginalValues.GetValue<Guid>(nameof(SdbipLayer.PublicId)),
+                entry.OriginalValues.GetValue<long>(nameof(SdbipLayer.MunicipalityId)), snapshotFields);
+        }
+    }
+
+    private void RequireExactRootAudit<TEntity>(EntityEntry<TEntity> entry, string entityName, Guid publicId,
+        long? municipalityId, IReadOnlyCollection<string> snapshotFields) where TEntity : class
+    {
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName
+            && candidate.Entity.EntityId == publicId.ToString()
+            && candidate.Entity.Action == "Update"
+            && candidate.Entity.MunicipalityId == municipalityId
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
+            && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)).ToArray();
+        if (audits.Length != 1)
+            throw new InvalidOperationException($"{entityName} changes require one exact same-transaction reasoned before/after audit.");
+    }
+
+    private static bool RootSnapshotMatches(string? json, PropertyValues values, IEnumerable<string> fields)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            foreach (var field in fields)
+            {
+                if (!TryGetJsonProperty(document.RootElement, field, out var actual)) return false;
+                var expectedValue = values[field];
+                if (expectedValue == null)
+                {
+                    if (actual.ValueKind != System.Text.Json.JsonValueKind.Null) return false;
+                    continue;
+                }
+
+                var expected = System.Text.Json.JsonSerializer.SerializeToElement(expectedValue, expectedValue.GetType());
+                if (!System.Text.Json.JsonElement.DeepEquals(actual, expected)) return false;
+            }
+            return true;
         }
         catch (System.Text.Json.JsonException)
         {

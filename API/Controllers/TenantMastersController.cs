@@ -283,7 +283,7 @@ public sealed class TenantMastersController(ApplicationDbContext context, ITenan
             return Conflict(Fail<SdbipLayerDto>("The SDBIP layer code already exists for this municipality financial year."));
         if (!request.IsActive && await context.OpmsTargets.AnyAsync(item => item.SdbipLayerId == entity.Id && !item.IsWithdrawn))
             return Conflict(Fail<SdbipLayerDto>("Withdraw or reclassify active KPIs before deactivating this SDBIP layer."));
-        var before = new { entity.Code, entity.Name, entity.Description, entity.DisplayOrder, entity.IsActive };
+        var before = new { entity.Code, entity.Name, entity.Description, entity.DisplayOrder, entity.IsActive, entity.MunicipalityFinancialYearId };
         entity.Code = code; entity.Name = request.Name.Trim(); entity.Description = Normalize(request.Description); entity.DisplayOrder = request.DisplayOrder; entity.IsActive = request.IsActive; entity.UpdatedAt = DateTime.UtcNow;
         QueueSdbipLayerAudit(entity, "Update", before, request.Reason);
         try { await context.SaveChangesAsync(); }

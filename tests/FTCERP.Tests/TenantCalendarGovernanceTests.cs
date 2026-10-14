@@ -150,13 +150,99 @@ public sealed class TenantCalendarGovernanceTests
         var period = await context.ReportingPeriods.SingleAsync();
         period.Name = "Unaudited rewrite";
         var rewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
-        Assert.Contains("same-transaction reasoned before/after audit evidence", rewrite.Message);
+        Assert.Contains("one exact same-transaction reasoned before/after audit", rewrite.Message);
 
         context.ChangeTracker.Clear();
         var layer = await context.SdbipLayers.SingleAsync();
         context.SdbipLayers.Remove(layer);
         var deletion = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
         Assert.Contains("cannot be hard deleted", deletion.Message);
+    }
+
+    [Fact]
+    public async Task Persistence_rejects_calendar_identity_parent_and_creation_evidence_rewrites()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 743;
+        await SeedCalendar(options, municipalityId);
+
+        await using var context = new ApplicationDbContext(options, new TestTenantContext(municipalityId, "calendar-governor"));
+        var financialYear = await context.FinancialYears.FirstAsync();
+        financialYear.PublicId = Guid.NewGuid();
+        var financialYearRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("Financial-year identity and public identity are immutable", financialYearRewrite.Message);
+
+        context.ChangeTracker.Clear();
+        var municipalYear = await context.MunicipalityFinancialYears.SingleAsync();
+        municipalYear.FinancialYearId += 1;
+        var parentRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("Municipality-financial-year identity, tenant and financial-year association are immutable", parentRewrite.Message);
+
+        context.ChangeTracker.Clear();
+        var period = await context.ReportingPeriods.SingleAsync();
+        period.Code = "FORGED";
+        var periodRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("Reporting-period identity, parent financial year and canonical code are immutable", periodRewrite.Message);
+
+        context.ChangeTracker.Clear();
+        var layer = await context.SdbipLayers.SingleAsync();
+        layer.CreatedAt = layer.CreatedAt.AddDays(1);
+        var creationRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("SDBIP-layer identity, tenant, financial-year association and creation evidence are immutable", creationRewrite.Message);
+    }
+
+    [Fact]
+    public async Task Persistence_rejects_forged_calendar_audit_snapshots()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 744;
+        await SeedCalendar(options, municipalityId);
+
+        await using var context = new ApplicationDbContext(options, new TestTenantContext(municipalityId, "calendar-governor"));
+        var period = await context.ReportingPeriods.SingleAsync();
+        period.Name = "Governed-looking forgery";
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId,
+            EntityName = nameof(ReportingPeriod),
+            EntityId = period.PublicId.ToString(),
+            Action = "Update",
+            OldValue = "{\"MunicipalityFinancialYearId\":999,\"Code\":\"Q1\",\"Name\":\"Quarter 1\",\"PeriodType\":1,\"Sequence\":1,\"StartDate\":\"2035-07-01T00:00:00\",\"EndDate\":\"2035-09-30T00:00:00\",\"IsActive\":true}",
+            NewValue = "{\"MunicipalityFinancialYearId\":999,\"Code\":\"Q1\",\"Name\":\"Governed-looking forgery\",\"PeriodType\":1,\"Sequence\":1,\"StartDate\":\"2035-07-01T00:00:00\",\"EndDate\":\"2035-09-30T00:00:00\",\"IsActive\":true}",
+            ChangedBy = "calendar-governor",
+            Reason = "Pretend this is an exact governed update"
+        });
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("one exact same-transaction reasoned before/after audit", exception.Message);
+    }
+
+    private static async Task SeedCalendar(DbContextOptions<ApplicationDbContext> options, long municipalityId)
+    {
+        await using var setup = new ApplicationDbContext(options, new TestTenantContext(null, "system", true));
+        await setup.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Id = municipalityId, Code = $"CAL-{municipalityId}", Name = "Protected Calendar Municipality" };
+        var year = new FinancialYear { Code = "2035/36", Name = "2035/36", StartDate = new DateTime(2035, 7, 1), EndDate = new DateTime(2036, 6, 30) };
+        setup.AddRange(municipality, year);
+        await setup.SaveChangesAsync();
+        var municipalYear = new MunicipalityFinancialYear { MunicipalityId = municipalityId, FinancialYear = year, FinancialYearId = year.Id, IsCurrent = true, EffectiveFrom = year.StartDate };
+        setup.MunicipalityFinancialYears.Add(municipalYear);
+        await setup.SaveChangesAsync();
+        setup.ReportingPeriods.Add(new ReportingPeriod
+        {
+            MunicipalityFinancialYear = municipalYear, MunicipalityFinancialYearId = municipalYear.Id, Code = "Q1", Name = "Quarter 1",
+            PeriodType = ReportingPeriodType.Quarter1, Sequence = 1, StartDate = year.StartDate, EndDate = new DateTime(2035, 9, 30)
+        });
+        setup.SdbipLayers.Add(new SdbipLayer
+        {
+            MunicipalityId = municipalityId, MunicipalityFinancialYear = municipalYear, MunicipalityFinancialYearId = municipalYear.Id,
+            Code = "TOP", Name = "Top Layer", DisplayOrder = 1
+        });
+        await setup.SaveChangesAsync();
     }
 
     private static TenantMastersController Controller(ApplicationDbContext context, long municipalityId, string actorId)
