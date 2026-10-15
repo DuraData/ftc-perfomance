@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **964 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **400 frontend tests pass** across 80 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **965 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **400 frontend tests pass** across 80 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -56,7 +56,7 @@ Absence from the reviewed repository is classified as **NOT IMPLEMENTED** when t
 |---|---|---|
 | Backend build | Passed with 0 errors and 0 warnings | The host compiles, but compilation is not requirements compliance. |
 | Frontend unit tests | 400/400 passed across 80 files | Component, mapping, routing, security-administration and governed-capture coverage passes. |
-| Backend tests via ordinary `dotnet test` | 964 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite, including actor-bound TID, authentication-state, authentication-configuration, enterprise-identity, IDP-task and IDP plan-version lifecycle audit coverage. |
+| Backend tests via ordinary `dotnet test` | 965 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite, including actor-bound TID, authentication-state, authentication-configuration, enterprise-identity, KPI-revision, IDP-task and IDP plan-version lifecycle audit coverage. |
 | Frontend type-check | Passed | The production TypeScript project has no static type errors. |
 | Frontend lint | Passed | The client passes the configured ESLint gate. |
 | Accessibility automation | 2/2 passed | The shared application shell and form contract pass the automated axe checks; manual certification remains external acceptance work. |
@@ -4681,6 +4681,12 @@ Relational adversarial coverage creates an otherwise exact successor and actor-b
 Authentication-configuration versions now require their authoritative `CreatedAt` value to be non-default and not future-dated, in addition to the existing exact equality between creation and audit timestamps. Existing immutable policy snapshots, configuration-family lineage, predecessor closure, version sequence, current marker, stable creator identity, authenticated-actor binding, exact before/after snapshots, governance reason and RowVersion concurrency remain mandatory. The production controller already derives each version and audit from the same captured time, so the stronger persistence rule changes no public contract or schema.
 
 Relational adversarial coverage constructs an otherwise exact initial configuration, policy snapshot and actor-bound audit with matching timestamps one hour in the future and proves that persistence rejects the complete write. The focused enterprise-authentication and municipality-root group passes **22/22**, complete backend regression passes **964 tests with 1 explicit native SQL Server-only skip and 0 failures**, and Release compilation reports **0 warnings and 0 errors**. Implementation commit `0d408ff9b4a9b9a39df78ca784a7e9b9e1a1d602` is on both branches; GitHub Actions run `38726788502`, job `116394515862`, verified the exact revision in **7m17s** with every quality and security gate passing.
+
+### 11.407 KPI revision audit time integrity
+
+OPMS and IPMS definition-field and ordering revisions now require their exact same-transaction target audit to carry a non-default, non-future timestamp. Existing coherent append-only field-revision evidence, actor equality, governance reason, approval reference, effective date, exact before/after target snapshots, municipality ownership and RowVersion concurrency remain mandatory. Business-effective dates remain independently configurable; the new invariant governs when the audit evidence was recorded rather than rewriting its approved effective date.
+
+Relational adversarial coverage constructs an otherwise exact OPMS target definition revision, append-only field history and actor-bound audit but timestamps the audit one hour in the future; persistence rejects the target mutation and its history atomically. The focused performance-target root-history group passes **13/13**, complete backend regression passes **965 tests with 1 explicit native SQL Server-only skip and 0 failures**, and Release compilation reports **0 warnings and 0 errors**. Implementation commit `7019d6fdefbfa5c790ffea9158b54c71191fbf40` is on both branches; GitHub Actions run `38728346011`, job `116399643874`, verified the exact revision in **7m21s** with every quality and security gate passing.
 
 ### 12.1 Final verdict
 
