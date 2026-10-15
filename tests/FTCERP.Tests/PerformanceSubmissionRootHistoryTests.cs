@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace FTCERP.Tests;
 
 public sealed class PerformanceSubmissionRootHistoryTests
@@ -43,7 +45,7 @@ public sealed class PerformanceSubmissionRootHistoryTests
         fixture.Submission.UpdatedOn = DateTime.UtcNow;
 
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("OpmsSubmission changes require same-transaction reasoned before/after audit evidence.*");
+            .WithMessage("OpmsSubmission Edit requires one exact actor-bound same-transaction before/after audit.*");
     }
 
     [Fact]
@@ -54,23 +56,149 @@ public sealed class PerformanceSubmissionRootHistoryTests
         context.AddRange(fixture.Municipality, fixture.User, fixture.Target, fixture.Submission);
         await context.SaveChangesAsync();
 
+        var updatedOn = DateTime.UtcNow;
         fixture.Submission.ActualPerformance = "42";
         fixture.Submission.UpdatedBy = fixture.User.Id;
-        fixture.Submission.UpdatedOn = DateTime.UtcNow;
+        fixture.Submission.UpdatedOn = updatedOn;
         context.AuditTrails.Add(new AuditTrail
         {
             MunicipalityId = fixture.Municipality.Id,
             EntityName = nameof(OpmsSubmission),
             EntityId = fixture.Submission.Id,
             Action = "Edit",
-            OldValue = "{\"actualPerformance\":null}",
-            NewValue = "{\"actualPerformance\":\"42\"}",
+            OldValue = JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                [nameof(OpmsSubmission.PublicId)] = fixture.Submission.PublicId,
+                [nameof(OpmsSubmission.ActualPerformance)] = null,
+                ["UpdatedByUserPublicId"] = null,
+                [nameof(OpmsSubmission.UpdatedOn)] = null
+            }),
+            NewValue = JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                [nameof(OpmsSubmission.PublicId)] = fixture.Submission.PublicId,
+                [nameof(OpmsSubmission.ActualPerformance)] = "42",
+                ["UpdatedByUserPublicId"] = fixture.User.PublicId,
+                [nameof(OpmsSubmission.UpdatedOn)] = updatedOn
+            }),
             ChangedBy = fixture.User.Id,
             Reason = "Governed draft correction"
         });
 
         await context.SaveChangesAsync();
         fixture.Submission.ActualPerformance.Should().Be("42");
+    }
+
+    [Fact]
+    public async Task Forged_draft_value_snapshot_is_rejected()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var fixture = Fixture("forged-edit");
+        context.AddRange(fixture.Municipality, fixture.User, fixture.Target, fixture.Submission);
+        await context.SaveChangesAsync();
+
+        var updatedOn = DateTime.UtcNow;
+        fixture.Submission.ActualPerformance = "42";
+        fixture.Submission.UpdatedBy = fixture.User.Id;
+        fixture.Submission.UpdatedOn = updatedOn;
+        context.AuditTrails.Add(EditAudit(fixture, fixture.User.Id, updatedOn, "99"));
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("OpmsSubmission Edit requires one exact actor-bound same-transaction before/after audit.*");
+    }
+
+    [Fact]
+    public async Task Forged_but_persisted_submission_actor_is_rejected_for_an_authenticated_tenant()
+    {
+        const long municipalityId = 982101;
+        var expectedActor = IdpTestFixture.CreateUser("submission-expected-actor");
+        var forgedActor = IdpTestFixture.CreateUser("submission-forged-actor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, expectedActor.Id));
+        var municipality = new Municipality { Id = municipalityId, Code = "SUB-ACTOR", Name = "Submission actor municipality" };
+        expectedActor.Municipality = municipality;
+        forgedActor.Municipality = municipality;
+        var target = new OpmsTarget
+        {
+            Id = "submission-actor-target", Municipality = municipality, IndicatorNumber = "KPI-1",
+            TargetName = "Governed target", KpiDescription = "Governed wording", CreatedAt = DateTime.UtcNow
+        };
+        var submission = new OpmsSubmission
+        {
+            Id = "submission-actor-bound", Municipality = municipality, OpmsTarget = target, Quarter = "Q1",
+            BaseState = SubmissionBaseStates.InProgress, Status = SubmissionBaseStates.InProgress,
+            SubmittedByUser = expectedActor, CreatedBy = expectedActor.Id, CreatedOn = DateTime.UtcNow, CreatedAt = DateTime.UtcNow
+        };
+        var fixture = new SubmissionFixture(municipality, expectedActor, target, submission);
+        context.AddRange(municipality, expectedActor, forgedActor, target, submission);
+        await context.SaveChangesAsync();
+
+        var updatedOn = DateTime.UtcNow;
+        submission.ActualPerformance = "42";
+        submission.UpdatedBy = expectedActor.Id;
+        submission.UpdatedOn = updatedOn;
+        context.AuditTrails.Add(EditAudit(fixture, forgedActor.Id, updatedOn, "42"));
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("OpmsSubmission Edit requires one exact actor-bound same-transaction before/after audit.*");
+    }
+
+    [Fact]
+    public async Task Due_date_extension_rejects_audit_reason_or_snapshot_not_bound_to_the_ledger()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var fixture = Fixture("forged-extension");
+        var originalDueDate = DateTime.UtcNow.Date.AddDays(5);
+        fixture.Submission.DueDate = originalDueDate;
+        context.AddRange(fixture.Municipality, fixture.User, fixture.Target, fixture.Submission);
+        await context.SaveChangesAsync();
+
+        var updatedOn = DateTime.UtcNow;
+        var extendedDueDate = originalDueDate.AddDays(3);
+        fixture.Submission.DueDate = extendedDueDate;
+        fixture.Submission.ExtendedDueDate = extendedDueDate;
+        fixture.Submission.DueDateExtendedDays = 3;
+        fixture.Submission.UpdatedBy = fixture.User.Id;
+        fixture.Submission.UpdatedOn = updatedOn;
+        context.DueDateExtensions.Add(new DueDateExtension
+        {
+            MunicipalityId = fixture.Municipality.Id,
+            SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = fixture.Submission.Id,
+            OriginalDueDate = originalDueDate,
+            ExtendedDueDate = extendedDueDate,
+            Reason = "Approved extension",
+            ApprovedByUserId = fixture.User.Id,
+            ApprovedAt = updatedOn
+        });
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = fixture.Municipality.Id,
+            EntityName = nameof(OpmsSubmission),
+            EntityId = fixture.Submission.Id,
+            Action = "ExtendDueDate",
+            OldValue = JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                [nameof(OpmsSubmission.PublicId)] = fixture.Submission.PublicId,
+                [nameof(OpmsSubmission.DueDate)] = originalDueDate,
+                [nameof(OpmsSubmission.DueDateExtendedDays)] = null,
+                [nameof(OpmsSubmission.ExtendedDueDate)] = null,
+                ["UpdatedByUserPublicId"] = null,
+                [nameof(OpmsSubmission.UpdatedOn)] = null
+            }),
+            NewValue = JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                [nameof(OpmsSubmission.PublicId)] = fixture.Submission.PublicId,
+                [nameof(OpmsSubmission.DueDate)] = extendedDueDate,
+                [nameof(OpmsSubmission.DueDateExtendedDays)] = 3,
+                [nameof(OpmsSubmission.ExtendedDueDate)] = extendedDueDate,
+                ["UpdatedByUserPublicId"] = fixture.User.PublicId,
+                [nameof(OpmsSubmission.UpdatedOn)] = updatedOn
+            }),
+            ChangedBy = fixture.User.Id,
+            Reason = "Different reason"
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("OpmsSubmission ExtendDueDate requires one exact actor-bound same-transaction before/after audit.*");
     }
 
     [Fact]
@@ -191,6 +319,30 @@ public sealed class PerformanceSubmissionRootHistoryTests
         ActorUserId = fixture.User.Id,
         OccurredAt = occurredAt,
         CorrelationId = "submission-root-test"
+    };
+
+    private static AuditTrail EditAudit(SubmissionFixture fixture, string auditActor, DateTime updatedOn, string newActual) => new()
+    {
+        MunicipalityId = fixture.Municipality.Id,
+        EntityName = nameof(OpmsSubmission),
+        EntityId = fixture.Submission.Id,
+        Action = "Edit",
+        OldValue = JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            [nameof(OpmsSubmission.PublicId)] = fixture.Submission.PublicId,
+            [nameof(OpmsSubmission.ActualPerformance)] = null,
+            ["UpdatedByUserPublicId"] = null,
+            [nameof(OpmsSubmission.UpdatedOn)] = null
+        }),
+        NewValue = JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            [nameof(OpmsSubmission.PublicId)] = fixture.Submission.PublicId,
+            [nameof(OpmsSubmission.ActualPerformance)] = newActual,
+            ["UpdatedByUserPublicId"] = fixture.User.PublicId,
+            [nameof(OpmsSubmission.UpdatedOn)] = updatedOn
+        }),
+        ChangedBy = auditActor,
+        Reason = "Governed draft correction"
     };
 
     private sealed record SubmissionFixture(

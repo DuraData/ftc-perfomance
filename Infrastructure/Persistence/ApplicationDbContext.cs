@@ -5161,16 +5161,18 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             {
                 var originalDueDate = entry.OriginalValues.GetValue<DateTime?>(nameof(OpmsSubmission.DueDate));
                 var currentDueDate = entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsSubmission.DueDate));
-                var extensions = ChangeTracker.Entries<DueDateExtension>().Count(candidate =>
+                var extensions = ChangeTracker.Entries<DueDateExtension>().Where(candidate =>
                     candidate.State == EntityState.Added && candidate.Entity.MunicipalityId == originalMunicipalityId
                     && candidate.Entity.SubmissionKind == kind && candidate.Entity.SubmissionId == submissionId
                     && candidate.Entity.OriginalDueDate == originalDueDate && candidate.Entity.ExtendedDueDate == currentDueDate
                     && candidate.Entity.ApprovedByUserId == entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.UpdatedBy))
-                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason));
+                    && candidate.Entity.ApprovedAt == entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsSubmission.UpdatedOn))
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)).Select(candidate => candidate.Entity).ToArray();
                 if (changed.Except(dueDateProperties).Any() || !originalDueDate.HasValue || !currentDueDate.HasValue
-                    || currentDueDate <= originalDueDate || extensions != 1)
+                    || currentDueDate <= originalDueDate || extensions.Length != 1)
                     throw new InvalidOperationException("A submission due date may advance only with one exact append-only extension record.");
-                RequireGovernanceAudit(entityName, submissionId, originalMunicipalityId, "ExtendDueDate", requireOldValue: true);
+                RequireExactPerformanceSubmissionAudit(entry.Entity, entityName, submissionId, originalMunicipalityId,
+                    "ExtendDueDate", extensions[0].ApprovedByUserId, extensions[0].Reason);
                 continue;
             }
 
@@ -5250,8 +5252,61 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || SubmissionBaseStates.Normalize(entry.OriginalValues.GetValue<string>(nameof(OpmsSubmission.BaseState))) != SubmissionBaseStates.InProgress
                 || SubmissionBaseStates.Normalize(entry.CurrentValues.GetValue<string>(nameof(OpmsSubmission.BaseState))) != SubmissionBaseStates.InProgress)
                 throw new InvalidOperationException("Submission workflow, actor, decision, score, status and terminal projections may change only beside their exact append-only workflow action.");
-            RequireGovernanceAudit(entityName, submissionId, originalMunicipalityId, "Edit", requireOldValue: true);
+            RequireExactPerformanceSubmissionAudit(entry.Entity, entityName, submissionId, originalMunicipalityId,
+                "Edit", entry.CurrentValues.GetValue<string?>(nameof(OpmsSubmission.UpdatedBy)));
         }
+    }
+
+    internal (IReadOnlyDictionary<string, object?> Before, IReadOnlyDictionary<string, object?> After)
+        BuildPerformanceSubmissionAuditSnapshots(object submission)
+    {
+        if (submission is not OpmsSubmission && submission is not IpmsSubmission)
+            throw new ArgumentException("A performance-submission audit snapshot requires an OPMS or IPMS submission.", nameof(submission));
+
+        ChangeTracker.DetectChanges();
+        var entry = Entry(submission);
+        var fields = entry.Properties.Where(property => property.IsModified
+                && property.Metadata.Name != nameof(OpmsSubmission.RowVersion))
+            .Select(property => property.Metadata.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        var before = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            [nameof(OpmsSubmission.PublicId)] = entry.OriginalValues[nameof(OpmsSubmission.PublicId)]
+        };
+        var after = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            [nameof(OpmsSubmission.PublicId)] = entry.CurrentValues[nameof(OpmsSubmission.PublicId)]
+        };
+        foreach (var field in fields)
+        {
+            var auditField = field == nameof(OpmsSubmission.UpdatedBy) ? "UpdatedByUserPublicId" : field;
+            before[auditField] = field == nameof(OpmsSubmission.UpdatedBy)
+                ? ResolveAuditPublicId<ApplicationUser>(entry.OriginalValues[field]) : entry.OriginalValues[field];
+            after[auditField] = field == nameof(OpmsSubmission.UpdatedBy)
+                ? ResolveAuditPublicId<ApplicationUser>(entry.CurrentValues[field]) : entry.CurrentValues[field];
+        }
+        return (before, after);
+    }
+
+    private void RequireExactPerformanceSubmissionAudit(object submission, string entityName, string entityId,
+        long? municipalityId, string action, string? expectedActor, string? expectedReason = null)
+    {
+        var snapshots = BuildPerformanceSubmissionAuditSnapshots(submission);
+        var contextActor = _tenantContext?.UserId;
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName
+            && candidate.Entity.EntityId == entityId
+            && candidate.Entity.Action == action
+            && candidate.Entity.MunicipalityId == municipalityId
+            && candidate.Entity.ChangedBy == expectedActor
+            && GovernanceActorMatches(candidate.Entity.ChangedBy, contextActor)
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && (expectedReason == null || candidate.Entity.Reason == expectedReason)
+            && ExactSnapshotMatches(candidate.Entity.OldValue, snapshots.Before)
+            && ExactSnapshotMatches(candidate.Entity.NewValue, snapshots.After)).ToArray();
+        if (audits.Length != 1)
+            throw new InvalidOperationException($"{entityName} {action} requires one exact actor-bound same-transaction before/after audit.");
     }
 
     private void EnforceExactKpiFieldRevisions(EntityEntry entry, string entityName, bool definitionChanged)

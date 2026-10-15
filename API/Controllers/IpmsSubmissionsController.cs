@@ -303,8 +303,6 @@ public class IpmsSubmissionsController : ControllerBase
         catch (InvalidOperationException exception) { return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, exception.Message)); }
         if (entity.ReportingPeriodId.HasValue && entity.ReportingPeriodId != resolved.Period.Id) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A submission cannot be moved to another reporting period."));
 
-        var before = await FindSubmissionAsync(id);
-        var beforeAudit = before == null ? null : AuditSnapshot(before);
         entity.ReportingPeriodId = resolved.Period.Id;
         entity.ActualPerformance = resolved.Calculation?.CanonicalActual;
         entity.AchievementPercent = resolved.Calculation?.AchievementPercent;
@@ -316,8 +314,9 @@ public class IpmsSubmissionsController : ControllerBase
         entity.PoeType = request.PoeType?.Trim();
         entity.UpdatedBy = user.Id;
         entity.UpdatedOn = DateTime.UtcNow;
-        _workflowGovernanceService.QueueAuditTrail("IpmsSubmission", id, "Edit", beforeAudit,
-            AuditSnapshot(entity), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Draft IPMS submission updated.");
+        var audit = _context.BuildPerformanceSubmissionAuditSnapshots(entity);
+        _workflowGovernanceService.QueueAuditTrail("IpmsSubmission", id, "Edit", audit.Before,
+            audit.After, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Draft IPMS submission updated.");
         await _context.SaveChangesAsync();
 
         var after = await FindSubmissionAsync(id) ?? entity;
@@ -1033,7 +1032,8 @@ public class IpmsSubmissionsController : ControllerBase
         entity.ExtendedDueDate = request.ExtendedDueDate;
         entity.DueDateExtendedDays = (int)(request.ExtendedDueDate.Date - previousDueDate.Date).TotalDays;
         entity.UpdatedBy = user.Id;
-        entity.UpdatedOn = DateTime.UtcNow;
+        var updatedOn = DateTime.UtcNow;
+        entity.UpdatedOn = updatedOn;
         _context.DueDateExtensions.Add(new DueDateExtension
         {
             MunicipalityId = entity.MunicipalityId,
@@ -1043,10 +1043,11 @@ public class IpmsSubmissionsController : ControllerBase
             ExtendedDueDate = request.ExtendedDueDate,
             Reason = reason,
             ApprovedByUserId = user.Id,
-            ApprovedAt = DateTime.UtcNow
+            ApprovedAt = updatedOn
         });
+        var audit = _context.BuildPerformanceSubmissionAuditSnapshots(entity);
         _workflowGovernanceService.QueueAuditTrail("IpmsSubmission", id, "ExtendDueDate",
-            new { DueDate = previousDueDate }, new { DueDate = request.ExtendedDueDate, Reason = reason },
+            audit.Before, audit.After,
             user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
         _workflowGovernanceService.QueueWorkflowNotifications(GetRelevantUserIds(entity), NotificationType.DueDateExtension,
             "IPMS due date extended", $"The due date for IPMS submission '{entity.Id}' was extended.", "IpmsSubmission", id);
