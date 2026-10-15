@@ -5810,6 +5810,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.ChangedBy == actors[0]
                 && candidate.Entity.Reason == reasons[0]
                 && candidate.Entity.ChangedAt != default
+                && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
                 && ExactSnapshotMatches(candidate.Entity.OldValue, before)
                 && ExactSnapshotMatches(candidate.Entity.NewValue, after)).ToArray();
             if (audits.Length != 1)
