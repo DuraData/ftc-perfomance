@@ -55,7 +55,7 @@ public sealed class PerformanceConsolidationController(
         var definition = await context.PerformanceCalculationTypes.SingleOrDefaultAsync(item => item.PublicId == calculationTypePublicId && item.IsActive);
         if (definition == null) return NotFound(Fail<ConsolidationPolicyDto>("Calculation type not found or inactive."));
         var entity = await context.MunicipalityConsolidationPolicies.SingleOrDefaultAsync(item => item.CalculationTypeId == definition.Id);
-        ConsolidationPolicyDto? before = null;
+        object? before = null;
         var now = DateTime.UtcNow;
         if (entity == null)
         {
@@ -71,7 +71,7 @@ public sealed class PerformanceConsolidationController(
         }
         else
         {
-            before = ToDto(definition, entity);
+            before = PolicySnapshot(definition, entity);
             if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<ConsolidationPolicyDto>("A valid RowVersion is required when changing an existing policy."));
             entity.ModifiedByUserId = authorization.User!.Id;
             entity.ModifiedAt = now;
@@ -84,15 +84,8 @@ public sealed class PerformanceConsolidationController(
         entity.IsActive = request.IsActive;
         workflowGovernance.QueueAuditTrail(
             nameof(MunicipalityConsolidationPolicy), entity.PublicId.ToString(), before == null ? "Create" : "Edit",
-            before, new
-            {
-                CalculationTypePublicId = definition.PublicId,
-                entity.ConsolidationRule,
-                entity.MissingValuePolicy,
-                entity.AllowDerivedTargetOverride,
-                entity.DeriveAnnualTarget,
-                entity.IsActive
-            }, authorization.User!.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
+            before, PolicySnapshot(definition, entity), authorization.User!.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<ConsolidationPolicyDto>("The consolidation policy changed since it was loaded. Refresh and try again.")); }
         catch (DbUpdateException) { return Conflict(Fail<ConsolidationPolicyDto>("The consolidation policy conflicts with another current policy.")); }
@@ -130,6 +123,16 @@ public sealed class PerformanceConsolidationController(
             policy?.PublicId, policy?.ConsolidationRule, policy?.MissingValuePolicy ?? ConsolidationMissingValuePolicy.Block,
             policy?.AllowDerivedTargetOverride ?? false, policy?.DeriveAnnualTarget ?? false, policy?.IsActive ?? false,
             policy == null ? null : Convert.ToBase64String(policy.RowVersion));
+
+    private static object PolicySnapshot(PerformanceCalculationTypeDefinition definition, MunicipalityConsolidationPolicy policy) => new
+    {
+        CalculationTypePublicId = definition.PublicId,
+        policy.ConsolidationRule,
+        policy.MissingValuePolicy,
+        policy.AllowDerivedTargetOverride,
+        policy.DeriveAnnualTarget,
+        policy.IsActive
+    };
 
     private static ApiResponse<T> Fail<T>(string message) => new(false, default, message);
 }

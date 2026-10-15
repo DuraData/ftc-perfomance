@@ -51,20 +51,26 @@ public sealed class PerformanceConsolidationPersistenceTests
         await using var tenant = new ApplicationDbContext(options, new TenantContext(municipalityId, "consolidation-admin"));
         var visible = await tenant.MunicipalityConsolidationPolicies.SingleAsync();
         visible.ConsolidationRule.Should().Be(PerformanceCalculationType.Average);
+        var calculationTypePublicId = await tenant.PerformanceCalculationTypes
+            .Where(item => item.Id == visible.CalculationTypeId).Select(item => item.PublicId).SingleAsync();
 
         await using var stale = new ApplicationDbContext(options, new TenantContext(municipalityId, "consolidation-admin"));
         var stalePolicy = await stale.MunicipalityConsolidationPolicies.SingleAsync();
-        var visibleBefore = new { visible.DeriveAnnualTarget, visible.AllowDerivedTargetOverride };
+        var visibleBefore = PolicySnapshot(visible, calculationTypePublicId);
         visible.DeriveAnnualTarget = true;
+        visible.ModifiedByUserId = "consolidation-admin";
+        visible.ModifiedAt = DateTime.UtcNow;
         new WorkflowGovernanceService(tenant, tenantContext: new TenantContext(municipalityId, "consolidation-admin"))
             .QueueAuditTrail(nameof(MunicipalityConsolidationPolicy), visible.PublicId.ToString(), "Edit", visibleBefore,
-                new { visible.DeriveAnnualTarget, visible.AllowDerivedTargetOverride }, "consolidation-admin", null, "Enable annual derivation");
+                PolicySnapshot(visible, calculationTypePublicId), "consolidation-admin", null, "Enable annual derivation");
         await tenant.SaveChangesAsync();
-        var staleBefore = new { stalePolicy.DeriveAnnualTarget, stalePolicy.AllowDerivedTargetOverride };
+        var staleBefore = PolicySnapshot(stalePolicy, calculationTypePublicId);
         stalePolicy.AllowDerivedTargetOverride = false;
+        stalePolicy.ModifiedByUserId = "consolidation-admin";
+        stalePolicy.ModifiedAt = DateTime.UtcNow;
         new WorkflowGovernanceService(stale, tenantContext: new TenantContext(municipalityId, "consolidation-admin"))
             .QueueAuditTrail(nameof(MunicipalityConsolidationPolicy), stalePolicy.PublicId.ToString(), "Edit", staleBefore,
-                new { stalePolicy.DeriveAnnualTarget, stalePolicy.AllowDerivedTargetOverride }, "consolidation-admin", null, "Concurrent policy correction");
+                PolicySnapshot(stalePolicy, calculationTypePublicId), "consolidation-admin", null, "Concurrent policy correction");
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveChangesAsync());
 
         await using var duplicate = new ApplicationDbContext(options, new TenantContext(municipalityId, "consolidation-admin"));
@@ -171,9 +177,11 @@ public sealed class PerformanceConsolidationPersistenceTests
         context.AddRange(user, municipality, policy);
         await context.SaveChangesAsync();
 
+        policy.ModifiedByUserId = user.Id;
+        policy.ModifiedAt = DateTime.UtcNow;
         policy.DeriveAnnualTarget = true;
         (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
-            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+            .WithMessage("*one exact same-transaction reasoned before/after audit*");
 
         context.ChangeTracker.Clear();
         context.MunicipalityConsolidationPolicies.Remove(
@@ -181,6 +189,56 @@ public sealed class PerformanceConsolidationPersistenceTests
         (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
             .WithMessage("*cannot be hard deleted*");
     }
+
+    [Fact]
+    public async Task MunicipalityConsolidationPolicy_RejectsIdentityAndForgedCalculationTypeAudits()
+    {
+        const long municipalityId = 6512;
+        var user = IdpTestFixture.CreateUser("consolidation-root-governor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var municipality = new Municipality { Id = municipalityId, Code = "CON-ROOT", Name = "Consolidation Root" };
+        user.MunicipalityId = municipalityId;
+        var definition = await context.PerformanceCalculationTypes.SingleAsync(item => item.Code == "AVERAGE");
+        var policy = new MunicipalityConsolidationPolicy
+        {
+            MunicipalityId = municipalityId,
+            CalculationTypeId = definition.Id,
+            ConsolidationRule = PerformanceCalculationType.Average,
+            MissingValuePolicy = ConsolidationMissingValuePolicy.Ignore,
+            CreatedByUserId = user.Id
+        };
+        context.AddRange(user, municipality, policy);
+        await context.SaveChangesAsync();
+
+        policy.PublicId = Guid.NewGuid();
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*identity, calculation type, municipality ownership and creation evidence are immutable*");
+
+        context.ChangeTracker.Clear();
+        policy = await context.MunicipalityConsolidationPolicies.SingleAsync();
+        var forgedCalculationTypePublicId = Guid.NewGuid();
+        var before = PolicySnapshot(policy, forgedCalculationTypePublicId);
+        policy.DeriveAnnualTarget = true;
+        policy.ModifiedByUserId = user.Id;
+        policy.ModifiedAt = DateTime.UtcNow;
+        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id))
+            .QueueAuditTrail(nameof(MunicipalityConsolidationPolicy), policy.PublicId.ToString(), "Edit", before,
+                PolicySnapshot(policy, forgedCalculationTypePublicId), user.Id, null, "Approved consolidation policy correction");
+
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact same-transaction reasoned before/after audit*");
+        forgedCalculationTypePublicId.Should().NotBe(definition.PublicId);
+    }
+
+    private static object PolicySnapshot(MunicipalityConsolidationPolicy policy, Guid calculationTypePublicId) => new
+    {
+        CalculationTypePublicId = calculationTypePublicId,
+        policy.ConsolidationRule,
+        policy.MissingValuePolicy,
+        policy.AllowDerivedTargetOverride,
+        policy.DeriveAnnualTarget,
+        policy.IsActive
+    };
 
     private sealed class SystemTenantContext : ITenantContext
     {

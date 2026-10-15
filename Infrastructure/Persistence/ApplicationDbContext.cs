@@ -2352,6 +2352,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceStrategicDocumentTypeHistory();
         EnforceStrategicRiskHistory();
         EnforceStrategicRiskTreatmentHistory();
+        EnforceMunicipalityConsolidationPolicyHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
@@ -2368,10 +2369,6 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
-        if (ChangeTracker.Entries<MunicipalityConsolidationPolicy>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Municipality consolidation-policy history cannot be hard deleted.");
-        foreach (var entry in ChangeTracker.Entries<MunicipalityConsolidationPolicy>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(MunicipalityConsolidationPolicy), entry.Entity.PublicId, entry.Entity.MunicipalityId, "Edit");
         RejectRewrites<OpmsTargetTemplateVersion>("OPMS target-template version history is append-only.");
         RejectRewrites<IpmsTargetTemplateVersion>("IPMS target-template version history is append-only.");
         EnforceOpmsTargetTemplateHistory();
@@ -3949,6 +3946,62 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             if (audits.Length != 1)
                 throw new InvalidOperationException("StrategicRiskTreatment changes require one exact same-transaction reasoned before/after audit.");
         }
+    }
+
+    private void EnforceMunicipalityConsolidationPolicyHistory()
+    {
+        if (ChangeTracker.Entries<MunicipalityConsolidationPolicy>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Municipality consolidation-policy history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<MunicipalityConsolidationPolicy>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(MunicipalityConsolidationPolicy.ConsolidationRule),
+                nameof(MunicipalityConsolidationPolicy.MissingValuePolicy),
+                nameof(MunicipalityConsolidationPolicy.AllowDerivedTargetOverride),
+                nameof(MunicipalityConsolidationPolicy.DeriveAnnualTarget),
+                nameof(MunicipalityConsolidationPolicy.IsActive)
+            };
+            EnsureOnlyProperties(entry,
+                [.. snapshotFields, nameof(MunicipalityConsolidationPolicy.ModifiedByUserId),
+                    nameof(MunicipalityConsolidationPolicy.ModifiedAt), nameof(MunicipalityConsolidationPolicy.RowVersion)],
+                "Municipality consolidation-policy identity, calculation type, municipality ownership and creation evidence are immutable.");
+
+            var changedBy = entry.CurrentValues.GetValue<string?>(nameof(MunicipalityConsolidationPolicy.ModifiedByUserId));
+            if (string.IsNullOrWhiteSpace(changedBy)
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(MunicipalityConsolidationPolicy.ModifiedAt)).HasValue)
+                throw new InvalidOperationException("Municipality consolidation-policy changes require complete update actor and timestamp evidence.");
+
+            var publicId = entry.OriginalValues.GetValue<Guid>(nameof(MunicipalityConsolidationPolicy.PublicId));
+            var municipalityId = entry.OriginalValues.GetValue<long>(nameof(MunicipalityConsolidationPolicy.MunicipalityId));
+            var calculationTypePublicId = ResolveCalculationTypePublicId(
+                entry.OriginalValues.GetValue<long>(nameof(MunicipalityConsolidationPolicy.CalculationTypeId)));
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == nameof(MunicipalityConsolidationPolicy)
+                && candidate.Entity.EntityId == publicId.ToString()
+                && candidate.Entity.Action == "Edit"
+                && candidate.Entity.MunicipalityId == municipalityId
+                && candidate.Entity.ChangedBy == changedBy
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
+                && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
+                && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "CalculationTypePublicId", calculationTypePublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.NewValue, "CalculationTypePublicId", calculationTypePublicId)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException("MunicipalityConsolidationPolicy changes require one exact same-transaction reasoned before/after audit.");
+        }
+    }
+
+    private Guid ResolveCalculationTypePublicId(long calculationTypeId)
+    {
+        var tracked = ChangeTracker.Entries<PerformanceCalculationTypeDefinition>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == calculationTypeId)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? PerformanceCalculationTypes.AsNoTracking()
+            .Where(candidate => candidate.Id == calculationTypeId)
+            .Select(candidate => candidate.PublicId).Single();
     }
 
     private bool IsExactTenantOwnershipReconciliation<TEntity>(EntityEntry<TEntity> entry, string entityName) where TEntity : class
