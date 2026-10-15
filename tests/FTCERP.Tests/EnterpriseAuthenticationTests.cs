@@ -341,6 +341,22 @@ public sealed class EnterpriseAuthenticationTests
     }
 
     [Fact]
+    public async Task Authentication_configuration_rejects_future_created_and_audit_time()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "AUTH-FUTURE", Name = "Future Authentication Audit" };
+        var actor = User("authentication-future-admin", municipality);
+        context.AddRange(municipality, actor);
+        await context.SaveChangesAsync();
+
+        AddGovernedConfiguration(context, municipality, actor, AuthenticationMode.Local, null,
+            "Future-dated authentication configuration", DateTime.UtcNow.AddHours(1));
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Authentication configuration versions require one exact actor-bound same-transaction before/after audit*");
+    }
+
+    [Fact]
     public async Task Authentication_administration_changes_municipality_mode_only_with_exact_version_and_audit()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -611,7 +627,8 @@ public sealed class EnterpriseAuthenticationTests
     }
 
     private static AuthenticationConfiguration AddGovernedConfiguration(ApplicationDbContext context,
-        Municipality municipality, ApplicationUser actor, AuthenticationMode mode, string? providerCode, string displayName)
+        Municipality municipality, ApplicationUser actor, AuthenticationMode mode, string? providerCode, string displayName,
+        DateTime? createdAt = null)
     {
         var configuration = new AuthenticationConfiguration
         {
@@ -620,6 +637,7 @@ public sealed class EnterpriseAuthenticationTests
             ProviderRegistrationCode = providerCode,
             DisplayName = displayName,
             CreatedByUserId = actor.Id,
+            CreatedAt = createdAt ?? DateTime.UtcNow,
             EffectiveFrom = DateTime.UtcNow.AddMinutes(-1)
         };
         configuration.Policy = new AuthenticationPolicy

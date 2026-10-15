@@ -2429,6 +2429,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.Action == action
                 && candidate.Entity.ChangedBy == row.CreatedByUserId
                 && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+                && row.CreatedAt != default
+                && row.CreatedAt <= DateTime.UtcNow.AddMinutes(5)
                 && candidate.Entity.ChangedAt == row.CreatedAt
                 && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
                 && (predecessorSnapshot == null
