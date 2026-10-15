@@ -4542,6 +4542,16 @@ Adversarial relational tests now prove that a forged batch snapshot, a forged-bu
 
 Implementation commit `c7851766a42055fcb7a41c212dbc9c4f2ea52286` is on both `codex/dev` and `main`. GitHub Actions run `38682565763`, job `116250163483`, verified that exact revision in **4m30s**: **942 backend tests passed, 1 explicit native SQL Server-only skip, 400/400 frontend tests across 80 files, 2/2 accessibility tests, zero build warnings/errors, no vulnerable backend packages, 2,113 transformed modules, a passing 77-chunk/401.6-KiB bundle budget, no detected secrets and zero annotations**. Migration generation, recovery-safety validation, TypeScript type-check, ESLint and the frontend dependency audit also passed.
 
+### 11.386 Retired generic submission-ledger writes and exact due-date parent governance
+
+The remaining generic submission-ledger audit path could previously accept a newly appended due-date extension or standalone score whenever a loosely shaped audit row existed. That permitted audit evidence which was not intrinsically bound to the governed parent mutation, and it kept the superseded generic score ledger writable despite canonical workflow-stage ratings and controlled historical-rating reconciliation already being authoritative.
+
+New due-date extensions are now accepted only in the same unit of work as the exact modified OPMS or IPMS parent submission with the same stable submission identity and original municipality ownership. The existing submission-root persistence guard then requires the complete, authenticated-actor-bound before/after audit and exact extension-ledger correlation for that parent mutation. Invalid submission kinds and orphan extensions fail closed. All new standalone `SubmissionScore` writes are rejected at the application persistence boundary; preserved historical rows remain tenant-filtered and read-only for the controlled rating-reconciliation workflow. The unused generic audit helper and submission-name compatibility mapper were removed. Historical compatibility fixtures now use parameterized relational inserts below the application boundary, so they exercise preserved upgrade data without weakening production write invariants.
+
+Focused extension, withdrawal, score-retirement, rating-reconciliation and submission-root coverage passes **27/27**. Complete backend regression passes **942 tests with 1 explicit native SQL Server-only skip and 0 failures**, and Release compilation reports **0 warnings and 0 errors**. No model, migration, provider-specific production branch or frontend contract change is introduced.
+
+Implementation commit `11d2a7f18b1c9703d2731e9cae7deeb05d246aed` is on both `codex/dev` and `main`. GitHub Actions run `38683998000`, job `116254594283`, verified that exact revision in **7m14s**: **942 backend tests passed, 1 explicit native SQL Server-only skip, 400/400 frontend tests across 80 files, 2/2 accessibility tests, zero build warnings/errors, no vulnerable backend or frontend packages, 2,113 transformed modules, a passing 77-chunk/401.6-KiB bundle budget, no detected secrets and zero annotations**. Migration generation, recovery-safety validation, TypeScript type-check and ESLint also passed.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
