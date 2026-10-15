@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace FTCERP.Tests;
 
 public sealed class IdpPlanPersistenceGovernanceTests
@@ -35,7 +37,7 @@ public sealed class IdpPlanPersistenceGovernanceTests
 
         await FluentActions.Invoking(() => deniedContext.SaveChangesAsync())
             .Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+            .WithMessage("IdpPlan Update requires one exact actor-bound same-transaction before/after audit.*");
 
         await using var acceptedContext = IdpTestFixture.CreateRelationalContext();
         var (acceptedPlan, _) = await SeedPlanAsync(acceptedContext);
@@ -63,6 +65,54 @@ public sealed class IdpPlanPersistenceGovernanceTests
             .WithMessage("*lifecycle may only advance*");
 
         user.Id.Should().Be(plan.ApprovedByUserId);
+    }
+
+    [Fact]
+    public async Task Plan_update_rejects_forged_snapshot_and_forged_persisted_actor()
+    {
+        const long municipalityId = 982201;
+        var expectedActor = IdpTestFixture.CreateUser("idp-plan-expected-actor");
+        var forgedActor = IdpTestFixture.CreateUser("idp-plan-forged-actor");
+        expectedActor.MunicipalityId = municipalityId;
+        forgedActor.MunicipalityId = municipalityId;
+        await using var context = IdpTestFixture.CreateRelationalContext(
+            IdpTestFixture.Tenant(municipalityId, expectedActor.Id));
+        var municipality = new Municipality { Id = municipalityId, Code = "IDP-EXACT", Name = "IDP exact municipality" };
+        var plan = new IdpPlan
+        {
+            Municipality = municipality, MunicipalityName = municipality.Name, PlanTitle = "Governed IDP",
+            PlanCode = "IDP-EXACT", StartFinancialYear = 2026, EndFinancialYear = 2031,
+            EffectiveFrom = new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc),
+            CreatedByUserId = expectedActor.Id
+        };
+        context.AddRange(municipality, expectedActor, forgedActor, plan);
+        await context.SaveChangesAsync();
+
+        plan.PlanTitle = "Corrected title";
+        var snapshots = context.BuildIdpPlanAuditSnapshots(plan);
+        var forgedAfter = snapshots.After.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        forgedAfter[nameof(IdpPlan.PlanTitle)] = "Unrelated title";
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId, EntityName = nameof(IdpPlan), EntityId = plan.PublicId.ToString(),
+            Action = "Update", OldValue = JsonSerializer.Serialize(snapshots.Before),
+            NewValue = JsonSerializer.Serialize(forgedAfter), ChangedBy = expectedActor.Id, Reason = "Forged snapshot"
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("IdpPlan Update requires one exact actor-bound same-transaction before/after audit.*");
+
+        context.ChangeTracker.Clear();
+        plan = await context.IdpPlans.SingleAsync(item => item.PlanCode == "IDP-EXACT");
+        plan.PlanTitle = "Another corrected title";
+        snapshots = context.BuildIdpPlanAuditSnapshots(plan);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId, EntityName = nameof(IdpPlan), EntityId = plan.PublicId.ToString(),
+            Action = "Update", OldValue = JsonSerializer.Serialize(snapshots.Before),
+            NewValue = JsonSerializer.Serialize(snapshots.After), ChangedBy = forgedActor.Id, Reason = "Forged actor"
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("IdpPlan Update requires one exact actor-bound same-transaction before/after audit.*");
     }
 
     [Fact]
@@ -190,14 +240,15 @@ public sealed class IdpPlanPersistenceGovernanceTests
 
     private static void QueuePlanAudit(ApplicationDbContext context, IdpPlan plan, string reason)
     {
+        var snapshots = context.BuildIdpPlanAuditSnapshots(plan);
         context.AuditTrails.Add(new AuditTrail
         {
             MunicipalityId = plan.MunicipalityId,
             EntityName = nameof(IdpPlan),
             EntityId = plan.PublicId.ToString(),
             Action = "Update",
-            OldValue = "{\"before\":true}",
-            NewValue = "{\"after\":true}",
+            OldValue = JsonSerializer.Serialize(snapshots.Before),
+            NewValue = JsonSerializer.Serialize(snapshots.After),
             ChangedBy = plan.CreatedByUserId,
             Reason = reason
         });

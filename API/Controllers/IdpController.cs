@@ -239,7 +239,6 @@ public class IdpController : ControllerBase
             return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "A governance reason between 1 and 1000 characters is required."));
         if (string.IsNullOrWhiteSpace(request.RowVersion))
             return BadRequest(new ApiResponse<IdpPlanSummaryResponse>(false, null, "RowVersion is required."));
-        var before = ToSummaryResponse(entity);
         try
         {
             var expected = Convert.FromBase64String(request.RowVersion);
@@ -293,12 +292,13 @@ public class IdpController : ControllerBase
             if (status == IdpPlanStatus.Published) entity.PublishedAt ??= DateTime.UtcNow;
         }
 
+        var audit = _context.BuildIdpPlanAuditSnapshots(entity);
         _workflowGovernanceService.QueueAuditTrail(
             "IdpPlan",
             entity.PublicId.ToString(),
             "Update",
-            before,
-            ToSummaryResponse(entity),
+            audit.Before,
+            audit.After,
             user.Id,
             PerformanceApiSupport.GetIpAddress(HttpContext),
             reason);

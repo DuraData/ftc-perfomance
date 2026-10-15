@@ -5767,7 +5767,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(IdpPlan.PublicationReference), nameof(IdpPlan.ApprovedAt), nameof(IdpPlan.ApprovedByUserId),
                     nameof(IdpPlan.PublishedAt), nameof(IdpPlan.RowVersion)],
                 "IDP plan family, predecessor, tenant, code and creation identity are immutable.");
-            RequireGovernanceAudit(nameof(IdpPlan), entry.Entity.PublicId, entry.Entity.MunicipalityId);
+            RequireExactIdpPlanAudit(entry);
 
             var originalStatus = entry.OriginalValues.GetValue<IdpPlanStatus>(nameof(IdpPlan.Status));
             var currentStatus = entry.CurrentValues.GetValue<IdpPlanStatus>(nameof(IdpPlan.Status));
@@ -5794,6 +5794,52 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     && (!currentPublishedAt.HasValue || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(IdpPlan.PublicationReference)))))
                 throw new InvalidOperationException("IDP plan lifecycle may only advance with immutable approval/publication evidence and valid effective dates.");
         }
+    }
+
+    internal (IReadOnlyDictionary<string, object?> Before, IReadOnlyDictionary<string, object?> After)
+        BuildIdpPlanAuditSnapshots(IdpPlan plan)
+    {
+        ChangeTracker.DetectChanges();
+        var entry = Entry(plan);
+        var fields = entry.Properties.Where(property => property.IsModified
+                && property.Metadata.Name is not nameof(IdpPlan.Id) and not nameof(IdpPlan.RowVersion))
+            .OrderBy(property => property.Metadata.Name, StringComparer.Ordinal)
+            .ToArray();
+        var before = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            [nameof(IdpPlan.PublicId)] = entry.OriginalValues[nameof(IdpPlan.PublicId)]
+        };
+        var after = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            [nameof(IdpPlan.PublicId)] = entry.CurrentValues[nameof(IdpPlan.PublicId)]
+        };
+        foreach (var property in fields)
+        {
+            var field = property.Metadata.Name;
+            var auditField = field == nameof(IdpPlan.ApprovedByUserId) ? "ApprovedByUserPublicId" : field;
+            before[auditField] = field == nameof(IdpPlan.ApprovedByUserId)
+                ? ResolveAuditPublicId<ApplicationUser>(property.OriginalValue) : property.OriginalValue;
+            after[auditField] = field == nameof(IdpPlan.ApprovedByUserId)
+                ? ResolveAuditPublicId<ApplicationUser>(property.CurrentValue) : property.CurrentValue;
+        }
+        return (before, after);
+    }
+
+    private void RequireExactIdpPlanAudit(EntityEntry<IdpPlan> entry)
+    {
+        var snapshots = BuildIdpPlanAuditSnapshots(entry.Entity);
+        var contextActor = _tenantContext?.UserId;
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == nameof(IdpPlan)
+            && candidate.Entity.EntityId == entry.OriginalValues.GetValue<Guid>(nameof(IdpPlan.PublicId)).ToString()
+            && candidate.Entity.Action == "Update"
+            && candidate.Entity.MunicipalityId == entry.OriginalValues.GetValue<long?>(nameof(IdpPlan.MunicipalityId))
+            && GovernanceActorMatches(candidate.Entity.ChangedBy, contextActor)
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && ExactSnapshotMatches(candidate.Entity.OldValue, snapshots.Before)
+            && ExactSnapshotMatches(candidate.Entity.NewValue, snapshots.After)).ToArray();
+        if (audits.Length != 1)
+            throw new InvalidOperationException("IdpPlan Update requires one exact actor-bound same-transaction before/after audit.");
     }
 
     private void EnforceImportBatchHistory()
