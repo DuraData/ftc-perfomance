@@ -152,7 +152,7 @@ public sealed class GlobalStrategicReferencesController(ApplicationDbContext con
         var entity = await context.NationalKpas.SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (entity == null) return NotFound(Fail<GlobalStrategicReferenceDto>("National KPA not found."));
         var mapping = await context.MunicipalityNationalKpas.SingleOrDefaultAsync(item => item.NationalKpaId == entity.Id);
-        object? before = mapping == null ? null : new { mapping.IsEnabled };
+        object? before = mapping == null ? null : AvailabilitySnapshot(entity.PublicId, mapping.IsEnabled);
         if (mapping == null)
         {
             mapping = new MunicipalityNationalKpa { MunicipalityId = tenantContext.MunicipalityId.Value, NationalKpaId = entity.Id, IsEnabled = request.IsEnabled };
@@ -163,7 +163,8 @@ public sealed class GlobalStrategicReferencesController(ApplicationDbContext con
             if (!TrySetVersion(mapping, request.RowVersion)) return BadRequest(Fail<GlobalStrategicReferenceDto>("A valid availability row version is required."));
             mapping.IsEnabled = request.IsEnabled;
         }
-        AddAudit(nameof(MunicipalityNationalKpa), mapping.PublicId, before == null ? "CreateAvailability" : "UpdateAvailability", before, new { entity.PublicId, request.IsEnabled }, request.Reason, tenantContext.MunicipalityId);
+        AddAudit(nameof(MunicipalityNationalKpa), mapping.PublicId, before == null ? "CreateAvailability" : "UpdateAvailability",
+            before, AvailabilitySnapshot(entity.PublicId, request.IsEnabled), request.Reason, tenantContext.MunicipalityId);
         try { await context.SaveChangesAsync(); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<GlobalStrategicReferenceDto>("National KPA availability was changed by another user.")); }
         return Ok(new ApiResponse<GlobalStrategicReferenceDto>(true, ToDto(entity, mapping)));
     }
@@ -177,7 +178,7 @@ public sealed class GlobalStrategicReferencesController(ApplicationDbContext con
         var entity = await context.BackToBasicsPillars.SingleOrDefaultAsync(item => item.PublicId == publicId);
         if (entity == null) return NotFound(Fail<GlobalStrategicReferenceDto>("Back-to-Basics pillar not found."));
         var mapping = await context.MunicipalityBackToBasicsPillars.SingleOrDefaultAsync(item => item.BackToBasicsPillarId == entity.Id);
-        object? before = mapping == null ? null : new { mapping.IsEnabled };
+        object? before = mapping == null ? null : AvailabilitySnapshot(entity.PublicId, mapping.IsEnabled);
         if (mapping == null)
         {
             mapping = new MunicipalityBackToBasicsPillar { MunicipalityId = tenantContext.MunicipalityId.Value, BackToBasicsPillarId = entity.Id, IsEnabled = request.IsEnabled };
@@ -188,7 +189,8 @@ public sealed class GlobalStrategicReferencesController(ApplicationDbContext con
             if (!TrySetVersion(mapping, request.RowVersion)) return BadRequest(Fail<GlobalStrategicReferenceDto>("A valid availability row version is required."));
             mapping.IsEnabled = request.IsEnabled;
         }
-        AddAudit(nameof(MunicipalityBackToBasicsPillar), mapping.PublicId, before == null ? "CreateAvailability" : "UpdateAvailability", before, new { entity.PublicId, request.IsEnabled }, request.Reason, tenantContext.MunicipalityId);
+        AddAudit(nameof(MunicipalityBackToBasicsPillar), mapping.PublicId, before == null ? "CreateAvailability" : "UpdateAvailability",
+            before, AvailabilitySnapshot(entity.PublicId, request.IsEnabled), request.Reason, tenantContext.MunicipalityId);
         try { await context.SaveChangesAsync(); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<GlobalStrategicReferenceDto>("Back-to-Basics pillar availability was changed by another user.")); }
         return Ok(new ApiResponse<GlobalStrategicReferenceDto>(true, ToDto(entity, mapping)));
     }
@@ -244,6 +246,7 @@ public sealed class GlobalStrategicReferencesController(ApplicationDbContext con
     private void AddAudit(string entityName, Guid publicId, string action, object? oldValue, object newValue, string reason, long? municipalityId) => context.AuditTrails.Add(new AuditTrail { MunicipalityId = municipalityId, EntityName = entityName, EntityId = publicId.ToString(), Action = action, OldValue = oldValue == null ? null : JsonSerializer.Serialize(oldValue), NewValue = JsonSerializer.Serialize(newValue), ChangedBy = tenantContext.UserId ?? "UNKNOWN", ChangedAt = DateTime.UtcNow, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(), CorrelationId = HttpContext.TraceIdentifier, Reason = reason.Trim(), UserAgent = Request.Headers.UserAgent.ToString() });
     private static object Snapshot(NationalKpa item) => new { item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive };
     private static object Snapshot(BackToBasicsPillar item) => new { item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive };
+    private static object AvailabilitySnapshot(Guid referencePublicId, bool isEnabled) => new { ReferencePublicId = referencePublicId, IsEnabled = isEnabled };
     private static GlobalStrategicReferenceDto ToDto(NationalKpa item) => new(item.PublicId, item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive, true, null, null, Convert.ToBase64String(item.RowVersion));
     private static GlobalStrategicReferenceDto ToDto(BackToBasicsPillar item) => new(item.PublicId, item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive, true, null, null, Convert.ToBase64String(item.RowVersion));
     private static GlobalStrategicReferenceDto ToDto(NationalKpa item, MunicipalityNationalKpa mapping) => new(item.PublicId, item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive, mapping.IsEnabled, mapping.PublicId, Convert.ToBase64String(mapping.RowVersion), Convert.ToBase64String(item.RowVersion));

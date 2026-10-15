@@ -2495,19 +2495,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .Where(entry => entry.Entity is StrategicPlanningMasterBase)
             .ToArray();
         EnforceStrategicPlanningMasterHistory(strategicMasterEntries);
-        if (ChangeTracker.Entries<NationalKpa>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<BackToBasicsPillar>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<MunicipalityNationalKpa>().Any(entry => entry.State == EntityState.Deleted)
-            || ChangeTracker.Entries<MunicipalityBackToBasicsPillar>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Global strategic-reference history cannot be hard deleted.");
-        foreach (var entry in ChangeTracker.Entries<NationalKpa>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(NationalKpa), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
-        foreach (var entry in ChangeTracker.Entries<BackToBasicsPillar>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(BackToBasicsPillar), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
-        foreach (var entry in ChangeTracker.Entries<MunicipalityNationalKpa>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(MunicipalityNationalKpa), entry.Entity.PublicId, entry.Entity.MunicipalityId, "UpdateAvailability");
-        foreach (var entry in ChangeTracker.Entries<MunicipalityBackToBasicsPillar>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit(nameof(MunicipalityBackToBasicsPillar), entry.Entity.PublicId, entry.Entity.MunicipalityId, "UpdateAvailability");
+        EnforceGlobalStrategicReferenceHistory();
         if (ChangeTracker.Entries<DueDateExtension>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<ReviewComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
@@ -4038,6 +4026,92 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         {
             return false;
         }
+    }
+
+    private void EnforceGlobalStrategicReferenceHistory()
+    {
+        if (ChangeTracker.Entries<NationalKpa>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<BackToBasicsPillar>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<MunicipalityNationalKpa>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<MunicipalityBackToBasicsPillar>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Global strategic-reference history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<NationalKpa>().Where(entry => entry.State == EntityState.Modified))
+            EnforceGlobalReferenceUpdate(entry, nameof(NationalKpa));
+        foreach (var entry in ChangeTracker.Entries<BackToBasicsPillar>().Where(entry => entry.State == EntityState.Modified))
+            EnforceGlobalReferenceUpdate(entry, nameof(BackToBasicsPillar));
+        foreach (var entry in ChangeTracker.Entries<MunicipalityNationalKpa>().Where(entry => entry.State == EntityState.Modified))
+            EnforceMunicipalityReferenceAvailabilityUpdate(entry, nameof(MunicipalityNationalKpa),
+                ResolveNationalKpaPublicId(entry.OriginalValues.GetValue<long>(nameof(MunicipalityNationalKpa.NationalKpaId))));
+        foreach (var entry in ChangeTracker.Entries<MunicipalityBackToBasicsPillar>().Where(entry => entry.State == EntityState.Modified))
+            EnforceMunicipalityReferenceAvailabilityUpdate(entry, nameof(MunicipalityBackToBasicsPillar),
+                ResolveBackToBasicsPublicId(entry.OriginalValues.GetValue<long>(nameof(MunicipalityBackToBasicsPillar.BackToBasicsPillarId))));
+    }
+
+    private void EnforceGlobalReferenceUpdate<TEntity>(EntityEntry<TEntity> entry, string entityName) where TEntity : class
+    {
+        var snapshotFields = new[] { "Code", "Name", "Description", "DisplayOrder", "IsActive" };
+        EnsureOnlyProperties(entry, [.. snapshotFields, "RowVersion"],
+            "Global strategic-reference identity is immutable.");
+        var actor = _tenantContext?.UserId;
+        if (string.IsNullOrWhiteSpace(actor))
+            throw new InvalidOperationException("Global strategic-reference changes require an authenticated governance actor.");
+        var publicId = entry.OriginalValues.GetValue<Guid>("PublicId");
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName
+            && candidate.Entity.EntityId == publicId.ToString()
+            && candidate.Entity.Action == "Update"
+            && candidate.Entity.MunicipalityId == _tenantContext?.MunicipalityId
+            && candidate.Entity.ChangedBy == actor
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
+            && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)).ToArray();
+        if (audits.Length != 1)
+            throw new InvalidOperationException($"{entityName} changes require one exact actor-bound same-transaction before/after audit.");
+    }
+
+    private void EnforceMunicipalityReferenceAvailabilityUpdate<TEntity>(EntityEntry<TEntity> entry,
+        string entityName, Guid? referencePublicId) where TEntity : class
+    {
+        EnsureOnlyProperties(entry, ["IsEnabled", "RowVersion"],
+            "Municipality strategic-reference availability identity, tenant ownership and reference association are immutable.");
+        var actor = _tenantContext?.UserId;
+        if (string.IsNullOrWhiteSpace(actor) || !referencePublicId.HasValue)
+            throw new InvalidOperationException("Municipality strategic-reference availability changes require an authenticated actor and stable public reference identity.");
+        var publicId = entry.OriginalValues.GetValue<Guid>("PublicId");
+        var municipalityId = entry.OriginalValues.GetValue<long>("MunicipalityId");
+        var fields = new[] { "IsEnabled" };
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName
+            && candidate.Entity.EntityId == publicId.ToString()
+            && candidate.Entity.Action == "UpdateAvailability"
+            && candidate.Entity.MunicipalityId == municipalityId
+            && candidate.Entity.ChangedBy == actor
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, fields)
+            && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, fields)
+            && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "ReferencePublicId", referencePublicId)
+            && NullableGuidSnapshotMatches(candidate.Entity.NewValue, "ReferencePublicId", referencePublicId)).ToArray();
+        if (audits.Length != 1)
+            throw new InvalidOperationException($"{entityName} changes require one exact actor-bound availability audit.");
+    }
+
+    private Guid? ResolveNationalKpaPublicId(long id)
+    {
+        var tracked = ChangeTracker.Entries<NationalKpa>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted && candidate.Entity.Id == id)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? NationalKpas.AsNoTracking().Where(candidate => candidate.Id == id)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private Guid? ResolveBackToBasicsPublicId(long id)
+    {
+        var tracked = ChangeTracker.Entries<BackToBasicsPillar>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted && candidate.Entity.Id == id)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? BackToBasicsPillars.AsNoTracking().Where(candidate => candidate.Id == id)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
     }
 
     private Guid? ResolveMunicipalityFinancialYearPublicId(long? municipalityFinancialYearId)

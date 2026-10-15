@@ -140,6 +140,57 @@ public sealed class GlobalStrategicReferencesControllerTests
         await AssertHardDeleteRejected(context, context.MunicipalityBackToBasicsPillars);
     }
 
+    [Fact]
+    public async Task Global_references_reject_identity_forged_actor_and_reference_audits()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using (var setup = fixture.SystemContext())
+        {
+            setup.MunicipalityNationalKpas.Add(new MunicipalityNationalKpa
+            {
+                MunicipalityId = fixture.MunicipalityA.Id,
+                NationalKpaId = fixture.NationalKpa.Id,
+                IsEnabled = true
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var context = fixture.Context(fixture.MunicipalityA.Id);
+        var national = await context.NationalKpas.SingleAsync();
+        national.PublicId = Guid.NewGuid();
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*identity is immutable*");
+
+        context.ChangeTracker.Clear();
+        national = await context.NationalKpas.SingleAsync();
+        var nationalBefore = GlobalReferenceSnapshot(national);
+        national.Name = "Governed service delivery";
+        new WorkflowGovernanceService(context, tenantContext: new TestTenantContext(fixture.MunicipalityA.Id, "user-1", true))
+            .QueueAuditTrail(nameof(NationalKpa), national.PublicId.ToString(), "Update", nationalBefore,
+                GlobalReferenceSnapshot(national), "forged-actor", null, "Approved national KPA correction");
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        var mapping = await context.MunicipalityNationalKpas.SingleAsync();
+        mapping.PublicId = Guid.NewGuid();
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*identity, tenant ownership and reference association are immutable*");
+
+        context.ChangeTracker.Clear();
+        mapping = await context.MunicipalityNationalKpas.SingleAsync();
+        var forgedReferencePublicId = Guid.NewGuid();
+        var availabilityBefore = AvailabilitySnapshot(forgedReferencePublicId, mapping.IsEnabled);
+        mapping.IsEnabled = false;
+        new WorkflowGovernanceService(context, tenantContext: new TestTenantContext(fixture.MunicipalityA.Id, "user-1", true))
+            .QueueAuditTrail(nameof(MunicipalityNationalKpa), mapping.PublicId.ToString(), "UpdateAvailability",
+                availabilityBefore, AvailabilitySnapshot(forgedReferencePublicId, mapping.IsEnabled), "user-1", null,
+                "Approved municipality availability correction");
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact actor-bound availability audit*");
+        forgedReferencePublicId.Should().NotBe(fixture.NationalKpa.PublicId);
+    }
+
     private static GlobalStrategicReferencesController Controller(ApplicationDbContext context, long municipalityId, bool isSystem = true)
     {
         var controller = new GlobalStrategicReferencesController(context, new TestTenantContext(municipalityId, "user-1", isSystem));
@@ -152,7 +203,7 @@ public sealed class GlobalStrategicReferencesControllerTests
         var entity = await set.SingleAsync();
         mutate(entity);
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
-        Assert.Contains("same-transaction reasoned before/after audit evidence", exception.Message);
+        Assert.Contains("one exact actor-bound", exception.Message);
         context.ChangeTracker.Clear();
     }
 
@@ -164,6 +215,12 @@ public sealed class GlobalStrategicReferencesControllerTests
         Assert.Contains("cannot be hard deleted", exception.Message);
         context.ChangeTracker.Clear();
     }
+
+    private static object GlobalReferenceSnapshot(NationalKpa item) => new
+        { item.Code, item.Name, item.Description, item.DisplayOrder, item.IsActive };
+
+    private static object AvailabilitySnapshot(Guid referencePublicId, bool isEnabled) => new
+        { ReferencePublicId = referencePublicId, IsEnabled = isEnabled };
 
     private sealed class Fixture(SqliteConnection connection, DbContextOptions<ApplicationDbContext> options, Municipality municipalityA, Municipality municipalityB, NationalKpa nationalKpa) : IAsyncDisposable
     {
