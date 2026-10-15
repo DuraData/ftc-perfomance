@@ -4814,6 +4814,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             {
                 nameof(OpmsTarget.Id), nameof(OpmsTarget.PublicId), nameof(OpmsTarget.MunicipalityId),
                 nameof(OpmsTarget.PeriodId), nameof(OpmsTarget.IndicatorNumber), nameof(OpmsTarget.TargetName),
+                nameof(OpmsTarget.StrategicGoalId), nameof(OpmsTarget.StrategicObjectiveId),
+                nameof(OpmsTarget.BudgetSourceId), nameof(OpmsTarget.BudgetTypeId), nameof(OpmsTarget.UnitOfMeasureId),
                 nameof(OpmsTarget.KpiDescription), nameof(OpmsTarget.AnnualTarget), nameof(OpmsTarget.AnnualTargetDescription),
                 nameof(OpmsTarget.TargetUnitType), nameof(OpmsTarget.Q1Target), nameof(OpmsTarget.Q1Description),
                 nameof(OpmsTarget.Q1Budget), nameof(OpmsTarget.Q2Target), nameof(OpmsTarget.Q2Description),
@@ -4918,8 +4920,127 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && changed.SetEquals([nameof(IpmsTarget.RelatedOpmsTargetId)]))
                 continue;
 
-            RequireGovernanceAudit(entityName, entry.OriginalValues.GetValue<string>(nameof(OpmsTarget.Id)),
-                entry.OriginalValues.GetValue<long?>(nameof(OpmsTarget.MunicipalityId)), "Edit", requireOldValue: true);
+            var auditSnapshots = BuildPerformanceTargetAuditSnapshots(entry.Entity);
+            var targetContextActor = _tenantContext?.UserId;
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == entityName
+                && candidate.Entity.EntityId == entry.OriginalValues.GetValue<string>(nameof(OpmsTarget.Id))
+                && candidate.Entity.Action == "Edit"
+                && candidate.Entity.MunicipalityId == entry.OriginalValues.GetValue<long?>(nameof(OpmsTarget.MunicipalityId))
+                && GovernanceActorMatches(candidate.Entity.ChangedBy, targetContextActor)
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && ExactSnapshotMatches(candidate.Entity.OldValue, auditSnapshots.Before)
+                && ExactSnapshotMatches(candidate.Entity.NewValue, auditSnapshots.After)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException($"{entityName} changes require one exact actor-bound same-transaction before/after audit.");
+        }
+    }
+
+    internal (IReadOnlyDictionary<string, object?> Before, IReadOnlyDictionary<string, object?> After)
+        BuildPerformanceTargetAuditSnapshots(object target)
+    {
+        if (target is not OpmsTarget && target is not IpmsTarget)
+            throw new ArgumentException("A performance-target audit snapshot requires an OPMS or IPMS target.", nameof(target));
+
+        ChangeTracker.DetectChanges();
+        var entry = Entry(target);
+        var fields = entry.Properties.Where(property => property.IsModified
+                && property.Metadata.Name != nameof(OpmsTarget.RowVersion))
+            .Select(property => property.Metadata.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        var before = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            [nameof(OpmsTarget.PublicId)] = entry.OriginalValues[nameof(OpmsTarget.PublicId)]
+        };
+        var after = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            [nameof(OpmsTarget.PublicId)] = entry.CurrentValues[nameof(OpmsTarget.PublicId)]
+        };
+        foreach (var field in fields)
+        {
+            var original = PerformanceTargetAuditValue(entry.Metadata.ClrType, field, entry.OriginalValues[field]);
+            var current = PerformanceTargetAuditValue(entry.Metadata.ClrType, field, entry.CurrentValues[field]);
+            before[original.Name] = original.Value;
+            after[current.Name] = current.Value;
+        }
+        return (before, after);
+    }
+
+    private (string Name, object? Value) PerformanceTargetAuditValue(Type targetType, string field, object? value) => field switch
+    {
+        nameof(OpmsTarget.SdbipLayerId) => ("SdbipLayerPublicId", ResolveAuditPublicId<SdbipLayer>(value)),
+        nameof(OpmsTarget.SourceTemplateId) => ("SourceTemplatePublicId", targetType == typeof(OpmsTarget)
+            ? ResolveAuditPublicId<OpmsTargetTemplate>(value) : ResolveAuditPublicId<IpmsTargetTemplate>(value)),
+        nameof(OpmsTarget.DepartmentId) => ("DepartmentPublicId", ResolveAuditPublicId<Department>(value)),
+        nameof(OpmsTarget.UnitId) => ("UnitPublicId", ResolveAuditPublicId<Unit>(value)),
+        nameof(OpmsTarget.AssignedUserId) => ("AssignedUserPublicId", ResolveAuditPublicId<ApplicationUser>(value)),
+        nameof(IpmsTarget.SupervisorId) when targetType == typeof(IpmsTarget) => ("SupervisorPublicId", ResolveAuditPublicId<ApplicationUser>(value)),
+        nameof(IpmsTarget.RelatedOpmsTargetId) when targetType == typeof(IpmsTarget) => ("RelatedOpmsTargetPublicId", ResolveAuditPublicId<OpmsTarget>(value)),
+        nameof(OpmsTarget.NationalKpaId) => ("NationalKpaPublicId", ResolveAuditPublicId<NationalKpa>(value)),
+        nameof(OpmsTarget.MunicipalKpaId) => ("MunicipalKpaPublicId", ResolveAuditPublicId<MunicipalKpa>(value)),
+        nameof(OpmsTarget.BackToBasicsPillarId) => ("BackToBasicsPillarPublicId", ResolveAuditPublicId<BackToBasicsPillar>(value)),
+        nameof(OpmsTarget.StrategicGoalMasterId) => ("StrategicGoalPublicId", ResolveAuditPublicId<MunicipalStrategicGoal>(value)),
+        nameof(OpmsTarget.StrategicInterventionId) => ("StrategicInterventionPublicId", ResolveAuditPublicId<StrategicIntervention>(value)),
+        nameof(OpmsTarget.StrategicObjectiveMasterId) => ("StrategicObjectivePublicId", ResolveAuditPublicId<MunicipalStrategicObjective>(value)),
+        nameof(OpmsTarget.PerformanceObjectiveId) => ("PerformanceObjectivePublicId", ResolveAuditPublicId<PerformanceObjective>(value)),
+        nameof(OpmsTarget.BudgetTypeMasterId) => ("BudgetTypePublicId", ResolveAuditPublicId<GovernedBudgetType>(value)),
+        nameof(OpmsTarget.KpiTypeMasterId) => ("KpiTypePublicId", ResolveAuditPublicId<GovernedKpiType>(value)),
+        nameof(OpmsTarget.IndicatorTypeMasterId) => ("IndicatorTypePublicId", ResolveAuditPublicId<GovernedIndicatorType>(value)),
+        nameof(OpmsTarget.FunctionalAreaMasterId) => ("FunctionalAreaPublicId", ResolveAuditPublicId<GovernedFunctionalArea>(value)),
+        nameof(OpmsTarget.StandardClassificationMasterId) when targetType == typeof(OpmsTarget) => ("StandardClassificationPublicId", ResolveAuditPublicId<GovernedStandardClassification>(value)),
+        nameof(OpmsTarget.KpiUnitOfMeasureMasterId) => ("KpiUnitOfMeasurePublicId", ResolveAuditPublicId<GovernedKpiUnitOfMeasure>(value)),
+        nameof(OpmsTarget.CalculationTypeId) => ("CalculationTypePublicId", ResolveAuditPublicId<PerformanceCalculationTypeDefinition>(value)),
+        _ => (field, value)
+    };
+
+    private Guid? ResolveAuditPublicId<TEntity>(object? key) where TEntity : class
+    {
+        if (key == null) return null;
+        var tracked = ChangeTracker.Entries<TEntity>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && Equals(candidate.Property("Id").CurrentValue, key))
+            .Select(candidate => (Guid?)candidate.Property("PublicId").CurrentValue)
+            .SingleOrDefault();
+        if (tracked.HasValue) return tracked;
+        var query = Set<TEntity>().IgnoreQueryFilters().AsNoTracking();
+        return key switch
+        {
+            long id => query.Where(candidate => EF.Property<long>(candidate, "Id") == id)
+                .Select(candidate => (Guid?)EF.Property<Guid>(candidate, "PublicId")).SingleOrDefault(),
+            int id => query.Where(candidate => EF.Property<int>(candidate, "Id") == id)
+                .Select(candidate => (Guid?)EF.Property<Guid>(candidate, "PublicId")).SingleOrDefault(),
+            string id => query.Where(candidate => EF.Property<string>(candidate, "Id") == id)
+                .Select(candidate => (Guid?)EF.Property<Guid>(candidate, "PublicId")).SingleOrDefault(),
+            _ => throw new InvalidOperationException($"Unsupported audit reference key type '{key.GetType().Name}'.")
+        };
+    }
+
+    private static bool ExactSnapshotMatches(string? json, IReadOnlyDictionary<string, object?> expected)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object
+                || document.RootElement.EnumerateObject().Count() != expected.Count)
+                return false;
+            foreach (var pair in expected)
+            {
+                if (!TryGetJsonProperty(document.RootElement, pair.Key, out var actual)) return false;
+                if (pair.Value == null)
+                {
+                    if (actual.ValueKind != System.Text.Json.JsonValueKind.Null) return false;
+                    continue;
+                }
+                var expectedValue = System.Text.Json.JsonSerializer.SerializeToElement(pair.Value, pair.Value.GetType());
+                if (!System.Text.Json.JsonElement.DeepEquals(actual, expectedValue)) return false;
+            }
+            return true;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
         }
     }
 

@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace FTCERP.Tests;
 
 public sealed class PerformanceTargetRootHistoryTests
@@ -27,7 +29,130 @@ public sealed class PerformanceTargetRootHistoryTests
         target.Baseline = 12;
 
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("OpmsTarget changes require same-transaction reasoned before/after audit evidence.*");
+            .WithMessage("OpmsTarget changes require one exact actor-bound same-transaction before/after audit.*");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Ordinary_target_edit_requires_exact_public_identity_and_value_snapshots(bool ipms)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality
+        {
+            Code = $"TARGET-EXACT-{Guid.NewGuid():N}"[..20],
+            Name = "Exact target audit",
+            EffectiveFrom = DateTime.UtcNow.AddYears(-1)
+        };
+        var user = IdpTestFixture.CreateUser($"target-exact-{ipms}");
+        user.Municipality = municipality;
+        object target = ipms
+            ? new IpmsTarget { Id = "ipms-exact", Municipality = municipality, IndicatorNumber = "KPI-1", TargetName = "Original", KpiDescription = "Original", AnnualTargetDescription = "Legacy", CreatedAt = DateTime.UtcNow }
+            : new OpmsTarget { Id = "opms-exact", Municipality = municipality, IndicatorNumber = "KPI-1", TargetName = "Original", KpiDescription = "Original", AnnualTargetDescription = "Legacy", CreatedAt = DateTime.UtcNow };
+        context.AddRange(municipality, user, target);
+        await context.SaveChangesAsync();
+
+        var publicId = ipms ? ((IpmsTarget)target).PublicId : ((OpmsTarget)target).PublicId;
+        var entityId = ipms ? ((IpmsTarget)target).Id : ((OpmsTarget)target).Id;
+        if (ipms) ((IpmsTarget)target).Baseline = 12m;
+        else ((OpmsTarget)target).Baseline = 12m;
+        context.AuditTrails.Add(EditAudit(ipms ? nameof(IpmsTarget) : nameof(OpmsTarget), entityId,
+            municipality.Id, user.Id,
+            new Dictionary<string, object?> { [nameof(OpmsTarget.PublicId)] = publicId, [nameof(OpmsTarget.Baseline)] = 0m },
+            new Dictionary<string, object?> { [nameof(OpmsTarget.PublicId)] = publicId, [nameof(OpmsTarget.Baseline)] = 12m }));
+
+        await context.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Forged_target_snapshot_is_rejected()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var (municipality, user, target) = Fixture("forged-audit");
+        context.AddRange(municipality, user, target);
+        await context.SaveChangesAsync();
+
+        target.Baseline = 12m;
+        context.AuditTrails.Add(EditAudit(nameof(OpmsTarget), target.Id, municipality.Id, user.Id,
+            new Dictionary<string, object?> { [nameof(OpmsTarget.PublicId)] = target.PublicId, [nameof(OpmsTarget.Baseline)] = 0m },
+            new Dictionary<string, object?> { [nameof(OpmsTarget.PublicId)] = target.PublicId, [nameof(OpmsTarget.Baseline)] = 99m }));
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("OpmsTarget changes require one exact actor-bound same-transaction before/after audit.*");
+    }
+
+    [Fact]
+    public async Task Forged_but_persisted_target_actor_is_rejected_for_an_authenticated_tenant()
+    {
+        const long municipalityId = 982001;
+        var expectedActor = IdpTestFixture.CreateUser("target-expected-actor");
+        var forgedActor = IdpTestFixture.CreateUser("target-forged-actor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, expectedActor.Id));
+        var municipality = new Municipality
+        {
+            Id = municipalityId,
+            Code = "TARGET-ACTOR",
+            Name = "Target actor municipality",
+            EffectiveFrom = DateTime.UtcNow.AddYears(-1)
+        };
+        expectedActor.Municipality = municipality;
+        forgedActor.Municipality = municipality;
+        var target = new OpmsTarget
+        {
+            Id = "target-actor-bound",
+            Municipality = municipality,
+            IndicatorNumber = "KPI-1",
+            TargetName = "Original",
+            KpiDescription = "Original",
+            AnnualTargetDescription = "Legacy",
+            CreatedAt = DateTime.UtcNow
+        };
+        context.AddRange(municipality, expectedActor, forgedActor, target);
+        await context.SaveChangesAsync();
+
+        target.Baseline = 12m;
+        context.AuditTrails.Add(EditAudit(nameof(OpmsTarget), target.Id, municipality.Id, forgedActor.Id,
+            new Dictionary<string, object?> { [nameof(OpmsTarget.PublicId)] = target.PublicId, [nameof(OpmsTarget.Baseline)] = 0m },
+            new Dictionary<string, object?> { [nameof(OpmsTarget.PublicId)] = target.PublicId, [nameof(OpmsTarget.Baseline)] = 12m }));
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("OpmsTarget changes require one exact actor-bound same-transaction before/after audit.*");
+    }
+
+    [Fact]
+    public async Task Target_reference_changes_are_audited_by_stable_public_identity()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var (municipality, originalAssignee, target) = Fixture("public-reference");
+        var revisedAssignee = IdpTestFixture.CreateUser("target-revised-assignee");
+        revisedAssignee.Municipality = municipality;
+        target.AssignedUser = originalAssignee;
+        context.AddRange(municipality, originalAssignee, revisedAssignee, target);
+        await context.SaveChangesAsync();
+
+        target.AssignedUserId = revisedAssignee.Id;
+        context.AuditTrails.Add(EditAudit(nameof(OpmsTarget), target.Id, municipality.Id, originalAssignee.Id,
+            new Dictionary<string, object?> { [nameof(OpmsTarget.PublicId)] = target.PublicId, ["AssignedUserPublicId"] = originalAssignee.PublicId },
+            new Dictionary<string, object?> { [nameof(OpmsTarget.PublicId)] = target.PublicId, ["AssignedUserPublicId"] = revisedAssignee.PublicId }));
+
+        await context.SaveChangesAsync();
+        var audit = await context.AuditTrails.SingleAsync(item => item.EntityName == nameof(OpmsTarget));
+        audit.OldValue.Should().Contain("AssignedUserPublicId").And.NotContain("AssignedUserId");
+        audit.NewValue.Should().Contain(revisedAssignee.PublicId.ToString()).And.NotContain(revisedAssignee.Id);
+    }
+
+    [Fact]
+    public async Task Legacy_classification_keys_are_immutable()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var (municipality, user, target) = Fixture("legacy-key");
+        context.AddRange(municipality, user, target);
+        await context.SaveChangesAsync();
+
+        target.BudgetTypeId = 42;
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Performance-target identity, tenant, governed originals and retired wide-period projection are immutable after creation.*");
     }
 
     [Fact]
@@ -144,5 +269,18 @@ public sealed class PerformanceTargetRootHistoryTests
         ActorUserId = userId,
         OccurredAt = occurredAt,
         CorrelationId = "target-root-test"
+    };
+
+    private static AuditTrail EditAudit(string entityName, string entityId, long municipalityId, string userId,
+        IReadOnlyDictionary<string, object?> before, IReadOnlyDictionary<string, object?> after) => new()
+    {
+        MunicipalityId = municipalityId,
+        EntityName = entityName,
+        EntityId = entityId,
+        Action = "Edit",
+        OldValue = JsonSerializer.Serialize(before),
+        NewValue = JsonSerializer.Serialize(after),
+        ChangedBy = userId,
+        Reason = "Approved target edit"
     };
 }

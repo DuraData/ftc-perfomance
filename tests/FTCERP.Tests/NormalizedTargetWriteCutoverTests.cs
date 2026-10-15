@@ -7,6 +7,7 @@ using FTCERP.Host.Infrastructure.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace FTCERP.Tests;
 
@@ -329,7 +330,9 @@ public sealed class NormalizedTargetWriteCutoverTests
         entity.InternalReference = "INTERNAL-SECRET";
         entity.FmsLink = "FMS-SECRET";
         entity.GovernedBudgetSources.Add(new OpmsKpiBudgetSource { MunicipalityId = seed.Municipality.Id, BudgetSourceId = source.Id, Amount = 125.50m, AllocatedByUserId = seed.User.Id });
-        context.AuditTrails.Add(TargetEditAudit(nameof(OpmsTarget), entity.Id, seed.Municipality.Id, seed.User.Id, "Seed protected OPMS members."));
+        context.AuditTrails.Add(TargetEditAudit(nameof(OpmsTarget), entity.Id, seed.Municipality.Id, seed.User.Id, "Seed protected OPMS members.",
+            new { entity.PublicId, InternalReference = (string?)null, FmsLink = (string?)null },
+            new { entity.PublicId, entity.InternalReference, entity.FmsLink }));
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
         var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -379,7 +382,9 @@ public sealed class NormalizedTargetWriteCutoverTests
         var entity = await context.IpmsTargets.SingleAsync(item => item.PublicId == created.PublicId);
         entity.InternalReference = "EMPLOYEE-SECRET";
         entity.GovernedBudgetSources.Add(new IpmsKpiBudgetSource { MunicipalityId = seed.Municipality.Id, BudgetSourceId = source.Id, Amount = 75m, AllocatedByUserId = seed.User.Id });
-        context.AuditTrails.Add(TargetEditAudit(nameof(IpmsTarget), entity.Id, seed.Municipality.Id, seed.User.Id, "Seed protected IPMS members."));
+        context.AuditTrails.Add(TargetEditAudit(nameof(IpmsTarget), entity.Id, seed.Municipality.Id, seed.User.Id, "Seed protected IPMS members.",
+            new { entity.PublicId, InternalReference = (string?)null },
+            new { entity.PublicId, entity.InternalReference }));
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
         var denied = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -789,14 +794,15 @@ public sealed class NormalizedTargetWriteCutoverTests
         };
     }
 
-    private static AuditTrail TargetEditAudit(string entityName, string entityId, long municipalityId, string userId, string reason) => new()
+    private static AuditTrail TargetEditAudit(string entityName, string entityId, long municipalityId, string userId, string reason,
+        object oldValue, object newValue) => new()
     {
         MunicipalityId = municipalityId,
         EntityName = entityName,
         EntityId = entityId,
         Action = "Edit",
-        OldValue = "{}",
-        NewValue = "{}",
+        OldValue = JsonSerializer.Serialize(oldValue),
+        NewValue = JsonSerializer.Serialize(newValue),
         ChangedBy = userId,
         Reason = reason
     };

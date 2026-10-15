@@ -293,7 +293,6 @@ public class IpmsTargetsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<IpmsTargetResponse>(false, null, "IPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<IpmsTargetResponse>(false, null, "A withdrawn IPMS target is immutable."));
 
-        var before = await FindTargetAsync(id);
         var decision = await _accessControlService.CheckPermissionAsync(user, "IPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsTargetResponse>(false, null, decision.Reason));
         if (!await CanUpdatePeriodTargetMembersAsync(user, BuildScope(entity))) return Forbid();
@@ -373,9 +372,9 @@ public class IpmsTargetsController : ControllerBase
         PerformanceClassificationResolver.Apply(entity, performanceClassification);
         PerformanceClassificationResolver.ApplyUnit(entity, kpiUnit);
         entity.UpdatedAt = updatedAt;
-        var beforeResponse = before == null ? null : await ToResponseAsync(before);
-        _workflowGovernanceService.QueueAuditTrail("IpmsTarget", entity.Id, "Edit", beforeResponse,
-            new { entity.PublicId, Request = request }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "IPMS target updated.");
+        var audit = _context.BuildPerformanceTargetAuditSnapshots(entity);
+        _workflowGovernanceService.QueueAuditTrail("IpmsTarget", entity.Id, "Edit", audit.Before,
+            audit.After, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "IPMS target updated.");
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
         {

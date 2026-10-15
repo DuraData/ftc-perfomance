@@ -322,7 +322,6 @@ public class OpmsTargetsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<OpmsTargetResponse>(false, null, "OPMS target not found"));
         if (entity.IsWithdrawn) return Conflict(new ApiResponse<OpmsTargetResponse>(false, null, "A withdrawn OPMS target is immutable."));
 
-        var before = (await FindTargetAsync(id))?.ToResponse();
         var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.UPDATE", BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsTargetResponse>(false, null, decision.Reason));
         if (!await CanUpdatePeriodTargetMembersAsync(user, BuildScope(entity))) return Forbid();
@@ -409,8 +408,9 @@ public class OpmsTargetsController : ControllerBase
         if (mappingChanged)
             ApplyMappingChanges(entity, request, mappings, userReferences.AdditionalAssigneeIds, user.Id, relationshipReason!, updatedAt);
         entity.UpdatedAt = updatedAt;
-        _workflowGovernanceService.QueueAuditTrail("OpmsTarget", entity.Id, "Edit", before,
-            new { entity.PublicId, Request = request }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "OPMS target updated.");
+        var audit = _context.BuildPerformanceTargetAuditSnapshots(entity);
+        _workflowGovernanceService.QueueAuditTrail("OpmsTarget", entity.Id, "Edit", audit.Before,
+            audit.After, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "OPMS target updated.");
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
         {
