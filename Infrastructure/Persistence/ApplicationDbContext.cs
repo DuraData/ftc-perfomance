@@ -5382,6 +5382,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
         if (expected.Count == 0 || revisions.Count != expected.Count)
             throw new InvalidOperationException("Every effective KPI definition or ordering change requires one exact append-only field revision.");
+        var revisionEvidence = revisions.ToArray();
         foreach (var item in expected)
         {
             var matches = revisions.Where(revision => item.Fields.Contains(revision.FieldName, StringComparer.Ordinal)
@@ -5395,17 +5396,60 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         }
 
         var action = definitionChanged ? "ReviseDefinitionFields" : "ReviseOrdering";
-        var hasDirectAudit = ChangeTracker.Entries<AuditTrail>().Any(candidate => candidate.State == EntityState.Added
-            && candidate.Entity.EntityName == entityName && candidate.Entity.EntityId == targetId
-            && candidate.Entity.Action == action && candidate.Entity.MunicipalityId == municipalityId
-            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
-            && candidate.Entity.OldValue != null && candidate.Entity.NewValue != null);
         var hasImportCommit = isOpms && ChangeTracker.Entries<OpmsImportBatch>().Any(candidate => candidate.State == EntityState.Modified
             && candidate.Entity.MunicipalityId == municipalityId
             && candidate.OriginalValues.GetValue<OpmsImportBatchStatus>(nameof(OpmsImportBatch.Status)) == OpmsImportBatchStatus.Staged
             && candidate.CurrentValues.GetValue<OpmsImportBatchStatus>(nameof(OpmsImportBatch.Status)) == OpmsImportBatchStatus.Committed);
-        if (!hasDirectAudit && !hasImportCommit)
-            throw new InvalidOperationException("KPI revisions require their reasoned target audit or governed import-commit evidence in the same transaction.");
+        if (!hasImportCommit)
+        {
+            var actors = revisionEvidence.Select(revision => revision.RevisedByUserId).Distinct(StringComparer.Ordinal).ToArray();
+            var reasons = revisionEvidence.Select(revision => revision.Reason).Distinct(StringComparer.Ordinal).ToArray();
+            var approvals = revisionEvidence.Select(revision => revision.ApprovalReference).Distinct(StringComparer.Ordinal).ToArray();
+            var effectiveDates = revisionEvidence.Select(revision => revision.EffectiveAt).Distinct().ToArray();
+            if (actors.Length != 1 || reasons.Length != 1 || approvals.Length != 1 || effectiveDates.Length != 1
+                || !GovernanceActorMatches(actors[0], _tenantContext?.UserId))
+                throw new InvalidOperationException("KPI revisions require one coherent actor, reason, approval and effective date across their append-only evidence.");
+
+            var before = new Dictionary<string, object?>(StringComparer.Ordinal);
+            var after = new Dictionary<string, object?>(StringComparer.Ordinal);
+            if (definitionChanged)
+            {
+                AddDefinitionSnapshot(nameof(OpmsTarget.IndicatorNumber), nameof(OpmsTarget.IsIndicatorNumberRevised), nameof(OpmsTarget.RevisedIndicatorNumber));
+                AddDefinitionSnapshot(nameof(OpmsTarget.TargetName), nameof(OpmsTarget.IsTargetNameRevised), nameof(OpmsTarget.RevisedTargetName));
+                AddDefinitionSnapshot(nameof(OpmsTarget.KpiDescription), nameof(OpmsTarget.IsKpiDescriptionRevised), nameof(OpmsTarget.RevisedKpiDescription));
+            }
+            else
+            {
+                before[nameof(OpmsTarget.OriginalOrderNumber)] = entry.OriginalValues[nameof(OpmsTarget.OriginalOrderNumber)];
+                before[nameof(OpmsTarget.RevisedOrderNumber)] = entry.OriginalValues[nameof(OpmsTarget.RevisedOrderNumber)];
+                after[nameof(OpmsTarget.OriginalOrderNumber)] = entry.CurrentValues[nameof(OpmsTarget.OriginalOrderNumber)];
+                after[nameof(OpmsTarget.RevisedOrderNumber)] = entry.CurrentValues[nameof(OpmsTarget.RevisedOrderNumber)];
+            }
+            after[nameof(KpiFieldRevision.Reason)] = reasons[0];
+            after[nameof(KpiFieldRevision.ApprovalReference)] = approvals[0];
+            after[nameof(KpiFieldRevision.EffectiveAt)] = effectiveDates[0];
+
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == entityName && candidate.Entity.EntityId == targetId
+                && candidate.Entity.Action == action && candidate.Entity.MunicipalityId == municipalityId
+                && candidate.Entity.ChangedBy == actors[0]
+                && candidate.Entity.Reason == reasons[0]
+                && candidate.Entity.ChangedAt != default
+                && ExactSnapshotMatches(candidate.Entity.OldValue, before)
+                && ExactSnapshotMatches(candidate.Entity.NewValue, after)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException("KPI revisions require one exact actor-bound same-transaction before/after target audit.");
+
+            void AddDefinitionSnapshot(string originalProperty, string flagProperty, string revisedProperty)
+            {
+                before[originalProperty] = entry.OriginalValues.GetValue<bool>(flagProperty)
+                    ? entry.OriginalValues.GetValue<string?>(revisedProperty)
+                    : entry.OriginalValues.GetValue<string>(originalProperty);
+                after[originalProperty] = entry.CurrentValues.GetValue<bool>(flagProperty)
+                    ? entry.CurrentValues.GetValue<string?>(revisedProperty)
+                    : entry.CurrentValues.GetValue<string>(originalProperty);
+            }
+        }
 
         void AddDefinitionExpectation(string originalProperty, string flagProperty, string revisedProperty)
         {

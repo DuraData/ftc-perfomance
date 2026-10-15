@@ -205,6 +205,58 @@ public sealed class PerformanceTargetRootHistoryTests
         target.IsTargetNameRevised = true;
         target.RevisedTargetName = "Revised governed target";
         target.IsRevised = true;
+        var effectiveAt = DateTime.UtcNow;
+        const string reason = "Council-approved revision";
+        const string approvalReference = "COUNCIL-2026-10";
+        context.KpiFieldRevisions.Add(new KpiFieldRevision
+        {
+            MunicipalityId = municipality.Id,
+            OpmsTargetId = target.Id,
+            FieldName = nameof(OpmsTarget.TargetName),
+            OriginalValue = target.TargetName,
+            RevisedValue = target.RevisedTargetName,
+            Reason = reason,
+            ApprovalReference = approvalReference,
+            EffectiveAt = effectiveAt,
+            RevisedByUserId = user.Id
+        });
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = nameof(OpmsTarget),
+            EntityId = target.Id,
+            Action = "ReviseDefinitionFields",
+            OldValue = JsonSerializer.Serialize(new { target.IndicatorNumber, target.TargetName, target.KpiDescription }),
+            NewValue = JsonSerializer.Serialize(new
+            {
+                target.IndicatorNumber,
+                TargetName = target.RevisedTargetName,
+                target.KpiDescription,
+                Reason = reason,
+                ApprovalReference = approvalReference,
+                EffectiveAt = effectiveAt
+            }),
+            ChangedBy = user.Id,
+            ChangedAt = DateTime.UtcNow,
+            Reason = reason
+        });
+
+        await context.SaveChangesAsync();
+        (await context.KpiFieldRevisions.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Definition_change_rejects_an_audit_with_unrelated_snapshots()
+    {
+        var (municipality, user, target) = Fixture("revision-audit-bypass");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(null, user.Id, true));
+        context.AddRange(municipality, user, target);
+        await context.SaveChangesAsync();
+
+        target.IsTargetNameRevised = true;
+        target.RevisedTargetName = "Revised governed target";
+        target.IsRevised = true;
+        var effectiveAt = DateTime.UtcNow;
         context.KpiFieldRevisions.Add(new KpiFieldRevision
         {
             MunicipalityId = municipality.Id,
@@ -214,7 +266,7 @@ public sealed class PerformanceTargetRootHistoryTests
             RevisedValue = target.RevisedTargetName,
             Reason = "Council-approved revision",
             ApprovalReference = "COUNCIL-2026-10",
-            EffectiveAt = DateTime.UtcNow,
+            EffectiveAt = effectiveAt,
             RevisedByUserId = user.Id
         });
         context.AuditTrails.Add(new AuditTrail
@@ -223,14 +275,15 @@ public sealed class PerformanceTargetRootHistoryTests
             EntityName = nameof(OpmsTarget),
             EntityId = target.Id,
             Action = "ReviseDefinitionFields",
-            OldValue = "{\"targetName\":\"Original target\"}",
-            NewValue = "{\"targetName\":\"Revised governed target\"}",
+            OldValue = "{}",
+            NewValue = "{}",
             ChangedBy = user.Id,
+            ChangedAt = DateTime.UtcNow,
             Reason = "Council-approved revision"
         });
 
-        await context.SaveChangesAsync();
-        (await context.KpiFieldRevisions.CountAsync()).Should().Be(1);
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("KPI revisions require one exact actor-bound same-transaction before/after target audit.");
     }
 
     private static (Municipality Municipality, ApplicationUser User, OpmsTarget Target) Fixture(string suffix)
