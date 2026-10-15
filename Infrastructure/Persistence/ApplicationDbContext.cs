@@ -2494,13 +2494,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         var strategicMasterEntries = ChangeTracker.Entries()
             .Where(entry => entry.Entity is StrategicPlanningMasterBase)
             .ToArray();
-        if (strategicMasterEntries.Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Strategic-planning master history cannot be hard deleted.");
-        foreach (var entry in strategicMasterEntries.Where(entry => entry.State == EntityState.Modified))
-        {
-            var entity = (StrategicPlanningMasterBase)entry.Entity;
-            RequireGovernanceAudit(entry.Metadata.ClrType.Name, entity.PublicId, entity.MunicipalityId);
-        }
+        EnforceStrategicPlanningMasterHistory(strategicMasterEntries);
         if (ChangeTracker.Entries<NationalKpa>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<BackToBasicsPillar>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<MunicipalityNationalKpa>().Any(entry => entry.State == EntityState.Deleted)
@@ -3959,6 +3953,91 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         return tracked ?? StrategicRisks.IgnoreQueryFilters().AsNoTracking()
             .Where(candidate => candidate.Id == riskId)
             .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private void EnforceStrategicPlanningMasterHistory(IReadOnlyCollection<EntityEntry> entries)
+    {
+        if (entries.Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Strategic-planning master history cannot be hard deleted.");
+
+        var snapshotFields = new[]
+        {
+            nameof(StrategicPlanningMasterBase.Code), nameof(StrategicPlanningMasterBase.Name),
+            nameof(StrategicPlanningMasterBase.Description), nameof(StrategicPlanningMasterBase.DisplayOrder),
+            nameof(StrategicPlanningMasterBase.IsActive)
+        };
+        foreach (var entry in entries.Where(entry => entry.State == EntityState.Modified))
+        {
+            var allowed = new HashSet<string>(snapshotFields, StringComparer.Ordinal)
+            {
+                nameof(StrategicPlanningMasterBase.EffectiveFromFinancialYearId),
+                nameof(StrategicPlanningMasterBase.EffectiveToFinancialYearId),
+                nameof(StrategicPlanningMasterBase.RowVersion)
+            };
+            if (entry.Entity is GovernedKpiUnitOfMeasure) allowed.Add(nameof(GovernedKpiUnitOfMeasure.Symbol));
+            if (entry.Properties.Any(property => property.IsModified && !allowed.Contains(property.Metadata.Name)))
+                throw new InvalidOperationException("Strategic-planning master identity and municipality ownership are immutable.");
+
+            var actor = _tenantContext?.UserId;
+            if (string.IsNullOrWhiteSpace(actor))
+                throw new InvalidOperationException("Strategic-planning master changes require an authenticated governance actor.");
+            var originalFromId = entry.OriginalValues.GetValue<long?>(nameof(StrategicPlanningMasterBase.EffectiveFromFinancialYearId));
+            var currentFromId = entry.CurrentValues.GetValue<long?>(nameof(StrategicPlanningMasterBase.EffectiveFromFinancialYearId));
+            var originalToId = entry.OriginalValues.GetValue<long?>(nameof(StrategicPlanningMasterBase.EffectiveToFinancialYearId));
+            var currentToId = entry.CurrentValues.GetValue<long?>(nameof(StrategicPlanningMasterBase.EffectiveToFinancialYearId));
+            var originalFromPublicId = ResolveMunicipalityFinancialYearPublicId(originalFromId);
+            var currentFromPublicId = ResolveMunicipalityFinancialYearPublicId(currentFromId);
+            var originalToPublicId = ResolveMunicipalityFinancialYearPublicId(originalToId);
+            var currentToPublicId = ResolveMunicipalityFinancialYearPublicId(currentToId);
+            if (originalFromId.HasValue != originalFromPublicId.HasValue || currentFromId.HasValue != currentFromPublicId.HasValue
+                || originalToId.HasValue != originalToPublicId.HasValue || currentToId.HasValue != currentToPublicId.HasValue)
+                throw new InvalidOperationException("Strategic-planning master effective years must resolve to stable public identities.");
+
+            var originalSymbol = entry.Entity is GovernedKpiUnitOfMeasure
+                ? entry.OriginalValues.GetValue<string?>(nameof(GovernedKpiUnitOfMeasure.Symbol)) : null;
+            var currentSymbol = entry.Entity is GovernedKpiUnitOfMeasure
+                ? entry.CurrentValues.GetValue<string?>(nameof(GovernedKpiUnitOfMeasure.Symbol)) : null;
+            var publicId = entry.OriginalValues.GetValue<Guid>(nameof(StrategicPlanningMasterBase.PublicId));
+            var municipalityId = entry.OriginalValues.GetValue<long>(nameof(StrategicPlanningMasterBase.MunicipalityId));
+            var entityName = entry.Metadata.ClrType.Name;
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == entityName
+                && candidate.Entity.EntityId == publicId.ToString()
+                && candidate.Entity.Action == "Update"
+                && candidate.Entity.MunicipalityId == municipalityId
+                && candidate.Entity.ChangedBy == actor
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && StrategicPlanningMasterSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields,
+                    originalFromPublicId, originalToPublicId, originalSymbol)
+                && StrategicPlanningMasterSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields,
+                    currentFromPublicId, currentToPublicId, currentSymbol)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException($"{entityName} changes require one exact actor-bound same-transaction before/after audit.");
+        }
+    }
+
+    private static bool StrategicPlanningMasterSnapshotMatches(string? json, PropertyValues values,
+        IEnumerable<string> fields, Guid? fromPublicId, Guid? toPublicId, string? symbol) =>
+        RootSnapshotMatches(json, values, fields)
+        && NullableGuidSnapshotMatches(json, "EffectiveFromFinancialYearPublicId", fromPublicId)
+        && NullableGuidSnapshotMatches(json, "EffectiveToFinancialYearPublicId", toPublicId)
+        && NullableStringSnapshotMatches(json, "Symbol", symbol);
+
+    private static bool NullableStringSnapshotMatches(string? json, string field, string? expected)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            if (!TryGetJsonProperty(document.RootElement, field, out var actual)) return false;
+            return expected == null
+                ? actual.ValueKind == System.Text.Json.JsonValueKind.Null
+                : actual.ValueKind == System.Text.Json.JsonValueKind.String && actual.GetString() == expected;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
     }
 
     private Guid? ResolveMunicipalityFinancialYearPublicId(long? municipalityFinancialYearId)

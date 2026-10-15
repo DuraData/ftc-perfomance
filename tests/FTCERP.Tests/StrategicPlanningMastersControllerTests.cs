@@ -402,6 +402,60 @@ public sealed class StrategicPlanningMastersControllerTests
         await AssertHardDeleteRejected(context, context.GovernedKpiUnitOfMeasures);
     }
 
+    [Fact]
+    public async Task Strategic_planning_masters_reject_identity_forged_year_actor_and_symbol_audits()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using var context = fixture.Context(fixture.MunicipalityA.Id);
+        var controller = Controller(context, fixture.MunicipalityA.Id);
+        var created = Data(await controller.CreateMunicipalKpa(new("ROOT-KPA", "Governed KPA", "Governed root",
+            fixture.Year2026.PublicId, null, 1, true, "Approved governed strategic root")));
+
+        context.ChangeTracker.Clear();
+        var master = await context.MunicipalKpas.SingleAsync(item => item.PublicId == created.PublicId);
+        master.PublicId = Guid.NewGuid();
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*identity and municipality ownership are immutable*");
+
+        context.ChangeTracker.Clear();
+        master = await context.MunicipalKpas.SingleAsync(item => item.PublicId == created.PublicId);
+        var forgedYearPublicId = Guid.NewGuid();
+        var forgedBefore = StrategicMasterAuditSnapshot(master, forgedYearPublicId, null, null);
+        master.Name = "Forged year KPA";
+        new WorkflowGovernanceService(context, tenantContext: new TestTenantContext(fixture.MunicipalityA.Id, "planner-1", false))
+            .QueueAuditTrail(nameof(MunicipalKpa), master.PublicId.ToString(), "Update", forgedBefore,
+                StrategicMasterAuditSnapshot(master, forgedYearPublicId, null, null), "planner-1", null,
+                "Approved strategic master correction");
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact actor-bound same-transaction before/after audit*");
+        forgedYearPublicId.Should().NotBe(fixture.Year2026.PublicId);
+
+        context.ChangeTracker.Clear();
+        master = await context.MunicipalKpas.SingleAsync(item => item.PublicId == created.PublicId);
+        var actorBefore = StrategicMasterAuditSnapshot(master, fixture.Year2026.PublicId, null, null);
+        master.Description = "Approved corrected description";
+        new WorkflowGovernanceService(context, tenantContext: new TestTenantContext(fixture.MunicipalityA.Id, "planner-1", false))
+            .QueueAuditTrail(nameof(MunicipalKpa), master.PublicId.ToString(), "Update", actorBefore,
+                StrategicMasterAuditSnapshot(master, fixture.Year2026.PublicId, null, null), "forged-actor", null,
+                "Approved strategic master correction");
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        var unit = Data(await controller.CreateKpiUnitOfMeasure(new("ROOT-UOM", "Governed unit", null,
+            fixture.Year2026.PublicId, null, 1, true, "Approved governed unit root", Symbol: "#")));
+        context.ChangeTracker.Clear();
+        var directUnit = await context.GovernedKpiUnitOfMeasures.SingleAsync(item => item.PublicId == unit.PublicId);
+        var unitBefore = StrategicMasterAuditSnapshot(directUnit, fixture.Year2026.PublicId, null, directUnit.Symbol);
+        directUnit.Symbol = "items";
+        new WorkflowGovernanceService(context, tenantContext: new TestTenantContext(fixture.MunicipalityA.Id, "planner-1", false))
+            .QueueAuditTrail(nameof(GovernedKpiUnitOfMeasure), directUnit.PublicId.ToString(), "Update", unitBefore,
+                StrategicMasterAuditSnapshot(directUnit, fixture.Year2026.PublicId, null, "forged-symbol"), "planner-1", null,
+                "Approved governed unit correction");
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact actor-bound same-transaction before/after audit*");
+    }
+
     [Theory]
     [InlineData(nameof(StrategicPlanningMastersController.CreateMunicipalKpa), "Permission:MUNICIPAL_KPA.CREATE")]
     [InlineData(nameof(StrategicPlanningMastersController.UpdateStrategicGoal), "Permission:STRATEGIC_GOAL.UPDATE")]
@@ -441,7 +495,7 @@ public sealed class StrategicPlanningMastersControllerTests
         var entity = await set.SingleAsync();
         entity.Name += " silently rewritten";
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
-        Assert.Contains("same-transaction reasoned before/after audit evidence", exception.Message);
+        Assert.Contains("one exact actor-bound same-transaction before/after audit", exception.Message);
         context.ChangeTracker.Clear();
     }
     private static async Task AssertHardDeleteRejected<TEntity>(ApplicationDbContext context, DbSet<TEntity> set) where TEntity : StrategicPlanningMasterBase
@@ -452,6 +506,18 @@ public sealed class StrategicPlanningMastersControllerTests
         Assert.Contains("cannot be hard deleted", exception.Message);
         context.ChangeTracker.Clear();
     }
+    private static object StrategicMasterAuditSnapshot(StrategicPlanningMasterBase item, Guid? fromPublicId,
+        Guid? toPublicId, string? symbol) => new
+        {
+            item.Code,
+            item.Name,
+            item.Description,
+            Symbol = symbol,
+            EffectiveFromFinancialYearPublicId = fromPublicId,
+            EffectiveToFinancialYearPublicId = toPublicId,
+            item.DisplayOrder,
+            item.IsActive
+        };
     private static StrategicPlanningMastersController Controller(ApplicationDbContext context, long municipalityId) { var controller = new StrategicPlanningMastersController(context, new TestTenantContext(municipalityId, "planner-1", false)); controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }; return controller; }
 
     private sealed class Fixture(SqliteConnection connection, DbContextOptions<ApplicationDbContext> options, Municipality municipalityA, Municipality municipalityB, MunicipalityFinancialYear year2025, MunicipalityFinancialYear year2026) : IAsyncDisposable

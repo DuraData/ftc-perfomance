@@ -413,7 +413,8 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
         if (!TenantSelected()) return TenantRequired<StrategicPlanningMasterDto>();
         var normalized = await ValidateMaster(set, request, null); if (normalized.Error != null) return BadRequest(Fail<StrategicPlanningMasterDto>(normalized.Error));
         var entity = factory(); Apply(entity, request, normalized.Code, normalized.From, normalized.To); entity.MunicipalityId = tenantContext.MunicipalityId!.Value;
-        set.Add(entity); AddAudit(entityName, entity.PublicId, "Create", null, Snapshot(entity), request.Reason);
+        set.Add(entity); AddAudit(entityName, entity.PublicId, "Create", null,
+            Snapshot(entity, normalized.From?.PublicId, normalized.To?.PublicId), request.Reason);
         try { await context.SaveChangesAsync(); } catch (DbUpdateException) { return Conflict(Fail<StrategicPlanningMasterDto>("A record with this code already exists.")); }
         await LoadYears(entity); return Ok(new ApiResponse<StrategicPlanningMasterDto>(true, ToDto(entity)));
     }
@@ -422,9 +423,13 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     {
         if (!TenantSelected()) return TenantRequired<StrategicPlanningMasterDto>();
         if (!TryVersion(request.RowVersion, out var expected)) return BadRequest(Fail<StrategicPlanningMasterDto>("A valid row version is required."));
-        var entity = await set.SingleOrDefaultAsync(item => item.PublicId == publicId); if (entity == null) return NotFound(Fail<StrategicPlanningMasterDto>("Strategic planning record not found."));
+        var entity = await set.Include(item => item.EffectiveFromFinancialYear).Include(item => item.EffectiveToFinancialYear)
+            .SingleOrDefaultAsync(item => item.PublicId == publicId); if (entity == null) return NotFound(Fail<StrategicPlanningMasterDto>("Strategic planning record not found."));
         var normalized = await ValidateMaster(set, request, entity.Id); if (normalized.Error != null) return BadRequest(Fail<StrategicPlanningMasterDto>(normalized.Error));
-        var before = Snapshot(entity); context.Entry(entity).Property(item => item.RowVersion).OriginalValue = expected; Apply(entity, request, normalized.Code, normalized.From, normalized.To); AddAudit(entityName, entity.PublicId, "Update", before, Snapshot(entity), request.Reason);
+        var before = Snapshot(entity, entity.EffectiveFromFinancialYear?.PublicId, entity.EffectiveToFinancialYear?.PublicId);
+        context.Entry(entity).Property(item => item.RowVersion).OriginalValue = expected; Apply(entity, request, normalized.Code, normalized.From, normalized.To);
+        AddAudit(entityName, entity.PublicId, "Update", before,
+            Snapshot(entity, normalized.From?.PublicId, normalized.To?.PublicId), request.Reason);
         try { await context.SaveChangesAsync(); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicPlanningMasterDto>("The record changed before this update. Reload and retry.")); } catch (DbUpdateException) { return Conflict(Fail<StrategicPlanningMasterDto>("A record with this code already exists.")); }
         await LoadYears(entity); return Ok(new ApiResponse<StrategicPlanningMasterDto>(true, ToDto(entity)));
     }
@@ -487,7 +492,17 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
     private void Apply(StrategicPlanningMasterBase entity, SaveStrategicPlanningMasterRequest request, string? code, MunicipalityFinancialYear? from, MunicipalityFinancialYear? to) { entity.Code = code; entity.Name = request.Name.Trim(); entity.Description = Clean(request.Description); entity.EffectiveFromFinancialYearId = from?.Id; entity.EffectiveToFinancialYearId = to?.Id; entity.DisplayOrder = request.DisplayOrder; entity.IsActive = request.IsActive; if (entity is GovernedKpiUnitOfMeasure unit) unit.Symbol = Clean(request.Symbol); }
     private async Task LoadYears(StrategicPlanningMasterBase entity) { if (entity.EffectiveFromFinancialYearId.HasValue) await context.Entry(entity).Reference(item => item.EffectiveFromFinancialYear).Query().Include(item => item.FinancialYear).LoadAsync(); if (entity.EffectiveToFinancialYearId.HasValue) await context.Entry(entity).Reference(item => item.EffectiveToFinancialYear).Query().Include(item => item.FinancialYear).LoadAsync(); }
     private static StrategicPlanningMasterDto ToDto(StrategicPlanningMasterBase item) => new(item.PublicId, item.Code, item.Name, item.Description, item.EffectiveFromFinancialYear?.PublicId, item.EffectiveFromFinancialYear?.FinancialYear.Code, item.EffectiveToFinancialYear?.PublicId, item.EffectiveToFinancialYear?.FinancialYear.Code, item.DisplayOrder, item.IsActive, Convert.ToBase64String(item.RowVersion), (item as GovernedKpiUnitOfMeasure)?.Symbol);
-    private static object Snapshot(StrategicPlanningMasterBase item) => new { item.Code, item.Name, item.Description, Symbol = (item as GovernedKpiUnitOfMeasure)?.Symbol, item.EffectiveFromFinancialYearId, item.EffectiveToFinancialYearId, item.DisplayOrder, item.IsActive };
+    private static object Snapshot(StrategicPlanningMasterBase item, Guid? effectiveFromPublicId, Guid? effectiveToPublicId) => new
+    {
+        item.Code,
+        item.Name,
+        item.Description,
+        Symbol = (item as GovernedKpiUnitOfMeasure)?.Symbol,
+        EffectiveFromFinancialYearPublicId = effectiveFromPublicId,
+        EffectiveToFinancialYearPublicId = effectiveToPublicId,
+        item.DisplayOrder,
+        item.IsActive
+    };
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static string? ValidateReason(string? reason) => string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 10 || reason.Trim().Length > 1000 ? "A governance reason between 10 and 1000 characters is required." : null;
     private static bool TryVersion(string? value, out byte[] version) { version = []; if (string.IsNullOrWhiteSpace(value)) return false; try { version = Convert.FromBase64String(value); return version.Length > 0; } catch (FormatException) { return false; } }
