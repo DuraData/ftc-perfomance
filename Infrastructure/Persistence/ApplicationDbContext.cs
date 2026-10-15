@@ -3115,6 +3115,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
                     && candidate.Entity.ChangedBy == successor.Entity.CreatedByUserId
                     && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && candidate.Entity.ChangedAt != default
+                    && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
                     && ExactJsonMatches(candidate.Entity.OldValue, predecessorSnapshot)
                     && ExactJsonMatches(candidate.Entity.NewValue, new C88WorkflowVersionAuditSnapshot(
                         configurationPublicId!.Value,
