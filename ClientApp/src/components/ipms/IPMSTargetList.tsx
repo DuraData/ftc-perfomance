@@ -15,6 +15,7 @@ import type { IPMSTarget, IpmsTargetTemplate, SaveIpmsTargetPayload } from '../.
 import { IpmsTemplateSelectionModal } from '../library/TargetLibraries';
 import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
 import { canonicalSaveRows } from '../../lib/performanceTargetContract';
+import { relatedOpmsDisplayLabel } from './ipmsRelationship';
 
 type DashboardTargetFilter = 'assigned' | 'achieved' | 'at-risk' | 'outstanding';
 
@@ -156,13 +157,16 @@ export function IPMSTargetList() {
     {
       id: 'opms',
       header: 'Related OPMS',
-      accessor: (row: IPMSTarget) => (
-        row.relatedOPMSTarget ? (
-          <Badge variant="info">{row.relatedOPMSTarget.indicatorNumber}</Badge>
-        ) : (
-          <span className="text-secondary-400">Not linked</span>
-        )
-      ),
+      accessor: (row: IPMSTarget) => {
+        const relatedOpmsLabel = relatedOpmsDisplayLabel(row);
+        return (
+          relatedOpmsLabel ? (
+            <Badge variant="info">{relatedOpmsLabel}</Badge>
+          ) : (
+            <span className="text-secondary-400">Not linked</span>
+          )
+        );
+      },
     },
     {
       id: 'template',
