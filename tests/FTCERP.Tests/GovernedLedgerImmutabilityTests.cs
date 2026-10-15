@@ -222,6 +222,107 @@ public sealed class GovernedLedgerImmutabilityTests
             .WithMessage("Business-event delivery state may advance by one attempt*");
     }
 
+    public static TheoryData<NotificationDeliveryAttempt> InvalidDeliveryCreationRows => new()
+    {
+        new NotificationDeliveryAttempt
+        {
+            BusinessEventOutboxId = 1, RecipientUserId = "recipient", Channel = "EMAIL", Status = "Pending",
+            IdempotencyKey = "pending-delivery", AttemptCount = 0, Provider = "MailProvider"
+        },
+        new NotificationDeliveryAttempt
+        {
+            BusinessEventOutboxId = 1, RecipientUserId = "recipient", Channel = "EMAIL", Status = "Delivered",
+            IdempotencyKey = "fabricated-delivery", AttemptCount = 1, AttemptedAt = DateTime.UtcNow,
+            DeliveredAt = null, Provider = "MailProvider"
+        },
+        new NotificationDeliveryAttempt
+        {
+            BusinessEventOutboxId = 1, RecipientUserId = "recipient", Channel = "EMAIL", Status = "Failed",
+            IdempotencyKey = "future-delivery", AttemptCount = 1, AttemptedAt = DateTime.UtcNow.AddHours(1),
+            Error = "Fabricated provider failure", Provider = "MailProvider"
+        }
+    };
+
+    [Theory]
+    [MemberData(nameof(InvalidDeliveryCreationRows))]
+    public async Task Notification_delivery_creation_rejects_pending_incomplete_and_future_results(NotificationDeliveryAttempt row)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.NotificationDeliveryAttempts.Add(row);
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Notification-delivery creation requires a matching tracked outbox scope, complete immutable identity and one chronologically valid delivery result*");
+    }
+
+    [Fact]
+    public async Task Notification_delivery_creation_rejects_cross_tenant_or_pre_event_results()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.Municipalities.Add(new Municipality { Id = 7, Code = "DELIVERY-7", Name = "Delivery Municipality" });
+        var outbox = new BusinessEventOutbox
+        {
+            MunicipalityId = 7, EventType = "Notification.Scope", AggregateType = "Test", AggregateId = "delivery-scope", Payload = "{}"
+        };
+        context.BusinessEventOutbox.Add(outbox);
+        await context.SaveChangesAsync();
+        context.NotificationDeliveryAttempts.Add(new NotificationDeliveryAttempt
+        {
+            MunicipalityId = 8, BusinessEventOutboxId = outbox.Id, RecipientUserId = "recipient", Channel = "EMAIL",
+            Status = "Failed", IdempotencyKey = "cross-tenant-delivery", AttemptCount = 1,
+            AttemptedAt = outbox.OccurredAt.AddSeconds(-1), Error = "Fabricated provider failure", Provider = "MailProvider"
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Notification-delivery creation requires a matching tracked outbox scope*");
+    }
+
+    [Fact]
+    public async Task Notification_delivery_cannot_skip_attempts_or_rewrite_terminal_result()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var outbox = new BusinessEventOutbox
+        {
+            EventType = "Notification.Lifecycle", AggregateType = "Test", AggregateId = "delivery-result-lifecycle", Payload = "{}"
+        };
+        context.BusinessEventOutbox.Add(outbox);
+        await context.SaveChangesAsync();
+        var firstAttemptAt = DateTime.UtcNow;
+        var delivery = new NotificationDeliveryAttempt
+        {
+            BusinessEventOutboxId = outbox.Id, RecipientUserId = "recipient", Channel = "EMAIL", Status = "Failed",
+            IdempotencyKey = "delivery-result-lifecycle", AttemptCount = 1, AttemptedAt = firstAttemptAt,
+            Error = "Temporary provider failure", Provider = "MailProvider", ResponseDetail = "Temporary provider failure"
+        };
+        context.NotificationDeliveryAttempts.Add(delivery);
+        await context.SaveChangesAsync();
+
+        delivery.AttemptCount = 3;
+        delivery.AttemptedAt = firstAttemptAt.AddSeconds(1);
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Notification delivery state may only advance one failed attempt at a time*");
+
+        context.ChangeTracker.Clear();
+        delivery = await context.NotificationDeliveryAttempts.SingleAsync();
+        var deliveredAt = DateTime.UtcNow;
+        delivery.AttemptCount = 2;
+        delivery.AttemptedAt = deliveredAt;
+        delivery.Status = "Delivered";
+        delivery.DeliveredAt = deliveredAt;
+        delivery.Error = null;
+        delivery.ProviderReference = "provider-message-1";
+        delivery.ResponseDetail = "Accepted";
+        await context.SaveChangesAsync();
+
+        delivery.AttemptCount = 3;
+        delivery.AttemptedAt = deliveredAt.AddSeconds(1);
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Notification delivery state may only advance one failed attempt at a time*");
+    }
+
     public static TheoryData<object> NotificationDeletionCases => new()
     {
         new BusinessEventOutbox { Id = 83 },

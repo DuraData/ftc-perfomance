@@ -2968,6 +2968,23 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || !availabilityOnly && (currentAttemptCount != originalAttemptCount + 1 || !completed && !retrying))
                 throw new InvalidOperationException("Business-event delivery state may advance by one attempt, one valid completion or retry, or an availability-only reschedule.");
         }
+        foreach (var entry in ChangeTracker.Entries<NotificationDeliveryAttempt>().Where(entry => entry.State == EntityState.Added))
+        {
+            var row = entry.Entity;
+            var parent = ChangeTracker.Entries<BusinessEventOutbox>().SingleOrDefault(candidate =>
+                candidate.State != EntityState.Deleted && candidate.Entity.Id == row.BusinessEventOutboxId)?.Entity;
+            if (row.PublicId == Guid.Empty
+                || row.BusinessEventOutboxId <= 0
+                || parent == null
+                || row.MunicipalityId != parent.MunicipalityId
+                || string.IsNullOrWhiteSpace(row.RecipientUserId)
+                || string.IsNullOrWhiteSpace(row.Channel)
+                || string.IsNullOrWhiteSpace(row.IdempotencyKey)
+                || row.AttemptCount != 1
+                || row.AttemptedAt < parent.OccurredAt
+                || !IsValidNotificationDeliveryState(row.Status, row.AttemptedAt, row.DeliveredAt, row.Error, row.Provider))
+                throw new InvalidOperationException("Notification-delivery creation requires a matching tracked outbox scope, complete immutable identity and one chronologically valid delivery result.");
+        }
         foreach (var entry in ChangeTracker.Entries<NotificationDeliveryAttempt>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {
             if (entry.State == EntityState.Deleted)
@@ -2977,6 +2994,25 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(NotificationDeliveryAttempt.DeliveredAt), nameof(NotificationDeliveryAttempt.Error), nameof(NotificationDeliveryAttempt.Provider),
                     nameof(NotificationDeliveryAttempt.ProviderReference), nameof(NotificationDeliveryAttempt.ResponseDetail)],
                 "Notification delivery identity is immutable; only delivery-result state may change.");
+            var originalStatus = entry.OriginalValues.GetValue<string>(nameof(NotificationDeliveryAttempt.Status));
+            var originalAttemptCount = entry.OriginalValues.GetValue<int>(nameof(NotificationDeliveryAttempt.AttemptCount));
+            var originalAttemptedAt = entry.OriginalValues.GetValue<DateTime>(nameof(NotificationDeliveryAttempt.AttemptedAt));
+            var originalDeliveredAt = entry.OriginalValues.GetValue<DateTime?>(nameof(NotificationDeliveryAttempt.DeliveredAt));
+            var originalError = entry.OriginalValues.GetValue<string?>(nameof(NotificationDeliveryAttempt.Error));
+            var originalProvider = entry.OriginalValues.GetValue<string?>(nameof(NotificationDeliveryAttempt.Provider));
+            var attemptedAt = entry.CurrentValues.GetValue<DateTime>(nameof(NotificationDeliveryAttempt.AttemptedAt));
+            if (!string.Equals(originalStatus, "Failed", StringComparison.Ordinal)
+                || originalAttemptCount < 1
+                || !IsValidNotificationDeliveryState(originalStatus, originalAttemptedAt, originalDeliveredAt, originalError, originalProvider)
+                || entry.CurrentValues.GetValue<int>(nameof(NotificationDeliveryAttempt.AttemptCount)) != originalAttemptCount + 1
+                || attemptedAt < originalAttemptedAt
+                || !IsValidNotificationDeliveryState(
+                    entry.CurrentValues.GetValue<string>(nameof(NotificationDeliveryAttempt.Status)),
+                    attemptedAt,
+                    entry.CurrentValues.GetValue<DateTime?>(nameof(NotificationDeliveryAttempt.DeliveredAt)),
+                    entry.CurrentValues.GetValue<string?>(nameof(NotificationDeliveryAttempt.Error)),
+                    entry.CurrentValues.GetValue<string?>(nameof(NotificationDeliveryAttempt.Provider))))
+                throw new InvalidOperationException("Notification delivery state may only advance one failed attempt at a time to a chronologically valid result; terminal results are immutable.");
         }
         if (ChangeTracker.Entries<IdpImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("IDP import reconciliation rows are append-only.");
@@ -3285,6 +3321,26 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || !entry.CurrentValues.GetValue<DateTime?>(nameof(TechnicalIndicatorDescription.EffectiveTo)).HasValue)
                 throw new InvalidOperationException("Published TID versions are append-only; only the current version may be closed by a successor.");
         }
+    }
+
+    private static bool IsValidNotificationDeliveryState(
+        string? status,
+        DateTime attemptedAt,
+        DateTime? deliveredAt,
+        string? error,
+        string? provider)
+    {
+        if (attemptedAt == default
+            || attemptedAt > DateTime.UtcNow.AddMinutes(5)
+            || string.IsNullOrWhiteSpace(provider))
+            return false;
+
+        return status switch
+        {
+            "Delivered" => deliveredAt == attemptedAt && error == null,
+            "Failed" or "NotDeliverable" or "Suppressed" => !deliveredAt.HasValue && !string.IsNullOrWhiteSpace(error),
+            _ => false
+        };
     }
 
     private void EnforceAuthenticationLedgerHistory()

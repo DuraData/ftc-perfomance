@@ -660,12 +660,16 @@ public sealed class RegisterPaginationTests
             row.AvailableAt = row.AvailableAt.AddSeconds(1);
             await context.SaveChangesAsync();
         }
-        row.DeliveryAttempts.Add(new NotificationDeliveryAttempt
+        var delivery = new NotificationDeliveryAttempt
         {
-            RecipientUserId = recipient.Id, Channel = "EMAIL", Status = "Failed", IdempotencyKey = "protected-delivery-key",
+            MunicipalityId = municipality.Id, RecipientUserId = recipient.Id, Channel = "EMAIL", Status = "Failed", IdempotencyKey = "protected-delivery-key",
             Provider = "MailProvider", ProviderReference = "protected-provider-reference", Error = "protected-delivery-error",
-            ResponseDetail = "protected-response-detail", AttemptCount = 2
-        });
+            ResponseDetail = "protected-response-detail", AttemptCount = 1
+        };
+        row.DeliveryAttempts.Add(delivery);
+        await context.SaveChangesAsync();
+        delivery.AttemptCount = 2;
+        delivery.AttemptedAt = delivery.AttemptedAt.AddSeconds(1);
         await context.SaveChangesAsync();
 
         var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
