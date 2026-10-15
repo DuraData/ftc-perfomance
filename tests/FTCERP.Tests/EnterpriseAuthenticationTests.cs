@@ -413,12 +413,53 @@ public sealed class EnterpriseAuthenticationTests
         var disabledAudit = await context.AuditTrails.SingleAsync(item => item.Action == "EnterpriseIdentityDisabled");
         Assert.Equal("UserAuthenticator", disabledAudit.EntityName);
         Assert.Equal(actor.Id, disabledAudit.ChangedBy);
+        Assert.Contains(actor.PublicId.ToString(), disabledAudit.NewValue);
+        Assert.Contains("\"isActive\":false", disabledAudit.NewValue, StringComparison.OrdinalIgnoreCase);
 
         var enabledResult = await controller.SetStatus(authenticator.PublicId,
             new SetUserAuthenticatorStatusRequest(true, "Security owner restored the identity", disabled.RowVersion), default);
         var enabled = Assert.IsType<ApiResponse<UserAuthenticatorDto>>(Assert.IsType<OkObjectResult>(enabledResult.Result).Value).Data!;
         Assert.True(enabled.IsActive);
         Assert.Equal(2, await context.AuditTrails.CountAsync(item => item.EntityName == "UserAuthenticator"));
+    }
+
+    [Fact]
+    public async Task Authenticator_status_change_rejects_forged_audit_snapshots()
+    {
+        var municipality = new Municipality { Code = "AUTH-FORGE", Name = "Authentication Audit Forge" };
+        var actor = User("authentication-forge-admin", municipality);
+        var linked = User("authentication-forge-user", municipality);
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(null, actor.Id, true));
+        var authenticator = new UserAuthenticator
+        {
+            Municipality = municipality,
+            User = linked,
+            ProviderRegistrationCode = "ENTRA",
+            ExpectedEmail = linked.Email!,
+            CreatedByUserId = actor.Id,
+            IsActive = true
+        };
+        context.AddRange(municipality, actor, linked, authenticator);
+        await context.SaveChangesAsync();
+
+        authenticator.IsActive = false;
+        authenticator.DisabledAt = DateTime.UtcNow;
+        authenticator.DisabledByUserId = actor.Id;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = "UserAuthenticator",
+            EntityId = authenticator.PublicId.ToString(),
+            Action = "EnterpriseIdentityDisabled",
+            OldValue = "{}",
+            NewValue = "{}",
+            ChangedBy = actor.Id,
+            ChangedAt = DateTime.UtcNow,
+            Reason = "Attempt forged status evidence"
+        });
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("one exact actor-bound", exception.Message);
     }
 
     private static ApplicationDbContext NewContext() => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);

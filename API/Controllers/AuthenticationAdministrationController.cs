@@ -275,11 +275,37 @@ public sealed class AuthenticationAdministrationController(
             return BadRequest(Fail<UserAuthenticatorDto>("A governance reason and valid RowVersion are required."));
         var row = await context.UserAuthenticators.Include(item => item.User).SingleOrDefaultAsync(item => item.PublicId == publicId, cancellationToken);
         if (row == null) return NotFound(Fail<UserAuthenticatorDto>("Authenticator not found."));
+        var actorUser = await context.Users.SingleOrDefaultAsync(item => item.Id == actor, cancellationToken);
+        if (actorUser == null) return Unauthorized();
         context.Entry(row).Property(item => item.RowVersion).OriginalValue = version;
+        var originalDisabledByPublicId = string.IsNullOrWhiteSpace(row.DisabledByUserId)
+            ? (Guid?)null
+            : await context.Users.Where(item => item.Id == row.DisabledByUserId).Select(item => (Guid?)item.PublicId).SingleOrDefaultAsync(cancellationToken);
+        var before = new { row.IsActive, DisabledByUserPublicId = originalDisabledByPublicId, row.DisabledAt };
+        var changedAt = DateTime.UtcNow;
         row.IsActive = request.IsActive;
-        row.DisabledAt = request.IsActive ? null : DateTime.UtcNow;
+        row.DisabledAt = request.IsActive ? null : changedAt;
         row.DisabledByUserId = request.IsActive ? null : actor;
-        AddAudit(municipalityId, actor, "UserAuthenticator", request.IsActive ? "EnterpriseIdentityEnabled" : "EnterpriseIdentityDisabled", row.PublicId.ToString(), request.Reason, null);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId,
+            EntityName = "UserAuthenticator",
+            EntityId = row.PublicId.ToString(),
+            Action = request.IsActive ? "EnterpriseIdentityEnabled" : "EnterpriseIdentityDisabled",
+            OldValue = JsonSerializer.Serialize(before),
+            NewValue = JsonSerializer.Serialize(new
+            {
+                row.IsActive,
+                DisabledByUserPublicId = request.IsActive ? (Guid?)null : actorUser.PublicId,
+                row.DisabledAt
+            }),
+            ChangedBy = actor,
+            ChangedAt = changedAt,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            CorrelationId = HttpContext.TraceIdentifier,
+            Reason = request.Reason.Trim(),
+            UserAgent = Request.Headers.UserAgent.ToString()
+        });
         try { await context.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<UserAuthenticatorDto>("The authenticator changed since it was loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<UserAuthenticatorDto>(true, await ToAuthorizedDtoAsync(row, row.User, municipalityId)));
