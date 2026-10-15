@@ -3201,6 +3201,14 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
         foreach (var entry in ChangeTracker.Entries<SecurityResource>().Where(entry => entry.State == EntityState.Modified))
         {
+            var snapshotFields = new[]
+            {
+                nameof(SecurityResource.Code), nameof(SecurityResource.Name), nameof(SecurityResource.ResourceType),
+                nameof(SecurityResource.Description), nameof(SecurityResource.SupportsCreate), nameof(SecurityResource.SupportsRead),
+                nameof(SecurityResource.SupportsUpdate), nameof(SecurityResource.SupportsDelete), nameof(SecurityResource.SupportsExport),
+                nameof(SecurityResource.SupportsImport), nameof(SecurityResource.SupportsFieldSecurity),
+                nameof(SecurityResource.SupportsRecordCriteria), nameof(SecurityResource.IsActive)
+            };
             EnsureOnlyProperties(entry,
                 [nameof(SecurityResource.Name), nameof(SecurityResource.ResourceType), nameof(SecurityResource.Description),
                     nameof(SecurityResource.SupportsCreate), nameof(SecurityResource.SupportsRead), nameof(SecurityResource.SupportsUpdate),
@@ -3208,38 +3216,92 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(SecurityResource.SupportsFieldSecurity), nameof(SecurityResource.SupportsRecordCriteria),
                     nameof(SecurityResource.IsActive), nameof(SecurityResource.RowVersion)],
                 "Security-resource public identity, code and implementation bindings are immutable.");
-            RequireGovernanceAudit(nameof(SecurityResource), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
+            RequireExactSecurityRegistryAudit(entry, snapshotFields);
         }
 
         foreach (var entry in ChangeTracker.Entries<SecurityActionDefinition>().Where(entry => entry.State == EntityState.Modified))
         {
+            var snapshotFields = new[]
+            {
+                nameof(SecurityActionDefinition.Code), nameof(SecurityActionDefinition.Name),
+                nameof(SecurityActionDefinition.ResourceCode), nameof(SecurityActionDefinition.Description),
+                nameof(SecurityActionDefinition.IsActive)
+            };
             EnsureOnlyProperties(entry,
                 [nameof(SecurityActionDefinition.Name), nameof(SecurityActionDefinition.Description),
                     nameof(SecurityActionDefinition.IsActive), nameof(SecurityActionDefinition.RowVersion)],
                 "Security-action public identity, code and resource binding are immutable.");
-            RequireGovernanceAudit(nameof(SecurityActionDefinition), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
+            RequireExactSecurityRegistryAudit(entry, snapshotFields);
         }
 
         foreach (var entry in ChangeTracker.Entries<SecurityMemberDefinition>().Where(entry => entry.State == EntityState.Modified))
         {
+            var snapshotFields = new[]
+            {
+                nameof(SecurityMemberDefinition.ResourceCode), nameof(SecurityMemberDefinition.MemberCode),
+                nameof(SecurityMemberDefinition.DisplayName), nameof(SecurityMemberDefinition.IsSensitive),
+                nameof(SecurityMemberDefinition.IsSystemManaged), nameof(SecurityMemberDefinition.IsActive)
+            };
             EnsureOnlyProperties(entry,
                 [nameof(SecurityMemberDefinition.DisplayName), nameof(SecurityMemberDefinition.IsSensitive),
                     nameof(SecurityMemberDefinition.IsSystemManaged), nameof(SecurityMemberDefinition.IsActive),
                     nameof(SecurityMemberDefinition.RowVersion)],
                 "Security-member public identity and resource/member codes are immutable.");
-            RequireGovernanceAudit(nameof(SecurityMemberDefinition), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
+            RequireExactSecurityRegistryAudit(entry, snapshotFields);
         }
 
         foreach (var entry in ChangeTracker.Entries<SecurityNavigationItem>().Where(entry => entry.State == EntityState.Modified))
         {
+            var snapshotFields = new[]
+            {
+                nameof(SecurityNavigationItem.Code), nameof(SecurityNavigationItem.Name), nameof(SecurityNavigationItem.Route),
+                nameof(SecurityNavigationItem.IconKey), nameof(SecurityNavigationItem.DisplayOrder),
+                nameof(SecurityNavigationItem.RequiredPermissionCode), nameof(SecurityNavigationItem.IsActive)
+            };
             EnsureOnlyProperties(entry,
                 [nameof(SecurityNavigationItem.ParentId), nameof(SecurityNavigationItem.Name), nameof(SecurityNavigationItem.Route),
                     nameof(SecurityNavigationItem.IconKey), nameof(SecurityNavigationItem.DisplayOrder),
                     nameof(SecurityNavigationItem.RequiredPermissionCode), nameof(SecurityNavigationItem.IsActive),
                     nameof(SecurityNavigationItem.RowVersion)],
                 "Security-navigation public identity and code are immutable.");
-            RequireGovernanceAudit(nameof(SecurityNavigationItem), entry.Entity.PublicId, _tenantContext?.MunicipalityId);
+            RequireExactSecurityRegistryAudit(entry, snapshotFields, true,
+                ResolveSecurityNavigationPublicId(entry.OriginalValues.GetValue<int?>(nameof(SecurityNavigationItem.ParentId))),
+                ResolveSecurityNavigationPublicId(entry.CurrentValues.GetValue<int?>(nameof(SecurityNavigationItem.ParentId))));
         }
+    }
+
+    private void RequireExactSecurityRegistryAudit<TEntity>(EntityEntry<TEntity> entry, IReadOnlyCollection<string> snapshotFields,
+        bool includeParent = false, Guid? originalParentPublicId = null, Guid? currentParentPublicId = null) where TEntity : class
+    {
+        var publicId = entry.OriginalValues.GetValue<Guid>("PublicId");
+        var entityName = typeof(TEntity).Name;
+        var actor = _tenantContext?.UserId;
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName
+            && candidate.Entity.EntityId == publicId.ToString()
+            && candidate.Entity.Action == "Update"
+            && candidate.Entity.MunicipalityId == _tenantContext?.MunicipalityId
+            && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
+            && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
+            && (!includeParent
+                || NullableGuidSnapshotMatches(candidate.Entity.OldValue, "ParentPublicId", originalParentPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.NewValue, "ParentPublicId", currentParentPublicId))).ToArray();
+        if (audits.Length != 1)
+            throw new InvalidOperationException($"{entityName} changes require one exact actor-bound same-transaction before/after audit.");
+    }
+
+    private Guid? ResolveSecurityNavigationPublicId(int? navigationId)
+    {
+        if (!navigationId.HasValue) return null;
+        var tracked = ChangeTracker.Entries<SecurityNavigationItem>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == navigationId.Value)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? SecurityNavigationItems.AsNoTracking()
+            .Where(candidate => candidate.Id == navigationId.Value)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
     }
 
     private void EnforcePermissionProjectionHistory()

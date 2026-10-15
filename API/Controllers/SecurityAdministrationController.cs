@@ -675,7 +675,7 @@ public sealed class SecurityAdministrationController : ControllerBase
         if (!await IsRegisteredPermissionAsync(request.RequiredPermissionCode)) return BadRequest(new ApiResponse<SecurityNavigationDto>(false, null, "Required permission code is not active or registered."));
 
         _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = rowVersion;
-        var oldValue = new { entity.Name, ParentPublicId = entity.Parent?.PublicId, entity.Route, entity.IconKey, entity.DisplayOrder, entity.RequiredPermissionCode, entity.IsActive };
+        var oldValue = new { entity.Code, entity.Name, ParentPublicId = entity.Parent?.PublicId, entity.Route, entity.IconKey, entity.DisplayOrder, entity.RequiredPermissionCode, entity.IsActive };
         entity.Name = request.Name.Trim();
         entity.Route = NormalizeRoute(request.Route);
         entity.IconKey = NullIfWhiteSpace(request.IconKey);
@@ -684,7 +684,7 @@ public sealed class SecurityAdministrationController : ControllerBase
         entity.Parent = parent;
         entity.ParentId = parent?.Id;
         entity.IsActive = request.IsActive;
-        var newValue = new { entity.Name, ParentPublicId = parent?.PublicId, entity.Route, entity.IconKey, entity.DisplayOrder, entity.RequiredPermissionCode, entity.IsActive };
+        var newValue = new { entity.Code, entity.Name, ParentPublicId = parent?.PublicId, entity.Route, entity.IconKey, entity.DisplayOrder, entity.RequiredPermissionCode, entity.IsActive };
         _context.AuditTrails.Add(NewNavigationAudit(actor, entity, "Update", oldValue, newValue, request.Reason));
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<SecurityNavigationDto>(false, null, "The navigation item changed since it was loaded. Refresh and try again.")); }

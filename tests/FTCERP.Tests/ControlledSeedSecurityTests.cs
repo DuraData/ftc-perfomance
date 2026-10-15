@@ -373,11 +373,13 @@ public sealed class ControlledSeedSecurityTests
         await context.Permissions.Where(item => item.Code == "Dashboard.View").ExecuteUpdateAsync(setters => setters
             .SetProperty(item => item.Description, "Administrator-defined dashboard description")
             .SetProperty(item => item.IsActive, false));
+        var resourceBefore = RegistrySnapshot(userResource);
+        var memberBefore = RegistrySnapshot(emailMember);
         userResource.SupportsDelete = false;
         emailMember.IsSensitive = false;
         context.AuditTrails.AddRange(
-            RegistryAudit(nameof(SecurityResource), userResource.PublicId, actor.Id, "Preserve administrator resource configuration"),
-            RegistryAudit(nameof(SecurityMemberDefinition), emailMember.PublicId, actor.Id, "Preserve administrator member configuration"));
+            RegistryAudit(nameof(SecurityResource), userResource.PublicId, actor.Id, "Preserve administrator resource configuration", resourceBefore, RegistrySnapshot(userResource)),
+            RegistryAudit(nameof(SecurityMemberDefinition), emailMember.PublicId, actor.Id, "Preserve administrator member configuration", memberBefore, RegistrySnapshot(emailMember)));
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
 
@@ -391,13 +393,28 @@ public sealed class ControlledSeedSecurityTests
         (await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == "USER" && item.MemberCode == "Email")).IsSensitive.Should().BeFalse();
     }
 
-    private static AuditTrail RegistryAudit(string entityName, Guid publicId, string actorId, string reason) => new()
+    private static object RegistrySnapshot(object entity) => entity switch
+    {
+        SecurityResource resource => new
+        {
+            resource.Code, resource.Name, resource.ResourceType, resource.Description, resource.SupportsCreate,
+            resource.SupportsRead, resource.SupportsUpdate, resource.SupportsDelete, resource.SupportsExport,
+            resource.SupportsImport, resource.SupportsFieldSecurity, resource.SupportsRecordCriteria, resource.IsActive
+        },
+        SecurityMemberDefinition member => new
+        {
+            member.ResourceCode, member.MemberCode, member.DisplayName, member.IsSensitive, member.IsSystemManaged, member.IsActive
+        },
+        _ => throw new ArgumentOutOfRangeException(nameof(entity))
+    };
+
+    private static AuditTrail RegistryAudit(string entityName, Guid publicId, string actorId, string reason, object oldValue, object newValue) => new()
     {
         EntityName = entityName,
         EntityId = publicId.ToString(),
         Action = "Update",
-        OldValue = "{}",
-        NewValue = "{}",
+        OldValue = System.Text.Json.JsonSerializer.Serialize(oldValue),
+        NewValue = System.Text.Json.JsonSerializer.Serialize(newValue),
         ChangedBy = actorId,
         ChangedAt = DateTime.UtcNow,
         Reason = reason
@@ -538,6 +555,6 @@ public sealed class ControlledSeedSecurityTests
     {
         public long? MunicipalityId => null;
         public bool IsSystem => true;
-        public string? UserId => "seed-test";
+        public string? UserId => null;
     }
 }

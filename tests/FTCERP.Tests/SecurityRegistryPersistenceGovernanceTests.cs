@@ -52,7 +52,7 @@ public class SecurityRegistryPersistenceGovernanceTests
 
         var save = () => context.SaveChangesAsync();
         await save.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
     }
 
     [Theory]
@@ -108,16 +108,20 @@ public class SecurityRegistryPersistenceGovernanceTests
         await context.SaveChangesAsync();
         var originalVersions = new[] { resource.RowVersion, action.RowVersion, member.RowVersion, navigation.RowVersion }
             .Select(value => Convert.ToBase64String(value)).ToArray();
+        var resourceBefore = Snapshot(resource);
+        var actionBefore = Snapshot(action);
+        var memberBefore = Snapshot(member);
+        var navigationBefore = Snapshot(navigation);
 
         ApplyAllowedChange(resource);
         ApplyAllowedChange(action);
         ApplyAllowedChange(member);
         ApplyAllowedChange(navigation);
         context.AuditTrails.AddRange(
-            Audit(nameof(SecurityResource), resource.PublicId, actor.Id),
-            Audit(nameof(SecurityActionDefinition), action.PublicId, actor.Id),
-            Audit(nameof(SecurityMemberDefinition), member.PublicId, actor.Id),
-            Audit(nameof(SecurityNavigationItem), navigation.PublicId, actor.Id));
+            Audit(nameof(SecurityResource), resource.PublicId, actor.Id, resourceBefore, Snapshot(resource)),
+            Audit(nameof(SecurityActionDefinition), action.PublicId, actor.Id, actionBefore, Snapshot(action)),
+            Audit(nameof(SecurityMemberDefinition), member.PublicId, actor.Id, memberBefore, Snapshot(member)),
+            Audit(nameof(SecurityNavigationItem), navigation.PublicId, actor.Id, navigationBefore, Snapshot(navigation)));
 
         await context.SaveChangesAsync();
 
@@ -125,6 +129,83 @@ public class SecurityRegistryPersistenceGovernanceTests
             .Select(value => Convert.ToBase64String(value)).ToArray();
         currentVersions.Zip(originalVersions).Should().OnlyContain(pair => pair.First != pair.Second);
         (await context.AuditTrails.CountAsync(item => item.Action == "Update")).Should().Be(4);
+    }
+
+    [Theory]
+    [InlineData(nameof(SecurityResource))]
+    [InlineData(nameof(SecurityActionDefinition))]
+    [InlineData(nameof(SecurityMemberDefinition))]
+    [InlineData(nameof(SecurityNavigationItem))]
+    public async Task Registry_definition_updates_reject_forged_snapshots(string definitionType)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser($"registry-snapshot-{definitionType}");
+        var entity = Definition(definitionType);
+        context.AddRange(actor, entity);
+        await context.SaveChangesAsync();
+
+        var before = Snapshot(entity);
+        ApplyAllowedChange(entity);
+        context.AuditTrails.Add(Audit(definitionType, PublicId(entity), actor.Id, before, new { Forged = true }));
+
+        var save = () => context.SaveChangesAsync();
+        await save.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
+    }
+
+    [Fact]
+    public async Task Registry_definition_updates_reject_a_different_persisted_actor()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext(new FixedTenantContext(8120, false, "registry-expected-actor"));
+        var municipality = new Municipality { Id = 8120, Code = "REG", Name = "Registry Municipality" };
+        var expectedActor = IdpTestFixture.CreateUser("registry-expected-actor");
+        expectedActor.MunicipalityId = municipality.Id;
+        var forgedActor = IdpTestFixture.CreateUser("registry-forged-actor");
+        forgedActor.MunicipalityId = municipality.Id;
+        var resource = (SecurityResource)Definition(nameof(SecurityResource));
+        context.AddRange(municipality, expectedActor, forgedActor, resource);
+        await context.SaveChangesAsync();
+
+        var before = Snapshot(resource);
+        ApplyAllowedChange(resource);
+        context.AuditTrails.Add(Audit(nameof(SecurityResource), resource.PublicId, forgedActor.Id, before, Snapshot(resource)));
+
+        var save = () => context.SaveChangesAsync();
+        await save.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
+    }
+
+    [Fact]
+    public async Task Navigation_parent_changes_require_the_exact_stable_parent_identity()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var actor = IdpTestFixture.CreateUser("registry-navigation-parent-actor");
+        var firstParent = new SecurityNavigationItem { Code = "NAV.PARENT.ONE", Name = "Parent One", DisplayOrder = 1 };
+        var secondParent = new SecurityNavigationItem { Code = "NAV.PARENT.TWO", Name = "Parent Two", DisplayOrder = 2 };
+        var navigation = (SecurityNavigationItem)Definition(nameof(SecurityNavigationItem));
+        navigation.Parent = firstParent;
+        context.AddRange(actor, firstParent, secondParent, navigation);
+        await context.SaveChangesAsync();
+
+        var before = Snapshot(navigation);
+        navigation.Parent = secondParent;
+        navigation.ParentId = secondParent.Id;
+        var forgedAfter = new
+        {
+            navigation.Code,
+            navigation.Name,
+            ParentPublicId = Guid.NewGuid(),
+            navigation.Route,
+            navigation.IconKey,
+            navigation.DisplayOrder,
+            navigation.RequiredPermissionCode,
+            navigation.IsActive
+        };
+        context.AuditTrails.Add(Audit(nameof(SecurityNavigationItem), navigation.PublicId, actor.Id, before, forgedAfter));
+
+        var save = () => context.SaveChangesAsync();
+        await save.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
     }
 
     [Fact]
@@ -152,9 +233,10 @@ public class SecurityRegistryPersistenceGovernanceTests
         context.AddRange(actor, resource, permission);
         await context.SaveChangesAsync();
 
+        var before = Snapshot(resource);
         resource.Name = "Updated Resource";
         permission.Code = "GOVERNED_RESOURCE.REWRITTEN";
-        context.AuditTrails.Add(Audit(nameof(SecurityResource), resource.PublicId, actor.Id));
+        context.AuditTrails.Add(Audit(nameof(SecurityResource), resource.PublicId, actor.Id, before, Snapshot(resource)));
 
         var save = () => context.SaveChangesAsync();
         await save.Should().ThrowAsync<InvalidOperationException>()
@@ -171,9 +253,10 @@ public class SecurityRegistryPersistenceGovernanceTests
         context.AddRange(actor, resource, permission);
         await context.SaveChangesAsync();
 
+        var before = Snapshot(resource);
         resource.Name = "Updated Resource";
         permission.Description = "Read Updated Resource";
-        context.AuditTrails.Add(Audit(nameof(SecurityResource), resource.PublicId, actor.Id));
+        context.AuditTrails.Add(Audit(nameof(SecurityResource), resource.PublicId, actor.Id, before, Snapshot(resource)));
 
         await context.SaveChangesAsync();
 
@@ -190,9 +273,10 @@ public class SecurityRegistryPersistenceGovernanceTests
         context.AddRange(actor, resource, permission);
         await context.SaveChangesAsync();
 
+        var before = Snapshot(resource);
         resource.Name = "Updated Resource";
         permission.Description = "Forged projection value";
-        context.AuditTrails.Add(Audit(nameof(SecurityResource), resource.PublicId, actor.Id));
+        context.AuditTrails.Add(Audit(nameof(SecurityResource), resource.PublicId, actor.Id, before, Snapshot(resource)));
 
         var save = () => context.SaveChangesAsync();
         await save.Should().ThrowAsync<InvalidOperationException>()
@@ -287,13 +371,37 @@ public class SecurityRegistryPersistenceGovernanceTests
         _ => throw new ArgumentOutOfRangeException(nameof(entity))
     };
 
-    private static AuditTrail Audit(string entityName, Guid publicId, string actorId) => new()
+    private static object Snapshot(object entity) => entity switch
+    {
+        SecurityResource resource => new
+        {
+            resource.Code, resource.Name, resource.ResourceType, resource.Description, resource.SupportsCreate,
+            resource.SupportsRead, resource.SupportsUpdate, resource.SupportsDelete, resource.SupportsExport,
+            resource.SupportsImport, resource.SupportsFieldSecurity, resource.SupportsRecordCriteria, resource.IsActive
+        },
+        SecurityActionDefinition action => new
+        {
+            action.Code, action.Name, action.ResourceCode, action.Description, action.IsActive
+        },
+        SecurityMemberDefinition member => new
+        {
+            member.ResourceCode, member.MemberCode, member.DisplayName, member.IsSensitive, member.IsSystemManaged, member.IsActive
+        },
+        SecurityNavigationItem navigation => new
+        {
+            navigation.Code, navigation.Name, ParentPublicId = navigation.Parent?.PublicId, navigation.Route,
+            navigation.IconKey, navigation.DisplayOrder, navigation.RequiredPermissionCode, navigation.IsActive
+        },
+        _ => throw new ArgumentOutOfRangeException(nameof(entity))
+    };
+
+    private static AuditTrail Audit(string entityName, Guid publicId, string actorId, object? oldValue = null, object? newValue = null) => new()
     {
         EntityName = entityName,
         EntityId = publicId.ToString(),
         Action = "Update",
-        OldValue = "{\"state\":\"before\"}",
-        NewValue = "{\"state\":\"after\"}",
+        OldValue = System.Text.Json.JsonSerializer.Serialize(oldValue ?? new { State = "before" }),
+        NewValue = System.Text.Json.JsonSerializer.Serialize(newValue ?? new { State = "after" }),
         ChangedBy = actorId,
         ChangedAt = DateTime.UtcNow,
         Reason = "Govern registry definition through the approved persistence boundary."
@@ -321,5 +429,12 @@ public class SecurityRegistryPersistenceGovernanceTests
         }
 
         throw new DirectoryNotFoundException("Could not locate the repository root from the test output directory.");
+    }
+
+    private sealed class FixedTenantContext(long? municipalityId, bool isSystem, string userId) : ITenantContext
+    {
+        public long? MunicipalityId => municipalityId;
+        public bool IsSystem => isSystem;
+        public string? UserId => userId;
     }
 }
