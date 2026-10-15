@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using FluentAssertions;
 using FTCERP.Host.API.Controllers;
 using FTCERP.Host.API.Requests;
@@ -253,12 +254,95 @@ public sealed class TargetLibraryPagingTests
         directIpms.IsArchived = true;
         directIpms.IsActive = false;
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
 
         context.ChangeTracker.Clear();
         context.OpmsTargetTemplates.Remove(await context.OpmsTargetTemplates.SingleAsync(item => item.PublicId == createdOpms.PublicId));
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot be hard deleted*");
+    }
+
+    [Fact]
+    public async Task Target_template_mutations_reject_forged_snapshots_actors_and_stable_identity()
+    {
+        var expectedActor = IdpTestFixture.CreateUser("template-expected-actor");
+        var forgedActor = IdpTestFixture.CreateUser("template-forged-actor");
+        await using var context = IdpTestFixture.CreateRelationalContext(
+            IdpTestFixture.Tenant(null, expectedActor.Id, isSystem: true));
+        var opms = new OpmsTargetTemplate
+        {
+            TemplateCode = "OP-EXACT", TemplateName = "OPMS exact", IndicatorNumber = "KPI-1",
+            TargetName = "Target", KpiDescription = "Description", TargetUnitType = "percentage",
+            Version = 1, CreatedBy = expectedActor.Id
+        };
+        var ipms = new IpmsTargetTemplate
+        {
+            TemplateCode = "IP-EXACT", TemplateName = "IPMS exact", TargetName = "Target",
+            KpiDescription = "Description", TargetUnitType = "percentage", Version = 1,
+            CreatedBy = expectedActor.Id
+        };
+        context.AddRange(expectedActor, forgedActor, opms, ipms);
+        await context.SaveChangesAsync();
+
+        opms.TemplateName = "OPMS governed edit";
+        opms.Version++;
+        var opmsVersionSnapshot = context.BuildTargetTemplateVersionSnapshot(opms);
+        var opmsAudit = context.BuildTargetTemplateAuditSnapshots(opms);
+        context.OpmsTargetTemplateVersions.Add(new OpmsTargetTemplateVersion
+        {
+            OpmsTargetTemplate = opms, Version = opms.Version,
+            SnapshotJson = JsonSerializer.Serialize(opmsVersionSnapshot), CreatedBy = expectedActor.Id
+        });
+        var forgedAfter = opmsAudit.After.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        forgedAfter[nameof(OpmsTargetTemplate.TemplateName)] = "Forged value";
+        context.AuditTrails.Add(new AuditTrail
+        {
+            EntityName = nameof(OpmsTargetTemplate), EntityId = opms.PublicId.ToString(), Action = "Edit",
+            OldValue = JsonSerializer.Serialize(opmsAudit.Before), NewValue = JsonSerializer.Serialize(forgedAfter),
+            ChangedBy = expectedActor.Id, Reason = "Forged snapshot"
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("OpmsTargetTemplate Edit requires one exact actor-bound same-transaction before/after audit.*");
+
+        context.ChangeTracker.Clear();
+        ipms = await context.IpmsTargetTemplates.SingleAsync(item => item.PublicId == ipms.PublicId);
+        ipms.TemplateName = "IPMS governed edit";
+        ipms.Version++;
+        var ipmsVersionSnapshot = context.BuildTargetTemplateVersionSnapshot(ipms);
+        var ipmsAudit = context.BuildTargetTemplateAuditSnapshots(ipms);
+        context.IpmsTargetTemplateVersions.Add(new IpmsTargetTemplateVersion
+        {
+            IpmsTargetTemplate = ipms, Version = ipms.Version,
+            SnapshotJson = JsonSerializer.Serialize(ipmsVersionSnapshot), CreatedBy = forgedActor.Id
+        });
+        context.AuditTrails.Add(new AuditTrail
+        {
+            EntityName = nameof(IpmsTargetTemplate), EntityId = ipms.PublicId.ToString(), Action = "Edit",
+            OldValue = JsonSerializer.Serialize(ipmsAudit.Before), NewValue = JsonSerializer.Serialize(ipmsAudit.After),
+            ChangedBy = forgedActor.Id, Reason = "Forged actor"
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("IpmsTargetTemplate Edit requires one exact actor-bound same-transaction before/after audit.*");
+
+        context.ChangeTracker.Clear();
+        opms = await context.OpmsTargetTemplates.SingleAsync(item => item.TemplateCode == "OP-EXACT");
+        opms.PublicId = Guid.NewGuid();
+        opms.Version++;
+        context.OpmsTargetTemplateVersions.Add(new OpmsTargetTemplateVersion
+        {
+            OpmsTargetTemplate = opms, Version = opms.Version,
+            SnapshotJson = JsonSerializer.Serialize(context.BuildTargetTemplateVersionSnapshot(opms)),
+            CreatedBy = expectedActor.Id
+        });
+        var identityAudit = context.BuildTargetTemplateAuditSnapshots(opms);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            EntityName = nameof(OpmsTargetTemplate), EntityId = opms.PublicId.ToString(), Action = "Edit",
+            OldValue = JsonSerializer.Serialize(identityAudit.Before), NewValue = JsonSerializer.Serialize(identityAudit.After),
+            ChangedBy = expectedActor.Id, Reason = "Attempted identity rewrite"
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Target-template stable identity and creation evidence are immutable after creation.*");
     }
 
     private static SaveOpmsTargetTemplateRequest OpmsRequest(string code, string name, string? rowVersion = null) =>

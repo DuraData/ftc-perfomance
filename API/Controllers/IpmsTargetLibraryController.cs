@@ -131,7 +131,7 @@ public class IpmsTargetLibraryController : ControllerBase
 
         var template = Apply(new IpmsTargetTemplate(), request, user.UserName ?? user.Email ?? user.Id, members.Update);
         _context.IpmsTargetTemplates.Add(template);
-        QueueVersion(template, user.UserName ?? user.Email ?? user.Id);
+        QueueVersion(template, user.Id);
         _workflowGovernanceService.QueueAuditTrail(nameof(IpmsTargetTemplate), template.PublicId.ToString(), "Create", null,
             template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Created governed IPMS target template.");
         await _context.SaveChangesAsync();
@@ -163,12 +163,12 @@ public class IpmsTargetLibraryController : ControllerBase
         var codeConflict = await _context.IpmsTargetTemplates.AnyAsync(item => item.PublicId != publicId && item.TemplateCode == request.TemplateCode);
         if (codeConflict) return Conflict(new ApiResponse<IpmsTargetTemplateResponse>(false, null, "Template code already exists"));
 
-        var oldValue = template.ToResponse();
         template = Apply(template, request, user.UserName ?? user.Email ?? user.Id, members.Update);
         template.Version += 1;
-        QueueVersion(template, user.UserName ?? user.Email ?? user.Id);
-        _workflowGovernanceService.QueueAuditTrail(nameof(IpmsTargetTemplate), template.PublicId.ToString(), "Edit", oldValue,
-            template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Edited governed IPMS target template and appended its version snapshot.");
+        var audit = _context.BuildTargetTemplateAuditSnapshots(template);
+        QueueVersion(template, user.Id);
+        _workflowGovernanceService.QueueAuditTrail(nameof(IpmsTargetTemplate), template.PublicId.ToString(), "Edit", audit.Before,
+            audit.After, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Edited governed IPMS target template and appended its version snapshot.");
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
         {
@@ -199,11 +199,11 @@ public class IpmsTargetLibraryController : ControllerBase
         if (!TrySetExpectedVersion(template, request.RowVersion))
             return BadRequest(new ApiResponse<bool>(false, false, "A valid RowVersion is required."));
 
-        var oldValue = template.ToResponse();
         template.IsArchived = true;
         template.IsActive = false;
-        _workflowGovernanceService.QueueAuditTrail(nameof(IpmsTargetTemplate), template.PublicId.ToString(), "Archive", oldValue,
-            template.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Archived governed IPMS target template.");
+        var audit = _context.BuildTargetTemplateAuditSnapshots(template);
+        _workflowGovernanceService.QueueAuditTrail(nameof(IpmsTargetTemplate), template.PublicId.ToString(), "Archive", audit.Before,
+            audit.After, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Archived governed IPMS target template.");
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException)
         {
@@ -260,7 +260,7 @@ public class IpmsTargetLibraryController : ControllerBase
         };
 
         _context.IpmsTargetTemplates.Add(duplicate);
-        QueueVersion(duplicate, user.UserName ?? user.Email ?? user.Id);
+        QueueVersion(duplicate, user.Id);
         _workflowGovernanceService.QueueAuditTrail(nameof(IpmsTargetTemplate), duplicate.PublicId.ToString(), "Duplicate", template.ToResponse(),
             duplicate.ToResponse(), user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), "Duplicated governed IPMS target template.");
         await _context.SaveChangesAsync();
@@ -341,7 +341,7 @@ public class IpmsTargetLibraryController : ControllerBase
             IpmsTargetTemplateId = template.Id,
             IpmsTargetTemplate = template,
             Version = template.Version,
-            SnapshotJson = JsonSerializer.Serialize(template.ToResponse()),
+            SnapshotJson = JsonSerializer.Serialize(_context.BuildTargetTemplateVersionSnapshot(template)),
             CreatedBy = actor,
             CreatedDate = DateTime.UtcNow
         });

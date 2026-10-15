@@ -5578,10 +5578,12 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     "OPMS target-template archive state is one-way and all definition changes require a version snapshot.");
                 if (entry.CurrentValues.GetValue<bool>(nameof(OpmsTargetTemplate.IsActive)))
                     throw new InvalidOperationException("An archived OPMS target template cannot remain active.");
-                RequireGovernanceAudit(nameof(OpmsTargetTemplate), entry.Entity.PublicId, _tenantContext?.MunicipalityId, "Archive");
+                RequireExactTargetTemplateAudit(entry, nameof(OpmsTargetTemplate), "Archive");
                 continue;
             }
 
+            EnsureTargetTemplateIdentityIsImmutable(entry,
+                nameof(OpmsTargetTemplate.PublicId), nameof(OpmsTargetTemplate.CreatedBy), nameof(OpmsTargetTemplate.CreatedDate));
             var originalVersion = entry.OriginalValues.GetValue<int>(nameof(OpmsTargetTemplate.Version));
             var version = ChangeTracker.Entries<OpmsTargetTemplateVersion>().SingleOrDefault(candidate =>
                 candidate.State == EntityState.Added
@@ -5590,9 +5592,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.Version == entry.Entity.Version);
             if (originalArchived || currentArchived || entry.Entity.Version != originalVersion + 1
                 || version == null || string.IsNullOrWhiteSpace(version.Entity.SnapshotJson)
-                || string.IsNullOrWhiteSpace(version.Entity.CreatedBy))
+                || string.IsNullOrWhiteSpace(version.Entity.CreatedBy)
+                || !ExactSnapshotMatches(version.Entity.SnapshotJson, BuildTargetTemplateVersionSnapshot(entry.Entity)))
                 throw new InvalidOperationException("OPMS target-template edits require the exact next append-only version snapshot in the same unit of work.");
-            RequireGovernanceAudit(nameof(OpmsTargetTemplate), entry.Entity.PublicId, _tenantContext?.MunicipalityId, "Edit");
+            RequireExactTargetTemplateAudit(entry, nameof(OpmsTargetTemplate), "Edit", version.Entity.CreatedBy);
         }
     }
 
@@ -5611,10 +5614,12 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     "IPMS target-template archive state is one-way and all definition changes require a version snapshot.");
                 if (entry.CurrentValues.GetValue<bool>(nameof(IpmsTargetTemplate.IsActive)))
                     throw new InvalidOperationException("An archived IPMS target template cannot remain active.");
-                RequireGovernanceAudit(nameof(IpmsTargetTemplate), entry.Entity.PublicId, _tenantContext?.MunicipalityId, "Archive");
+                RequireExactTargetTemplateAudit(entry, nameof(IpmsTargetTemplate), "Archive");
                 continue;
             }
 
+            EnsureTargetTemplateIdentityIsImmutable(entry,
+                nameof(IpmsTargetTemplate.PublicId), nameof(IpmsTargetTemplate.CreatedBy), nameof(IpmsTargetTemplate.CreatedDate));
             var originalVersion = entry.OriginalValues.GetValue<int>(nameof(IpmsTargetTemplate.Version));
             var version = ChangeTracker.Entries<IpmsTargetTemplateVersion>().SingleOrDefault(candidate =>
                 candidate.State == EntityState.Added
@@ -5623,10 +5628,78 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.Version == entry.Entity.Version);
             if (originalArchived || currentArchived || entry.Entity.Version != originalVersion + 1
                 || version == null || string.IsNullOrWhiteSpace(version.Entity.SnapshotJson)
-                || string.IsNullOrWhiteSpace(version.Entity.CreatedBy))
+                || string.IsNullOrWhiteSpace(version.Entity.CreatedBy)
+                || !ExactSnapshotMatches(version.Entity.SnapshotJson, BuildTargetTemplateVersionSnapshot(entry.Entity)))
                 throw new InvalidOperationException("IPMS target-template edits require the exact next append-only version snapshot in the same unit of work.");
-            RequireGovernanceAudit(nameof(IpmsTargetTemplate), entry.Entity.PublicId, _tenantContext?.MunicipalityId, "Edit");
+            RequireExactTargetTemplateAudit(entry, nameof(IpmsTargetTemplate), "Edit", version.Entity.CreatedBy);
         }
+    }
+
+    private static void EnsureTargetTemplateIdentityIsImmutable(EntityEntry entry, params string[] immutableProperties)
+    {
+        if (entry.Properties.Any(property => property.IsModified
+                && immutableProperties.Contains(property.Metadata.Name, StringComparer.Ordinal)))
+            throw new InvalidOperationException("Target-template stable identity and creation evidence are immutable after creation.");
+    }
+
+    internal IReadOnlyDictionary<string, object?> BuildTargetTemplateVersionSnapshot(object template)
+    {
+        if (template is not OpmsTargetTemplate && template is not IpmsTargetTemplate)
+            throw new ArgumentException("A target-template version snapshot requires an OPMS or IPMS target template.", nameof(template));
+
+        ChangeTracker.DetectChanges();
+        return Entry(template).Properties
+            .Where(property => property.Metadata.Name is not "Id" and not "RowVersion")
+            .OrderBy(property => property.Metadata.Name, StringComparer.Ordinal)
+            .ToDictionary(property => property.Metadata.Name, property => property.CurrentValue, StringComparer.Ordinal);
+    }
+
+    internal (IReadOnlyDictionary<string, object?> Before, IReadOnlyDictionary<string, object?> After)
+        BuildTargetTemplateAuditSnapshots(object template)
+    {
+        if (template is not OpmsTargetTemplate && template is not IpmsTargetTemplate)
+            throw new ArgumentException("A target-template audit snapshot requires an OPMS or IPMS target template.", nameof(template));
+
+        ChangeTracker.DetectChanges();
+        var entry = Entry(template);
+        var fields = entry.Properties.Where(property => property.IsModified
+                && property.Metadata.Name is not "Id" and not "RowVersion")
+            .OrderBy(property => property.Metadata.Name, StringComparer.Ordinal)
+            .ToArray();
+        var before = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["PublicId"] = entry.OriginalValues["PublicId"]
+        };
+        var after = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["PublicId"] = entry.CurrentValues["PublicId"]
+        };
+        foreach (var property in fields)
+        {
+            before[property.Metadata.Name] = property.OriginalValue;
+            after[property.Metadata.Name] = property.CurrentValue;
+        }
+        return (before, after);
+    }
+
+    private void RequireExactTargetTemplateAudit(EntityEntry entry, string entityName, string action,
+        string? expectedVersionActor = null)
+    {
+        var snapshots = BuildTargetTemplateAuditSnapshots(entry.Entity);
+        var publicId = entry.OriginalValues.GetValue<Guid>("PublicId");
+        var contextActor = _tenantContext?.UserId;
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName
+            && candidate.Entity.EntityId == publicId.ToString()
+            && candidate.Entity.Action == action
+            && candidate.Entity.MunicipalityId == _tenantContext?.MunicipalityId
+            && GovernanceActorMatches(candidate.Entity.ChangedBy, contextActor)
+            && (expectedVersionActor == null || candidate.Entity.ChangedBy == expectedVersionActor)
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && ExactSnapshotMatches(candidate.Entity.OldValue, snapshots.Before)
+            && ExactSnapshotMatches(candidate.Entity.NewValue, snapshots.After)).ToArray();
+        if (audits.Length != 1)
+            throw new InvalidOperationException($"{entityName} {action} requires one exact actor-bound same-transaction before/after audit.");
     }
 
     private static void EnsureMonotonicClosure<TEntity>(EntityEntry<TEntity> entry, string activeProperty, string endProperty,
