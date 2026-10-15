@@ -25,7 +25,7 @@ public class TidControllerTests
                     ChangedAt = DateTime.UtcNow,
                     Reason = reason
                 }));
-        var controller = Controller(context, setup.User, setup.Municipality.Id, workflow);
+        var controller = Controller(context, setup.User, setup.Municipality.Id, workflow.Object);
 
         var initial = Payload(await controller.GetConfiguration());
         initial.TidEnabled.Should().BeFalse();
@@ -52,8 +52,7 @@ public class TidControllerTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var setup = await SeedAsync(context, enabled: true, allRequired: true);
-        var workflow = new Mock<IWorkflowGovernanceService>();
-        var controller = Controller(context, setup.User, setup.Municipality.Id, workflow);
+        var controller = Controller(context, setup.User, setup.Municipality.Id);
 
         var first = Payload(await controller.CreateVersion(setup.Target.PublicId, Request("Initial definition", new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc))));
         first.VersionNumber.Should().Be(1);
@@ -106,14 +105,21 @@ public class TidControllerTests
 
         context.ChangeTracker.Clear();
         context.TechnicalIndicatorDescriptions.Add(Tid(setup.Municipality.Id, setup.Target.Id, setup.User.Id, 3));
-        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<DbUpdateException>();
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact same-time reasoned audit*");
         context.ChangeTracker.Clear();
         var historical = await context.TechnicalIndicatorDescriptions.SingleAsync(item => item.VersionNumber == 1);
         historical.Purpose = "Tampered";
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*append-only*");
-        workflow.Verify(service => service.QueueAuditTrail("TechnicalIndicatorDescription", It.IsAny<string>(), "CreateVersion",
-            null, It.IsAny<object>(), setup.User.Id, It.IsAny<string?>()), Times.Exactly(2));
+        var audits = await context.AuditTrails.Where(item => item.EntityName == nameof(TechnicalIndicatorDescription)
+            && item.Action == "CreateVersion").OrderBy(item => item.ChangedAt).ToArrayAsync();
+        audits.Should().HaveCount(2);
+        audits.Should().OnlyContain(item => item.ChangedBy == setup.User.Id && item.Reason == "Approved methodology version");
+        audits.Zip(versions).Should().OnlyContain(pair => pair.First.ChangedAt == pair.Second.CreatedAt);
+        using var latestSnapshot = JsonDocument.Parse(audits[1].NewValue!);
+        latestSnapshot.RootElement.GetProperty("IndicatorDefinition").GetString().Should().Be("Revised definition");
+        latestSnapshot.RootElement.GetProperty("PreviousVersionPublicId").GetGuid().Should().Be(first.PublicId);
     }
 
     [Fact]
@@ -199,6 +205,121 @@ public class TidControllerTests
         association.Title = "Tampered";
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*append-only*");
+
+        context.ChangeTracker.Clear();
+        var audits = await context.AuditTrails.Where(item => item.EntityName == nameof(TidSourceDocument))
+            .OrderBy(item => item.ChangedAt).ToArrayAsync();
+        audits.Select(item => item.Action).Should().Equal("Upload", "MalwareRescan");
+        audits.Should().OnlyContain(item => item.ChangedBy == setup.User.Id && !string.IsNullOrWhiteSpace(item.Reason));
+        var persistedDocument = await context.TidSourceDocuments.Include(item => item.Blob).SingleAsync();
+        audits[0].ChangedAt.Should().Be(persistedDocument.UploadedAt);
+        audits[1].ChangedAt.Should().Be(persistedDocument.Blob.ScannedAt);
+    }
+
+    [Fact]
+    public async Task VersionCreation_RejectsForgedAuditSnapshot()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context, enabled: true, allRequired: false);
+        var now = DateTime.UtcNow;
+        var row = Tid(setup.Municipality.Id, setup.Target.Id, setup.User.Id);
+        row.CreatedAt = now;
+        context.TechnicalIndicatorDescriptions.Add(row);
+        new WorkflowGovernanceService(context, tenantContext: new FixedTenantContext(setup.Municipality.Id, false, setup.User.Id))
+            .QueueAuditTrailAt(nameof(TechnicalIndicatorDescription), row.PublicId.ToString(), "CreateVersion", null,
+                new
+                {
+                    TargetPublicId = setup.Target.PublicId,
+                    row.VersionNumber,
+                    PreviousVersionPublicId = (Guid?)null,
+                    IndicatorDefinition = "Forged definition",
+                    row.Purpose,
+                    row.DataSource,
+                    row.CollectionMethod,
+                    row.CalculationMethod,
+                    row.NumeratorDescription,
+                    row.DenominatorDescription,
+                    row.Limitations,
+                    row.Assumptions,
+                    row.VerificationMethod,
+                    ResponsibleEmployeePublicId = (Guid?)null,
+                    row.Notes,
+                    row.EffectiveFrom,
+                    Reason = "Forged snapshot"
+                }, setup.User.Id, null, "Forged snapshot", now);
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact same-time reasoned audit*");
+    }
+
+    [Fact]
+    public async Task SourceDocumentAndRescan_RejectUnauditedDirectWrites()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context, enabled: true, allRequired: false);
+        var controller = Controller(context, setup.User, setup.Municipality.Id);
+        var version = Payload(await controller.CreateVersion(setup.Target.PublicId,
+            Request("Governed definition", new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc))));
+
+        context.ChangeTracker.Clear();
+        var persistedVersion = await context.TechnicalIndicatorDescriptions.SingleAsync(item => item.PublicId == version.PublicId);
+        var now = DateTime.UtcNow;
+        var invalidBlob = SourceBlob(setup.Municipality.Id, now);
+        context.TidSourceDocuments.Add(new TidSourceDocument
+        {
+            MunicipalityId = setup.Municipality.Id,
+            TechnicalIndicatorDescriptionId = persistedVersion.Id,
+            Title = "Unaudited source",
+            FileName = "source.pdf",
+            UploadedAt = now,
+            UploadedByUserId = setup.User.Id,
+            Blob = invalidBlob
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact same-time reasoned audit*");
+
+        context.ChangeTracker.Clear();
+        persistedVersion = await context.TechnicalIndicatorDescriptions.SingleAsync(item => item.PublicId == version.PublicId);
+        now = DateTime.UtcNow;
+        var blob = SourceBlob(setup.Municipality.Id, now);
+        var document = new TidSourceDocument
+        {
+            MunicipalityId = setup.Municipality.Id,
+            TechnicalIndicatorDescriptionId = persistedVersion.Id,
+            Title = "Governed source",
+            FileName = "source.pdf",
+            UploadedAt = now,
+            UploadedByUserId = setup.User.Id,
+            Blob = blob
+        };
+        context.TidSourceDocuments.Add(document);
+        var reason = "Upload TID source document: Governed source";
+        new WorkflowGovernanceService(context, tenantContext: new FixedTenantContext(setup.Municipality.Id, false, setup.User.Id))
+            .QueueAuditTrailAt(nameof(TidSourceDocument), document.PublicId.ToString(), "Upload", null,
+                new
+                {
+                    TidPublicId = persistedVersion.PublicId,
+                    BlobPublicId = blob.PublicId,
+                    document.Title,
+                    document.FileName,
+                    blob.ContentType,
+                    blob.SizeInBytes,
+                    blob.Sha256,
+                    blob.ScanStatus,
+                    blob.IsQuarantined,
+                    Reason = reason
+                }, setup.User.Id, null, reason, now);
+        await context.SaveChangesAsync();
+
+        context.ChangeTracker.Clear();
+        var persistedBlob = await context.EvidenceBlobs.SingleAsync(item => item.PublicId == blob.PublicId);
+        persistedBlob.ScanStatus = "ThreatDetected";
+        persistedBlob.IsQuarantined = true;
+        persistedBlob.ScannerReference = "direct-rescan";
+        persistedBlob.ScanDetail = "Unaudited direct rescan";
+        persistedBlob.ScannedAt = DateTime.UtcNow.AddSeconds(1);
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*actor-bound malware-rescan audit*");
     }
 
     [Fact]
@@ -218,7 +339,7 @@ public class TidControllerTests
     {
         var database = Guid.NewGuid().ToString();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(database).Options;
-        await using (var system = new ApplicationDbContext(options, new FixedTenantContext(null, true)))
+        await using (var system = new ApplicationDbContext(options, new FixedTenantContext(null, true, "tid-system")))
         {
             var user = IdpTestFixture.CreateUser("tid-system");
             var a = new Municipality { Id = 9101, Code = "A", Name = "A", IsActive = true, TidEnabled = true };
@@ -228,7 +349,8 @@ public class TidControllerTests
             var targetB = Target(b.Id, "B");
             system.OpmsTargets.AddRange(targetA, targetB);
             await system.SaveChangesAsync();
-            system.TechnicalIndicatorDescriptions.AddRange(Tid(a.Id, targetA.Id, user.Id), Tid(b.Id, targetB.Id, user.Id));
+            AddGovernedTid(system, a.Id, targetA, user);
+            AddGovernedTid(system, b.Id, targetB, user);
             await system.SaveChangesAsync();
         }
 
@@ -255,7 +377,7 @@ public class TidControllerTests
         ApplicationDbContext context,
         ApplicationUser user,
         long municipalityId,
-        Mock<IWorkflowGovernanceService>? workflow = null,
+        IWorkflowGovernanceService? workflow = null,
         Mock<IEvidenceBlobStorage>? storage = null,
         Mock<IEvidenceInspectionService>? inspection = null,
         Mock<IEvidenceMalwareScanner>? scanner = null,
@@ -273,8 +395,9 @@ public class TidControllerTests
         storage ??= new Mock<IEvidenceBlobStorage>();
         inspection ??= new Mock<IEvidenceInspectionService>();
         scanner ??= new Mock<IEvidenceMalwareScanner>();
+        var tenant = new FixedTenantContext(municipalityId, false, user.Id);
         return new TidsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
-            (workflow ?? new Mock<IWorkflowGovernanceService>()).Object, new FixedTenantContext(municipalityId, false),
+            workflow ?? new WorkflowGovernanceService(context, tenantContext: tenant), tenant,
             storage.Object, inspection.Object, scanner.Object)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
@@ -314,13 +437,68 @@ public class TidControllerTests
         VerificationMethod = "Verify", EffectiveFrom = DateTime.UtcNow.Date, CreatedByUserId = userId
     };
 
+    private static EvidenceBlob SourceBlob(long municipalityId, DateTime timestamp) => new()
+    {
+        MunicipalityId = municipalityId,
+        StorageKey = $"tid/test/{Guid.NewGuid():N}.pdf",
+        ContentType = "application/pdf",
+        SizeInBytes = 128,
+        Sha256 = new string('a', 64),
+        SignatureVerified = true,
+        ScanStatus = "Clean",
+        IsQuarantined = false,
+        ScannerProvider = "test-scanner",
+        ScannerReference = "scan-1",
+        ScanDetail = "Clean",
+        ScannedAt = timestamp,
+        CreatedAt = timestamp
+    };
+
+    private static void AddGovernedTid(ApplicationDbContext context, long municipalityId, OpmsTarget target, ApplicationUser user)
+    {
+        var now = DateTime.UtcNow;
+        var row = Tid(municipalityId, target.Id, user.Id);
+        row.CreatedAt = now;
+        context.TechnicalIndicatorDescriptions.Add(row);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId,
+            EntityName = nameof(TechnicalIndicatorDescription),
+            EntityId = row.PublicId.ToString(),
+            Action = "CreateVersion",
+            NewValue = JsonSerializer.Serialize(new
+            {
+                TargetPublicId = target.PublicId,
+                row.VersionNumber,
+                PreviousVersionPublicId = (Guid?)null,
+                row.IndicatorDefinition,
+                row.Purpose,
+                row.DataSource,
+                row.CollectionMethod,
+                row.CalculationMethod,
+                row.NumeratorDescription,
+                row.DenominatorDescription,
+                row.Limitations,
+                row.Assumptions,
+                row.VerificationMethod,
+                ResponsibleEmployeePublicId = (Guid?)null,
+                row.Notes,
+                row.EffectiveFrom,
+                Reason = "Cross-tenant isolation fixture"
+            }),
+            ChangedBy = user.Id,
+            ChangedAt = now,
+            Reason = "Cross-tenant isolation fixture"
+        });
+    }
+
     private static T Payload<T>(ActionResult<ApiResponse<T>> action) =>
         ((action.Result as OkObjectResult)!.Value as ApiResponse<T>)!.Data!;
 
-    private sealed class FixedTenantContext(long? municipalityId, bool isSystem) : ITenantContext
+    private sealed class FixedTenantContext(long? municipalityId, bool isSystem, string userId = "tid-test") : ITenantContext
     {
         public long? MunicipalityId => municipalityId;
         public bool IsSystem => isSystem;
-        public string? UserId => "tid-test";
+        public string? UserId => userId;
     }
 }

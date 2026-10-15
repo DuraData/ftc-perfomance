@@ -268,6 +268,7 @@ public class TidsController : ControllerBase
         await using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
+            var now = DateTime.UtcNow;
             if (current != null)
             {
                 current.IsCurrent = false;
@@ -292,12 +293,32 @@ public class TidsController : ControllerBase
                 ResponsibleEmployeeId = employee?.Id,
                 Notes = normalized.Notes,
                 EffectiveFrom = normalized.EffectiveFrom,
+                CreatedAt = now,
                 CreatedByUserId = user.Id,
                 CreatedByUser = user
             };
             context.TechnicalIndicatorDescriptions.Add(entity);
-            workflow.QueueAuditTrail("TechnicalIndicatorDescription", entity.PublicId.ToString(), "CreateVersion", null,
-                new { target.PublicId, entity.VersionNumber, PreviousVersionPublicId = current?.PublicId, Reason = normalized.Reason }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+            workflow.QueueAuditTrailAt(nameof(TechnicalIndicatorDescription), entity.PublicId.ToString(), "CreateVersion", null,
+                new
+                {
+                    TargetPublicId = target.PublicId,
+                    entity.VersionNumber,
+                    PreviousVersionPublicId = current?.PublicId,
+                    entity.IndicatorDefinition,
+                    entity.Purpose,
+                    entity.DataSource,
+                    entity.CollectionMethod,
+                    entity.CalculationMethod,
+                    entity.NumeratorDescription,
+                    entity.DenominatorDescription,
+                    entity.Limitations,
+                    entity.Assumptions,
+                    entity.VerificationMethod,
+                    ResponsibleEmployeePublicId = employee?.PublicId,
+                    entity.Notes,
+                    entity.EffectiveFrom,
+                    Reason = normalized.Reason
+                }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), normalized.Reason, now);
             await context.SaveChangesAsync();
             await transaction.CommitAsync();
             entity.OpmsTarget = target;
@@ -350,24 +371,40 @@ public class TidsController : ControllerBase
         var storageKey = Path.Combine("tid", tid.PublicId.ToString("N"), Guid.NewGuid().ToString("N") + extension.ToLowerInvariant());
         var stored = await storage.StoreAsync(storageKey, content, HttpContext.RequestAborted);
         if (!stored.Succeeded) return StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiResponse<TidSourceDocumentResponse>(false, null, "Source-document storage is unavailable: " + stored.Detail));
+        var now = DateTime.UtcNow;
+        var reason = $"Upload TID source document: {normalizedTitle}";
         var entity = new TidSourceDocument
         {
             MunicipalityId = tid.MunicipalityId,
             TechnicalIndicatorDescriptionId = tid.Id,
             Title = normalizedTitle,
             FileName = Path.GetFileName(file.FileName),
+            UploadedAt = now,
             UploadedByUserId = user.Id,
             UploadedByUser = user,
             Blob = new EvidenceBlob
             {
                 MunicipalityId = tid.MunicipalityId, StorageKey = storageKey, ContentType = file.ContentType, SizeInBytes = content.LongLength,
                 Sha256 = inspected.Sha256, SignatureVerified = true, ScanStatus = scan.Status, IsQuarantined = !scan.IsClean,
-                ScannerProvider = scan.Provider, ScannerReference = scan.ProviderReference, ScanDetail = scan.Detail, ScannedAt = DateTime.UtcNow
+                ScannerProvider = scan.Provider, ScannerReference = scan.ProviderReference, ScanDetail = scan.Detail,
+                ScannedAt = now, CreatedAt = now
             }
         };
         context.TidSourceDocuments.Add(entity);
-        workflow.QueueAuditTrail("TidSourceDocument", entity.PublicId.ToString(), "Upload", null,
-            new { tid.PublicId, entity.Title, entity.FileName, inspected.Sha256, scan.Status }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        workflow.QueueAuditTrailAt(nameof(TidSourceDocument), entity.PublicId.ToString(), "Upload", null,
+            new
+            {
+                TidPublicId = tid.PublicId,
+                BlobPublicId = entity.Blob.PublicId,
+                entity.Title,
+                entity.FileName,
+                entity.Blob.ContentType,
+                entity.Blob.SizeInBytes,
+                entity.Blob.Sha256,
+                entity.Blob.ScanStatus,
+                entity.Blob.IsQuarantined,
+                Reason = reason
+            }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason, now);
         try { await context.SaveChangesAsync(); }
         catch
         {
@@ -416,14 +453,17 @@ public class TidsController : ControllerBase
             : StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiResponse<TidSourceDocumentResponse>(false, null, "Source-document storage is unavailable: " + stored.Detail));
         var before = new { document.Blob.ScanStatus, document.Blob.IsQuarantined, document.Blob.ScannerReference };
         var scan = await scanner.ScanAsync(stored.Content, document.FileName, document.Blob.ContentType ?? "application/octet-stream", HttpContext.RequestAborted);
+        var now = DateTime.UtcNow;
+        var reason = string.IsNullOrWhiteSpace(scan.Detail) ? scan.Status : scan.Detail.Trim();
         document.Blob.ScanStatus = scan.Status;
         document.Blob.IsQuarantined = !scan.IsClean;
         document.Blob.ScannerProvider = scan.Provider;
         document.Blob.ScannerReference = scan.ProviderReference;
         document.Blob.ScanDetail = scan.Detail;
-        document.Blob.ScannedAt = DateTime.UtcNow;
-        workflow.QueueAuditTrail("TidSourceDocument", document.PublicId.ToString(), "MalwareRescan", before,
-            new { scan.Status, document.Blob.IsQuarantined, scan.ProviderReference }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        document.Blob.ScannedAt = now;
+        workflow.QueueAuditTrailAt(nameof(TidSourceDocument), document.PublicId.ToString(), "MalwareRescan", before,
+            new { scan.Status, document.Blob.IsQuarantined, scan.ProviderReference, Reason = reason },
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason, now);
         await context.SaveChangesAsync();
         var memberAccess = await GetSourceDocumentMemberAccessAsync(user, document.TechnicalIndicatorDescription.OpmsTarget);
         return Ok(new ApiResponse<TidSourceDocumentResponse>(true, ToResponse(document, memberAccess), scan.IsClean ? "Source document released after a clean scan." : "Source document remains quarantined."));
