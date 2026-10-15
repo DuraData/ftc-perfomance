@@ -403,6 +403,64 @@ public sealed class StrategicRiskTests
     }
 
     [Fact]
+    public async Task Risk_treatment_rejects_identity_deletion_and_forged_owner_audits()
+    {
+        const long municipalityId = 9114;
+        var user = IdpTestFixture.CreateUser("risk-treatment-governor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+        var risk = Data(await Controller(context, user, municipalityId).Create(Request("TREATMENT", "Governed treatment risk", seed.Year.PublicId)));
+        var operations = OperationsController(context, user, municipalityId);
+        var treatment = Data(await operations.CreateTreatment(new SaveStrategicRiskTreatmentRequest(
+            risk.PublicId, "Governed treatment", "Protected treatment narrative", user.PublicId,
+            DateTime.UtcNow.AddDays(10), "OPEN", 0, "Approved treatment creation", null)));
+
+        context.ChangeTracker.Clear();
+        var directTreatment = await context.StrategicRiskTreatments.SingleAsync(item => item.PublicId == treatment.PublicId);
+        directTreatment.PublicId = Guid.NewGuid();
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*identity, risk association, municipality ownership and creation evidence are immutable*");
+
+        context.ChangeTracker.Clear();
+        directTreatment = await context.StrategicRiskTreatments.SingleAsync(item => item.PublicId == treatment.PublicId);
+        context.StrategicRiskTreatments.Remove(directTreatment);
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*cannot be hard deleted*");
+
+        context.ChangeTracker.Clear();
+        directTreatment = await context.StrategicRiskTreatments.SingleAsync(item => item.PublicId == treatment.PublicId);
+        var forgedOwnerPublicId = Guid.NewGuid();
+        var before = new
+        {
+            directTreatment.Title,
+            directTreatment.Description,
+            OwnerUserPublicId = forgedOwnerPublicId,
+            directTreatment.DueAt,
+            directTreatment.Status,
+            directTreatment.ProgressPercent
+        };
+        directTreatment.ProgressPercent = 25;
+        directTreatment.Status = "IN_PROGRESS";
+        directTreatment.UpdatedByUserId = user.Id;
+        directTreatment.UpdatedAt = DateTime.UtcNow;
+        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id))
+            .QueueAuditTrail(nameof(StrategicRiskTreatment), directTreatment.PublicId.ToString(), "Update", before,
+                new
+                {
+                    directTreatment.Title,
+                    directTreatment.Description,
+                    OwnerUserPublicId = forgedOwnerPublicId,
+                    directTreatment.DueAt,
+                    directTreatment.Status,
+                    directTreatment.ProgressPercent
+                }, user.Id, null, "Approved treatment progress correction");
+
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact same-transaction reasoned before/after audit*");
+        forgedOwnerPublicId.Should().NotBe(user.PublicId);
+    }
+
+    [Fact]
     public async Task Risk_operation_narratives_require_dynamic_member_grants_and_are_not_searchable_when_denied()
     {
         const long municipalityId = 9112;

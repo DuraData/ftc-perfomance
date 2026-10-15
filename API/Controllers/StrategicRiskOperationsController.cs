@@ -211,7 +211,13 @@ public sealed class StrategicRiskOperationsController(
         if (!string.Equals(entity.Description, validated.Description, StringComparison.Ordinal)
             && !await CanMemberAsync(session.User!, "TreatmentDescription", "UPDATE"))
             return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskTreatmentDto>("Treatment-description update permission is required."));
-        var before = new { entity.Title, entity.Description, entity.OwnerUserId, entity.DueAt, entity.Status, entity.ProgressPercent };
+        var previousOwnerPublicId = await context.Users.Where(item => item.Id == entity.OwnerUserId)
+            .Select(item => item.PublicId).SingleAsync();
+        var before = new
+        {
+            entity.Title, entity.Description, OwnerUserPublicId = previousOwnerPublicId,
+            entity.DueAt, entity.Status, entity.ProgressPercent
+        };
         context.Entry(entity).Property(item => item.RowVersion).OriginalValue = version;
         entity.Title = validated.Title; entity.Description = validated.Description; entity.OwnerUserId = owner.Id;
         entity.DueAt = request.DueAt.ToUniversalTime(); entity.Status = validated.Status; entity.ProgressPercent = request.ProgressPercent;

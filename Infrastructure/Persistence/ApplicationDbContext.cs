@@ -2351,6 +2351,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceMunicipalEmployeeHistory();
         EnforceStrategicDocumentTypeHistory();
         EnforceStrategicRiskHistory();
+        EnforceStrategicRiskTreatmentHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
@@ -2492,29 +2493,6 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         }
         RejectRewrites<StrategicRiskAssessment>("Strategic-risk assessment history is append-only.");
         RejectRewrites<StrategicRiskReview>("Strategic-risk review history is append-only.");
-        if (ChangeTracker.Entries<StrategicRiskTreatment>().Any(entry => entry.State == EntityState.Deleted))
-            throw new InvalidOperationException("Strategic-risk treatment history cannot be hard deleted.");
-        foreach (var entry in ChangeTracker.Entries<StrategicRiskTreatment>().Where(entry => entry.State == EntityState.Modified))
-        {
-            EnsureOnlyProperties(entry,
-                [nameof(StrategicRiskTreatment.Title), nameof(StrategicRiskTreatment.Description),
-                    nameof(StrategicRiskTreatment.OwnerUserId), nameof(StrategicRiskTreatment.DueAt),
-                    nameof(StrategicRiskTreatment.Status), nameof(StrategicRiskTreatment.ProgressPercent),
-                    nameof(StrategicRiskTreatment.UpdatedByUserId), nameof(StrategicRiskTreatment.UpdatedAt),
-                    nameof(StrategicRiskTreatment.RowVersion)],
-                "Strategic-risk treatment ownership and creation evidence are immutable.");
-            var originalStatus = entry.OriginalValues.GetValue<string>(nameof(StrategicRiskTreatment.Status));
-            var currentStatus = entry.CurrentValues.GetValue<string>(nameof(StrategicRiskTreatment.Status));
-            var currentProgress = entry.CurrentValues.GetValue<int>(nameof(StrategicRiskTreatment.ProgressPercent));
-            if (originalStatus is "COMPLETED" or "CANCELLED")
-                throw new InvalidOperationException("A terminal strategic-risk treatment is immutable; create a successor action if more work is required.");
-            if (currentStatus == "COMPLETED" && currentProgress != 100)
-                throw new InvalidOperationException("A completed strategic-risk treatment must record 100 percent progress.");
-            if (string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(StrategicRiskTreatment.UpdatedByUserId)))
-                || !entry.CurrentValues.GetValue<DateTime?>(nameof(StrategicRiskTreatment.UpdatedAt)).HasValue)
-                throw new InvalidOperationException("Strategic-risk treatment changes require complete update evidence.");
-            RequireGovernanceAudit(nameof(StrategicRiskTreatment), entry.Entity.PublicId, entry.Entity.MunicipalityId);
-        }
         foreach (var entry in ChangeTracker.Entries<OpmsKpiStrategicRisk>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {
             if (entry.State == EntityState.Deleted)
@@ -3919,6 +3897,57 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         catch (System.Text.Json.JsonException)
         {
             return false;
+        }
+    }
+
+    private void EnforceStrategicRiskTreatmentHistory()
+    {
+        if (ChangeTracker.Entries<StrategicRiskTreatment>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Strategic-risk treatment history cannot be hard deleted.");
+
+        foreach (var entry in ChangeTracker.Entries<StrategicRiskTreatment>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var snapshotFields = new[]
+            {
+                nameof(StrategicRiskTreatment.Title), nameof(StrategicRiskTreatment.Description), nameof(StrategicRiskTreatment.DueAt),
+                nameof(StrategicRiskTreatment.Status), nameof(StrategicRiskTreatment.ProgressPercent)
+            };
+            EnsureOnlyProperties(entry,
+                [.. snapshotFields, nameof(StrategicRiskTreatment.OwnerUserId), nameof(StrategicRiskTreatment.UpdatedByUserId),
+                    nameof(StrategicRiskTreatment.UpdatedAt), nameof(StrategicRiskTreatment.RowVersion)],
+                "Strategic-risk treatment identity, risk association, municipality ownership and creation evidence are immutable.");
+            var originalStatus = entry.OriginalValues.GetValue<string>(nameof(StrategicRiskTreatment.Status));
+            var currentStatus = entry.CurrentValues.GetValue<string>(nameof(StrategicRiskTreatment.Status));
+            var currentProgress = entry.CurrentValues.GetValue<int>(nameof(StrategicRiskTreatment.ProgressPercent));
+            if (originalStatus is "COMPLETED" or "CANCELLED")
+                throw new InvalidOperationException("A terminal strategic-risk treatment is immutable; create a successor action if more work is required.");
+            if (currentStatus == "COMPLETED" && currentProgress != 100)
+                throw new InvalidOperationException("A completed strategic-risk treatment must record 100 percent progress.");
+
+            var changedBy = entry.CurrentValues.GetValue<string?>(nameof(StrategicRiskTreatment.UpdatedByUserId));
+            if (string.IsNullOrWhiteSpace(changedBy)
+                || !entry.CurrentValues.GetValue<DateTime?>(nameof(StrategicRiskTreatment.UpdatedAt)).HasValue)
+                throw new InvalidOperationException("Strategic-risk treatment changes require complete update actor and timestamp evidence.");
+
+            var publicId = entry.OriginalValues.GetValue<Guid>(nameof(StrategicRiskTreatment.PublicId));
+            var municipalityId = entry.OriginalValues.GetValue<long>(nameof(StrategicRiskTreatment.MunicipalityId));
+            var originalOwnerPublicId = ResolveIdentityUserPublicId(
+                entry.OriginalValues.GetValue<string?>(nameof(StrategicRiskTreatment.OwnerUserId)));
+            var currentOwnerPublicId = ResolveIdentityUserPublicId(
+                entry.CurrentValues.GetValue<string?>(nameof(StrategicRiskTreatment.OwnerUserId)));
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == nameof(StrategicRiskTreatment)
+                && candidate.Entity.EntityId == publicId.ToString()
+                && candidate.Entity.Action == "Update"
+                && candidate.Entity.MunicipalityId == municipalityId
+                && candidate.Entity.ChangedBy == changedBy
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
+                && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
+                && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "OwnerUserPublicId", originalOwnerPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.NewValue, "OwnerUserPublicId", currentOwnerPublicId)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException("StrategicRiskTreatment changes require one exact same-transaction reasoned before/after audit.");
         }
     }
 
