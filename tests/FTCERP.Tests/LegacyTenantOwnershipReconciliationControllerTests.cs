@@ -74,6 +74,47 @@ public sealed class LegacyTenantOwnershipReconciliationControllerTests
         Assert.Empty(await context.LegacyTenantOwnershipReconciliations.ToArrayAsync());
     }
 
+    [Fact]
+    public async Task Persistence_rejects_non_exact_root_and_reconciliation_audit_snapshots()
+    {
+        await using var database = await TestDatabase.Create();
+        var setup = await database.Seed();
+        var tenant = new Tenant(setup.MunicipalityA.Id, setup.Actor.Id, true);
+        await using var context = database.Context(tenant);
+        var department = await context.Departments.IgnoreQueryFilters()
+            .SingleAsync(item => item.PublicId == setup.ReadyDepartment.PublicId);
+        department.MunicipalityId = setup.MunicipalityA.Id;
+        var reconciliation = new LegacyTenantOwnershipReconciliation
+        {
+            MunicipalityId = setup.MunicipalityA.Id,
+            EntityType = LegacyTenantEntityType.Department.ToString(),
+            EntityPublicId = department.PublicId,
+            SourceEvidence = "position.department",
+            ReconciledByUserId = setup.Actor.Id,
+            Reason = "Approved forged-snapshot rejection test.",
+            CorrelationId = "forged-tenant-ownership-audit"
+        };
+        context.LegacyTenantOwnershipReconciliations.Add(reconciliation);
+        context.AuditTrails.AddRange(
+            new AuditTrail
+            {
+                MunicipalityId = setup.MunicipalityA.Id, EntityName = nameof(Department),
+                EntityId = department.PublicId.ToString(), Action = "Update", OldValue = "{}", NewValue = "{}",
+                ChangedBy = setup.Actor.Id, Reason = reconciliation.Reason
+            },
+            new AuditTrail
+            {
+                MunicipalityId = setup.MunicipalityA.Id,
+                EntityName = nameof(LegacyTenantOwnershipReconciliation),
+                EntityId = reconciliation.PublicId.ToString(), Action = "Reconcile", OldValue = "{}", NewValue = "{}",
+                ChangedBy = setup.Actor.Id, Reason = reconciliation.Reason
+            });
+
+        using var scope = context.BeginTenantOwnershipReconciliation();
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("exact same-transaction provenance and audit evidence", failure.Message);
+    }
+
     [Theory]
     [InlineData(LegacyTenantEntityType.Unit)]
     [InlineData(LegacyTenantEntityType.OpmsTarget)]

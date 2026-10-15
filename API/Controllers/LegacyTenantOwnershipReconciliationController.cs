@@ -94,8 +94,8 @@ public sealed class LegacyTenantOwnershipReconciliationController(
             new { request.EntityPublicId, MunicipalityPublicId = selectedMunicipalityPublicId },
             actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
         governance.QueueAuditTrail(nameof(LegacyTenantOwnershipReconciliation), reconciliation.PublicId.ToString(), "Reconcile",
-            new { request.EntityType, request.EntityPublicId, MunicipalityPublicId = (Guid?)null },
-            new { request.EntityType, request.EntityPublicId, MunicipalityPublicId = selectedMunicipalityPublicId, Evidence = analysis.SourceEvidence },
+            new { EntityType = request.EntityType.ToString(), request.EntityPublicId, MunicipalityPublicId = (Guid?)null },
+            new { EntityType = request.EntityType.ToString(), request.EntityPublicId, MunicipalityPublicId = selectedMunicipalityPublicId, Evidence = analysis.SourceEvidence },
             actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
         try
         {

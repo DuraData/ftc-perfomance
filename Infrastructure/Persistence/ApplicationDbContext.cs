@@ -4600,18 +4600,58 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             && !string.IsNullOrWhiteSpace(candidate.Entity.ReconciledByUserId)
             && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
             && !string.IsNullOrWhiteSpace(candidate.Entity.CorrelationId)).ToArray();
+        var municipalityPublicId = ResolveMunicipalityPublicId(currentMunicipalityId.Value);
         var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
             && candidate.Entity.EntityName == entityName
             && candidate.Entity.EntityId == publicId.ToString()
             && candidate.Entity.Action == "Update"
             && candidate.Entity.MunicipalityId == currentMunicipalityId
-            && candidate.Entity.OldValue != null && candidate.Entity.NewValue != null
             && reconciliations.Length == 1
+            && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext.UserId)
             && candidate.Entity.ChangedBy == reconciliations[0].Entity.ReconciledByUserId
-            && candidate.Entity.Reason == reconciliations[0].Entity.Reason).ToArray();
-        if (reconciliations.Length != 1 || audits.Length != 1)
+            && candidate.Entity.Reason == reconciliations[0].Entity.Reason
+            && candidate.Entity.ChangedAt >= reconciliations[0].Entity.ReconciledAt
+            && ExactJsonMatches(candidate.Entity.OldValue,
+                new { EntityPublicId = publicId, MunicipalityPublicId = (Guid?)null })
+            && ExactJsonMatches(candidate.Entity.NewValue,
+                new { EntityPublicId = publicId, MunicipalityPublicId = municipalityPublicId })).ToArray();
+        var reconciliationAudits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && reconciliations.Length == 1
+            && candidate.Entity.EntityName == nameof(LegacyTenantOwnershipReconciliation)
+            && candidate.Entity.EntityId == reconciliations[0].Entity.PublicId.ToString()
+            && candidate.Entity.Action == "Reconcile"
+            && candidate.Entity.MunicipalityId == currentMunicipalityId
+            && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext.UserId)
+            && candidate.Entity.ChangedBy == reconciliations[0].Entity.ReconciledByUserId
+            && candidate.Entity.Reason == reconciliations[0].Entity.Reason
+            && candidate.Entity.ChangedAt >= reconciliations[0].Entity.ReconciledAt
+            && ExactJsonMatches(candidate.Entity.OldValue, new
+            {
+                reconciliations[0].Entity.EntityType,
+                EntityPublicId = publicId,
+                MunicipalityPublicId = (Guid?)null
+            })
+            && ExactJsonMatches(candidate.Entity.NewValue, new
+            {
+                reconciliations[0].Entity.EntityType,
+                EntityPublicId = publicId,
+                MunicipalityPublicId = municipalityPublicId,
+                Evidence = reconciliations[0].Entity.SourceEvidence
+            })).ToArray();
+        if (reconciliations.Length != 1 || audits.Length != 1 || reconciliationAudits.Length != 1)
             throw new InvalidOperationException("Legacy organization ownership reconciliation requires exact same-transaction provenance and audit evidence.");
         return true;
+    }
+
+    private Guid ResolveMunicipalityPublicId(long municipalityId)
+    {
+        var tracked = ChangeTracker.Entries<Municipality>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == municipalityId)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? Municipalities.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == municipalityId)
+            .Select(candidate => candidate.PublicId).Single();
     }
 
     private void RequireExactRootAudit<TEntity>(EntityEntry<TEntity> entry, string entityName, Guid publicId,
