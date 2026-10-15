@@ -220,6 +220,7 @@ public sealed class ConfigurableWorkflowTests
         await using var context = IdpTestFixture.CreateContext();
         var link = new PerformanceRfiEvidence
         {
+            Id = 1,
             MunicipalityId = 7,
             PerformanceRfiId = 42,
             PoeFileId = "poe-1",
@@ -227,8 +228,7 @@ public sealed class ConfigurableWorkflowTests
             LinkedByUserId = "responder",
             CorrelationId = "trace-rfi-evidence"
         };
-        context.PerformanceRfiEvidenceLinks.Add(link);
-        await context.SaveChangesAsync();
+        context.Attach(link);
 
         link.Purpose = RfiEvidencePurpose.Question;
         await FluentActions.Invoking(() => context.SaveChangesAsync())

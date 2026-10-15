@@ -227,8 +227,16 @@ public sealed class WorkflowConfigurationControllerTests
         var evidenceRfi = await context.PerformanceRfis.SingleAsync(item => item.Question == "match-30");
         var evidenceBlob = new EvidenceBlob { MunicipalityId = municipality.Id, StorageKey = "rfi/secret-evidence", ContentType = "application/pdf", SizeInBytes = 321, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "Clean" };
         var evidence = new PoeFile { Id = "rfi-evidence", MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id, FileName = "secret-evidence.pdf", Blob = evidenceBlob, UploadedByUserId = user.Id, UploadedByUser = user, IsActive = true };
-        context.PerformanceRfiEvidenceLinks.Add(new PerformanceRfiEvidence { MunicipalityId = municipality.Id, PerformanceRfi = evidenceRfi, PoeFile = evidence, Purpose = RfiEvidencePurpose.Question, LinkedByUserId = user.Id, LinkedByUser = user, CorrelationId = "rfi-link" });
+        context.PoeFiles.Add(evidence);
         await context.SaveChangesAsync();
+        var historicalLinkPublicId = Guid.NewGuid();
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO PerformanceRfiEvidenceLinks
+                (PublicId, MunicipalityId, PerformanceRfiId, PoeFileId, Purpose, LinkedByUserId, LinkedAt, CorrelationId)
+            VALUES
+                ({historicalLinkPublicId}, {municipality.Id}, {evidenceRfi.Id}, {evidence.Id}, {(int)RfiEvidencePurpose.Question}, {user.Id}, {evidenceRfi.RaisedAt}, {"historical-rfi-link"})
+            """);
+        context.ChangeTracker.Clear();
 
         var controller = Controller(context, municipality.Id, user);
         var action = await controller.GetRfisPage(SubmissionKind.Opms, submission.PublicId.ToString(),

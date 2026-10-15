@@ -2375,6 +2375,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceOpmsTargetTemplateHistory();
         EnforceIpmsTargetTemplateHistory();
         EnforceEvidenceLifecycle();
+        EnforceRfiEvidenceCreation();
         RejectRewrites<IdpDocument>("IDP document identity, plan/version association, file metadata, retention, approval and upload evidence are immutable; upload a new governed document version instead.");
         EnforceIdpPlanHistory();
         EnforceImportBatchHistory();
@@ -7043,6 +7044,117 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             }
 
             throw new InvalidOperationException("Evidence identity, tenant, storage location, content metadata, signature and creation evidence are immutable.");
+        }
+    }
+
+    private void EnforceRfiEvidenceCreation()
+    {
+        var addedLinks = ChangeTracker.Entries<PerformanceRfiEvidence>()
+            .Where(entry => entry.State == EntityState.Added)
+            .Select(entry => entry.Entity)
+            .ToArray();
+        if (addedLinks.Length == 0) return;
+
+        PerformanceRfi? ResolveRfi(PerformanceRfiEvidence link)
+        {
+            var tracked = ChangeTracker.Entries<PerformanceRfi>()
+                .Where(entry => entry.State != EntityState.Deleted
+                    && (ReferenceEquals(entry.Entity, link.PerformanceRfi)
+                        || link.PerformanceRfiId != 0 && entry.Entity.Id == link.PerformanceRfiId))
+                .Select(entry => entry.Entity)
+                .SingleOrDefault();
+            return tracked ?? PerformanceRfis.IgnoreQueryFilters().AsNoTracking()
+                .Include(item => item.SubmissionWorkflowInstance)
+                .SingleOrDefault(item => item.Id == link.PerformanceRfiId);
+        }
+
+        SubmissionWorkflowInstance? ResolveInstance(PerformanceRfi rfi)
+        {
+            var tracked = ChangeTracker.Entries<SubmissionWorkflowInstance>()
+                .Where(entry => entry.State != EntityState.Deleted
+                    && (ReferenceEquals(entry.Entity, rfi.SubmissionWorkflowInstance)
+                        || rfi.SubmissionWorkflowInstanceId != 0 && entry.Entity.Id == rfi.SubmissionWorkflowInstanceId))
+                .Select(entry => entry.Entity)
+                .SingleOrDefault();
+            return tracked ?? SubmissionWorkflowInstances.IgnoreQueryFilters().AsNoTracking()
+                .SingleOrDefault(item => item.Id == rfi.SubmissionWorkflowInstanceId);
+        }
+
+        PoeFile? ResolveFile(PerformanceRfiEvidence link)
+        {
+            var tracked = ChangeTracker.Entries<PoeFile>()
+                .Where(entry => entry.State != EntityState.Deleted
+                    && (ReferenceEquals(entry.Entity, link.PoeFile) || entry.Entity.Id == link.PoeFileId))
+                .Select(entry => entry.Entity)
+                .SingleOrDefault();
+            if (tracked?.Blob != null) return tracked;
+            return PoeFiles.IgnoreQueryFilters().AsNoTracking().Include(item => item.Blob)
+                .SingleOrDefault(item => item.Id == link.PoeFileId);
+        }
+
+        ApplicationUser? ResolveActor(string actorId)
+        {
+            var tracked = ChangeTracker.Entries<ApplicationUser>()
+                .Where(entry => entry.State != EntityState.Deleted && entry.Entity.Id == actorId)
+                .Select(entry => entry.Entity)
+                .SingleOrDefault();
+            return tracked ?? Users.IgnoreQueryFilters().AsNoTracking().SingleOrDefault(item => item.Id == actorId);
+        }
+
+        foreach (var link in addedLinks)
+        {
+            var rfi = ResolveRfi(link);
+            var instance = rfi == null ? null : ResolveInstance(rfi);
+            var file = ResolveFile(link);
+            var actor = ResolveActor(link.LinkedByUserId);
+            var rfiEntry = rfi == null ? null : ChangeTracker.Entries<PerformanceRfi>()
+                .SingleOrDefault(entry => entry.State != EntityState.Deleted && ReferenceEquals(entry.Entity, rfi));
+
+            var exactLifecycleWrite = link.Purpose switch
+            {
+                RfiEvidencePurpose.Question => rfiEntry?.State == EntityState.Added
+                    && rfi!.RaisedByUserId == link.LinkedByUserId
+                    && link.LinkedAt >= rfi.RaisedAt,
+                RfiEvidencePurpose.Response => rfiEntry?.State == EntityState.Modified
+                    && rfi!.RespondedByUserId == link.LinkedByUserId
+                    && rfi.RespondedAt.HasValue
+                    && link.LinkedAt >= rfi.RaisedAt
+                    && link.LinkedAt <= rfi.RespondedAt.Value,
+                RfiEvidencePurpose.Closure => rfiEntry?.State == EntityState.Modified
+                    && rfi!.ClosedByUserId == link.LinkedByUserId
+                    && rfi.ClosedAt.HasValue
+                    && link.LinkedAt >= rfi.RaisedAt
+                    && link.LinkedAt <= rfi.ClosedAt.Value,
+                _ => false
+            };
+            var purposeCount = rfi == null ? 0 : addedLinks.Count(candidate =>
+                candidate.Purpose == link.Purpose
+                && (ReferenceEquals(candidate.PerformanceRfi, rfi)
+                    || rfi.Id != 0 && candidate.PerformanceRfiId == rfi.Id));
+
+            if (link.PublicId == Guid.Empty
+                || link.MunicipalityId <= 0
+                || string.IsNullOrWhiteSpace(link.PoeFileId)
+                || !Enum.IsDefined(link.Purpose)
+                || string.IsNullOrWhiteSpace(link.LinkedByUserId)
+                || link.LinkedAt == default
+                || link.LinkedAt > DateTime.UtcNow.AddMinutes(5)
+                || string.IsNullOrWhiteSpace(link.CorrelationId)
+                || link.CorrelationId.Length > 100
+                || rfi == null || instance == null || file?.Blob == null || actor == null
+                || link.PerformanceRfiId != 0 && rfi.Id != 0 && link.PerformanceRfiId != rfi.Id
+                || !string.Equals(link.PoeFileId, file.Id, StringComparison.Ordinal)
+                || rfi.MunicipalityId != link.MunicipalityId
+                || instance.MunicipalityId != link.MunicipalityId
+                || file.MunicipalityId != link.MunicipalityId
+                || actor.MunicipalityId.HasValue && actor.MunicipalityId != link.MunicipalityId
+                || file.SubmissionKind != instance.SubmissionKind
+                || !string.Equals(file.SubmissionId, instance.SubmissionId, StringComparison.Ordinal)
+                || !file.IsActive || file.Blob.IsContentDeleted || !file.Blob.SignatureVerified
+                || file.Blob.IsQuarantined || !string.Equals(file.Blob.ScanStatus, "Clean", StringComparison.Ordinal)
+                || purposeCount is < 1 or > 20
+                || !exactLifecycleWrite)
+                throw new InvalidOperationException("RFI evidence creation requires an exact same-transaction lifecycle action, actor, tenant, submission and released governed POE record.");
         }
     }
 
