@@ -2576,6 +2576,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Submission extension, review, finding, and score ledgers are append-only.");
         foreach (var extension in ChangeTracker.Entries<DueDateExtension>().Where(entry => entry.State == EntityState.Added))
         {
+            var row = extension.Entity;
             var parentType = extension.Entity.SubmissionKind switch
             {
                 SubmissionKind.Opms => typeof(OpmsSubmission),
@@ -2586,9 +2587,49 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && parent.State == EntityState.Modified
                 && parent.CurrentValues.GetValue<string>(nameof(OpmsSubmission.Id)) == extension.Entity.SubmissionId
                 && parent.OriginalValues.GetValue<long?>(nameof(OpmsSubmission.MunicipalityId)) == extension.Entity.MunicipalityId);
-            if (!hasModifiedParent)
-                throw new InvalidOperationException("A due-date extension ledger may be appended only alongside its exact governed parent-submission mutation.");
+            var actor = ChangeTracker.Entries<ApplicationUser>().SingleOrDefault(candidate =>
+                candidate.State != EntityState.Deleted && candidate.Entity.Id == row.ApprovedByUserId)?.Entity;
+            if (string.IsNullOrWhiteSpace(row.Id)
+                || !row.MunicipalityId.HasValue
+                || string.IsNullOrWhiteSpace(row.SubmissionId)
+                || row.OriginalDueDate == default
+                || row.ExtendedDueDate <= row.OriginalDueDate
+                || string.IsNullOrWhiteSpace(row.Reason)
+                || string.IsNullOrWhiteSpace(row.ApprovedByUserId)
+                || row.ApprovedAt == default
+                || row.ApprovedAt > DateTime.UtcNow.AddMinutes(5)
+                || actor?.MunicipalityId != row.MunicipalityId
+                || !hasModifiedParent)
+                throw new InvalidOperationException("A due-date extension ledger requires complete ordered evidence, a same-tenant actor and its exact governed parent-submission mutation.");
         }
+        foreach (var review in ChangeTracker.Entries<ReviewComment>().Where(entry => entry.State == EntityState.Added))
+        {
+            var row = review.Entity;
+            var parentType = row.SubmissionKind switch
+            {
+                SubmissionKind.Opms => typeof(OpmsSubmission),
+                SubmissionKind.Ipms => typeof(IpmsSubmission),
+                _ => throw new InvalidOperationException("A review-comment ledger requires an OPMS or IPMS submission kind.")
+            };
+            var hasModifiedParent = ChangeTracker.Entries().Any(parent => parent.Metadata.ClrType == parentType
+                && parent.State == EntityState.Modified
+                && parent.CurrentValues.GetValue<string>(nameof(OpmsSubmission.Id)) == row.SubmissionId
+                && parent.OriginalValues.GetValue<long?>(nameof(OpmsSubmission.MunicipalityId)) == row.MunicipalityId);
+            var actor = ChangeTracker.Entries<ApplicationUser>().SingleOrDefault(candidate =>
+                candidate.State != EntityState.Deleted && candidate.Entity.Id == row.CommentedByUserId)?.Entity;
+            if (string.IsNullOrWhiteSpace(row.Id)
+                || !row.MunicipalityId.HasValue
+                || string.IsNullOrWhiteSpace(row.SubmissionId)
+                || string.IsNullOrWhiteSpace(row.Comment)
+                || string.IsNullOrWhiteSpace(row.CommentedByUserId)
+                || row.CommentedAt == default
+                || row.CommentedAt > DateTime.UtcNow.AddMinutes(5)
+                || actor?.MunicipalityId != row.MunicipalityId
+                || !hasModifiedParent)
+                throw new InvalidOperationException("A review-comment ledger requires complete chronological evidence, a same-tenant actor and its exact governed parent-submission mutation.");
+        }
+        if (ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State == EntityState.Added))
+            throw new InvalidOperationException("The legacy standalone audit-finding ledger is retired; use governed internal-audit assessments and findings.");
         if (ChangeTracker.Entries<SubmissionScore>().Any(entry => entry.State == EntityState.Added))
             throw new InvalidOperationException("The legacy standalone submission-score ledger is retired and cannot accept new application writes.");
         if (ChangeTracker.Entries<UserScope>().Any(entry => entry.State == EntityState.Deleted)

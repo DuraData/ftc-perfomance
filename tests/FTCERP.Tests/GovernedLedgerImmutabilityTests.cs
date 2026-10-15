@@ -37,6 +37,79 @@ public sealed class GovernedLedgerImmutabilityTests
             .WithMessage("*append-only*");
     }
 
+    [Fact]
+    public async Task Orphan_or_incomplete_submission_governance_ledgers_cannot_be_fabricated()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Id = 31, Code = "LEDGER-CREATE", Name = "Ledger Creation Municipality" };
+        var actor = IdpTestFixture.CreateUser("ledger-creation-actor");
+        actor.MunicipalityId = municipality.Id;
+        context.AddRange(municipality, actor);
+        await context.SaveChangesAsync();
+
+        context.ReviewComments.Add(new ReviewComment
+        {
+            MunicipalityId = municipality.Id,
+            SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = "missing-submission",
+            Comment = "Fabricated review",
+            CommentedByUserId = actor.Id
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("A review-comment ledger requires complete chronological evidence, a same-tenant actor and its exact governed parent-submission mutation.*");
+
+        context.ChangeTracker.Clear();
+        context.AuditFindings.Add(new AuditFinding
+        {
+            MunicipalityId = municipality.Id,
+            SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = "missing-submission",
+            Finding = "Fabricated finding",
+            CreatedByUserId = actor.Id
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("The legacy standalone audit-finding ledger is retired*");
+    }
+
+    [Fact]
+    public async Task Due_date_extension_creation_rejects_invalid_ordered_evidence()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Id = 32, Code = "EXTENSION-CREATE", Name = "Extension Creation Municipality" };
+        var actor = IdpTestFixture.CreateUser("extension-creation-actor");
+        actor.MunicipalityId = municipality.Id;
+        var target = new OpmsTarget
+        {
+            Id = "extension-target", Municipality = municipality, IndicatorNumber = "EXT-1",
+            TargetName = "Extension target", KpiDescription = "Extension validation target"
+        };
+        var submission = new OpmsSubmission
+        {
+            Id = "extension-submission", Municipality = municipality, OpmsTarget = target,
+            Quarter = "Q1", BaseState = SubmissionBaseStates.InProgress, Status = SubmissionBaseStates.InProgress,
+            CreatedBy = actor.Id, CreatedAt = DateTime.UtcNow
+        };
+        context.AddRange(municipality, actor, target, submission);
+        await context.SaveChangesAsync();
+
+        context.DueDateExtensions.Add(new DueDateExtension
+        {
+            MunicipalityId = municipality.Id,
+            SubmissionKind = SubmissionKind.Opms,
+            SubmissionId = submission.Id,
+            OriginalDueDate = DateTime.UtcNow.Date.AddDays(2),
+            ExtendedDueDate = DateTime.UtcNow.Date.AddDays(1),
+            Reason = "Invalid reversed extension",
+            ApprovedByUserId = actor.Id
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("A due-date extension ledger requires complete ordered evidence, a same-tenant actor and its exact governed parent-submission mutation.*");
+    }
+
     public static TheoryData<AuditTrail> InvalidAuditCreationRows => new()
     {
         new AuditTrail

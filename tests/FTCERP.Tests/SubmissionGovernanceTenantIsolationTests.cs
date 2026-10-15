@@ -32,11 +32,20 @@ public sealed class SubmissionGovernanceTenantIsolationTests
             Reason = "Governed extension", ApprovedByUserId = user.Id
         });
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*only alongside its exact governed parent-submission mutation*");
+            .WithMessage("*exact governed parent-submission mutation*");
+
+        context.ChangeTracker.Clear();
+        context.AuditFindings.Add(new AuditFinding
+        {
+            MunicipalityId = municipalityId, SubmissionKind = SubmissionKind.Opms, SubmissionId = "submission-finding",
+            Finding = "Retired standalone finding", CreatedByUserId = user.Id
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*standalone audit-finding ledger is retired*");
     }
 
     [Fact]
-    public async Task Tenant_write_guard_stamps_unscoped_ledger_rows_and_rejects_cross_municipality_rows()
+    public async Task Tenant_write_guard_rejects_cross_municipality_submission_governance_rows()
     {
         const long municipalityId = 9800;
         var tenant = new Mock<ITenantContext>();
@@ -49,21 +58,13 @@ public sealed class SubmissionGovernanceTenantIsolationTests
         context.AddRange(municipality, user);
         await context.SaveChangesAsync();
 
-        AddLedgerRows(context, null, user.Id, "selected-submission");
-        await context.SaveChangesAsync();
-
-        context.ChangeTracker.Entries<ReviewComment>().Single().Entity.MunicipalityId.Should().Be(municipalityId);
-        context.ChangeTracker.Entries<AuditFinding>().Single().Entity.MunicipalityId.Should().Be(municipalityId);
-
-        context.DueDateExtensions.Add(new DueDateExtension
+        context.ReviewComments.Add(new ReviewComment
         {
             MunicipalityId = municipalityId + 1,
             SubmissionKind = SubmissionKind.Opms,
             SubmissionId = "foreign-submission",
-            OriginalDueDate = DateTime.UtcNow,
-            ExtendedDueDate = DateTime.UtcNow.AddDays(1),
-            Reason = "Cross-tenant attempt",
-            ApprovedByUserId = user.Id
+            Comment = "Cross-tenant attempt",
+            CommentedByUserId = user.Id
         });
         await FluentActions.Invoking(() => context.SaveChangesAsync())
             .Should().ThrowAsync<UnauthorizedAccessException>()
@@ -88,11 +89,8 @@ public sealed class SubmissionGovernanceTenantIsolationTests
         context.AddRange(municipalityA, municipalityB, userA, userB);
         await context.SaveChangesAsync();
 
-        AddLedgerRows(context, municipalityA.Id, userA.Id, "submission-a");
-        AddLedgerRows(context, municipalityB.Id, userB.Id, "submission-b");
-        await context.SaveChangesAsync();
-        await InsertHistoricalRetiredLedgersAsync(context, municipalityA.Id, userA.Id, "submission-a");
-        await InsertHistoricalRetiredLedgersAsync(context, municipalityB.Id, userB.Id, "submission-b");
+        await InsertHistoricalSubmissionGovernanceLedgersAsync(context, municipalityA.Id, userA.Id, "submission-a");
+        await InsertHistoricalSubmissionGovernanceLedgersAsync(context, municipalityB.Id, userB.Id, "submission-b");
         context.ChangeTracker.Clear();
 
         selectedMunicipalityId = municipalityA.Id;
@@ -108,31 +106,7 @@ public sealed class SubmissionGovernanceTenantIsolationTests
         (await context.SubmissionScores.Select(item => item.SubmissionId).ToArrayAsync()).Should().Equal("submission-b");
     }
 
-    private static void AddLedgerRows(ApplicationDbContext context, long? municipalityId, string userId, string submissionId)
-    {
-        var now = DateTime.UtcNow;
-        context.AddRange(
-            new ReviewComment
-            {
-                MunicipalityId = municipalityId,
-                SubmissionKind = SubmissionKind.Opms,
-                SubmissionId = submissionId,
-                Comment = "Governed review",
-                CommentedByUserId = userId,
-                CommentedAt = now
-            },
-            new AuditFinding
-            {
-                MunicipalityId = municipalityId,
-                SubmissionKind = SubmissionKind.Opms,
-                SubmissionId = submissionId,
-                Finding = "Governed finding",
-                CreatedByUserId = userId,
-                CreatedAt = now
-            });
-    }
-
-    private static async Task InsertHistoricalRetiredLedgersAsync(
+    private static async Task InsertHistoricalSubmissionGovernanceLedgersAsync(
         ApplicationDbContext context,
         long municipalityId,
         string userId,
@@ -140,6 +114,8 @@ public sealed class SubmissionGovernanceTenantIsolationTests
     {
         var now = DateTime.UtcNow;
         var extensionId = Guid.NewGuid().ToString("N");
+        var reviewId = Guid.NewGuid().ToString("N");
+        var findingId = Guid.NewGuid().ToString("N");
         var scoreId = Guid.NewGuid().ToString("N");
         var kind = (int)SubmissionKind.Opms;
         await context.Database.ExecuteSqlInterpolatedAsync($"""
@@ -147,6 +123,18 @@ public sealed class SubmissionGovernanceTenantIsolationTests
                 (Id, MunicipalityId, SubmissionKind, SubmissionId, OriginalDueDate, ExtendedDueDate, Reason, ApprovedByUserId, ApprovedAt)
             VALUES
                 ({extensionId}, {municipalityId}, {kind}, {submissionId}, {now}, {now.AddDays(1)}, {"Preserved historical extension"}, {userId}, {now})
+            """);
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO ReviewComments
+                (Id, MunicipalityId, SubmissionKind, SubmissionId, Comment, CommentedByUserId, CommentedAt)
+            VALUES
+                ({reviewId}, {municipalityId}, {kind}, {submissionId}, {"Preserved historical review"}, {userId}, {now})
+            """);
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO AuditFindings
+                (Id, MunicipalityId, SubmissionKind, SubmissionId, Finding, Recommendation, CreatedByUserId, CreatedAt)
+            VALUES
+                ({findingId}, {municipalityId}, {kind}, {submissionId}, {"Preserved historical finding"}, {"Preserved recommendation"}, {userId}, {now})
             """);
         await context.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO SubmissionScores
