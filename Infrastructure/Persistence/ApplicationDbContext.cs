@@ -6321,6 +6321,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
             && candidate.Entity.ChangedBy == successor.Entity.CreatedByUserId
             && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && successor.Entity.CreatedAt != default
+            && successor.Entity.CreatedAt <= DateTime.UtcNow.AddMinutes(5)
+            && candidate.Entity.ChangedAt == successor.Entity.CreatedAt
             && (predecessorSnapshot == null
                 ? candidate.Entity.OldValue == null
                 : ExactJsonMatches(candidate.Entity.OldValue, predecessorSnapshot))

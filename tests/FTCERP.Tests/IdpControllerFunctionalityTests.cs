@@ -601,6 +601,7 @@ public class IdpControllerFunctionalityTests
         audit.EntityName.Should().Be(nameof(IdpPlanVersion));
         audit.EntityId.Should().Be(versions[1].PublicId.ToString());
         audit.Reason.Should().Be("Annual review approved by council");
+        audit.ChangedAt.Should().Be(versions[1].CreatedAt);
     }
 
     [Fact]

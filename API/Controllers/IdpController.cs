@@ -375,6 +375,7 @@ public class IdpController : ControllerBase
             predecessor.CreatedByUser?.PublicId ?? user.PublicId, null);
 
         var nextVersion = plan.CurrentVersionNumber + 1;
+        var changedAt = DateTime.UtcNow;
         var entity = new IdpPlanVersion
         {
             IdpPlanId = plan.Id,
@@ -386,9 +387,9 @@ public class IdpController : ControllerBase
             SummaryOfChanges = request.SummaryOfChanges,
             EffectiveFrom = effectiveFrom,
             PublicationReference = NormalizeOptional(request.PublicationReference),
-            PublishedAt = string.IsNullOrWhiteSpace(request.PublicationReference) ? null : DateTime.UtcNow,
+            PublishedAt = string.IsNullOrWhiteSpace(request.PublicationReference) ? null : changedAt,
             IsActive = true,
-            CreatedAt = DateTime.UtcNow,
+            CreatedAt = changedAt,
             CreatedByUserId = user.Id,
             CreatedByUser = user
         };
@@ -401,7 +402,7 @@ public class IdpController : ControllerBase
 
         _context.IdpPlanVersions.Add(entity);
         plan.CurrentVersionNumber = nextVersion;
-        _workflowGovernanceService.QueueAuditTrail(
+        _workflowGovernanceService.QueueAuditTrailAt(
             "IdpPlanVersion",
             entity.PublicId.ToString(),
             "Create",
@@ -409,7 +410,8 @@ public class IdpController : ControllerBase
             VersionAuditSnapshot(entity, plan.PublicId, predecessor?.PublicId, user.PublicId, reason),
             user.Id,
             PerformanceApiSupport.GetIpAddress(HttpContext),
-            reason);
+            reason,
+            changedAt);
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<IdpPlanVersionResponse>(false, null, "The IDP plan changed before its successor version could be created.")); }
 

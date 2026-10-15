@@ -166,6 +166,7 @@ public sealed class IdpPlanPersistenceGovernanceTests
         var (plan, user) = await SeedPlanAsync(context);
         var predecessor = await context.IdpPlanVersions.SingleAsync();
         var successorEffectiveFrom = predecessor.EffectiveFrom.AddYears(1);
+        var createdAt = DateTime.UtcNow;
         var successor = new IdpPlanVersion
         {
             IdpPlan = plan,
@@ -175,6 +176,7 @@ public sealed class IdpPlanPersistenceGovernanceTests
             VersionLabel = "Annual review",
             SummaryOfChanges = "Council-approved annual review",
             EffectiveFrom = successorEffectiveFrom,
+            CreatedAt = createdAt,
             CreatedByUserId = user.Id,
             IsActive = true
         };
@@ -199,6 +201,7 @@ public sealed class IdpPlanPersistenceGovernanceTests
                 successor.CreatedAt, user.PublicId, successor.EffectiveFrom, successor.EffectiveTo, successor.PublishedAt,
                 successor.PublicationReference, reason)),
             ChangedBy = user.Id,
+            ChangedAt = createdAt,
             Reason = reason
         });
 
@@ -211,6 +214,56 @@ public sealed class IdpPlanPersistenceGovernanceTests
         versions[1].PredecessorVersionId.Should().Be(versions[0].Id);
         (await context.IdpPlans.SingleAsync()).CurrentVersionNumber.Should().Be(2);
         (await context.AuditTrails.SingleAsync()).EntityId.Should().Be(versions[1].PublicId.ToString());
+    }
+
+    [Fact]
+    public async Task Plan_version_successor_rejects_audit_time_that_differs_from_created_at()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var (plan, user) = await SeedPlanAsync(context);
+        var predecessor = await context.IdpPlanVersions.SingleAsync();
+        var effectiveFrom = predecessor.EffectiveFrom.AddYears(1);
+        var createdAt = DateTime.UtcNow;
+        var successor = new IdpPlanVersion
+        {
+            IdpPlan = plan,
+            PredecessorVersion = predecessor,
+            VersionNumber = 2,
+            VersionType = IdpVersionType.AnnualReview,
+            VersionLabel = "Timestamp-governed annual review",
+            SummaryOfChanges = "Prove exact successor audit time correlation",
+            EffectiveFrom = effectiveFrom,
+            CreatedAt = createdAt,
+            CreatedByUserId = user.Id,
+            IsActive = true
+        };
+        predecessor.IsActive = false;
+        predecessor.EffectiveTo = effectiveFrom;
+        plan.CurrentVersionNumber = 2;
+        context.IdpPlanVersions.Add(successor);
+        const string reason = "Reject mismatched successor audit time";
+        context.AuditTrails.Add(new AuditTrail
+        {
+            EntityName = nameof(IdpPlanVersion),
+            EntityId = successor.PublicId.ToString(),
+            Action = "Create",
+            OldValue = JsonSerializer.Serialize(new IdpPlanVersionAuditSnapshot(
+                plan.PublicId, predecessor.PublicId, null, predecessor.VersionNumber, predecessor.VersionType,
+                predecessor.VersionLabel, predecessor.ReviewYear, predecessor.SummaryOfChanges, true,
+                predecessor.CreatedAt, user.PublicId, predecessor.EffectiveFrom, null, predecessor.PublishedAt,
+                predecessor.PublicationReference, null)),
+            NewValue = JsonSerializer.Serialize(new IdpPlanVersionAuditSnapshot(
+                plan.PublicId, successor.PublicId, predecessor.PublicId, successor.VersionNumber, successor.VersionType,
+                successor.VersionLabel, successor.ReviewYear, successor.SummaryOfChanges, successor.IsActive,
+                successor.CreatedAt, user.PublicId, successor.EffectiveFrom, successor.EffectiveTo, successor.PublishedAt,
+                successor.PublicationReference, reason)),
+            ChangedBy = user.Id,
+            ChangedAt = createdAt.AddSeconds(1),
+            Reason = reason
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact actor-bound predecessor/successor audit*");
     }
 
     [Fact]
