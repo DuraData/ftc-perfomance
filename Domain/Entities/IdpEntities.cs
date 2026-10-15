@@ -154,6 +154,24 @@ public class IdpPlanVersion
     public ICollection<IdpChangeLog> ChangeLogs { get; set; } = new List<IdpChangeLog>();
 }
 
+public sealed record IdpPlanVersionAuditSnapshot(
+    Guid PlanPublicId,
+    Guid VersionPublicId,
+    Guid? PredecessorVersionPublicId,
+    int VersionNumber,
+    IdpVersionType VersionType,
+    string VersionLabel,
+    string? ReviewYear,
+    string? SummaryOfChanges,
+    bool IsActive,
+    DateTime CreatedAt,
+    Guid CreatedByUserPublicId,
+    DateTime EffectiveFrom,
+    DateTime? EffectiveTo,
+    DateTime? PublishedAt,
+    string? PublicationReference,
+    string? Reason);
+
 public class IdpChangeLog
 {
     public long Id { get; set; }

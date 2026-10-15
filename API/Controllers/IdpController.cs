@@ -360,12 +360,19 @@ public class IdpController : ControllerBase
         var effectiveFrom = request.EffectiveFrom ?? DateTime.UtcNow;
         if (effectiveFrom < plan.EffectiveFrom || plan.EffectiveTo.HasValue && effectiveFrom >= plan.EffectiveTo)
             return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "The version effective date must fall within the plan effective period."));
-        var previousActive = await _context.IdpPlanVersions.Where(item => item.IdpPlanId == plan.Id && item.IsActive).OrderByDescending(item => item.VersionNumber).ToListAsync();
+        var previousActive = await _context.IdpPlanVersions
+            .Include(item => item.PredecessorVersion)
+            .Include(item => item.CreatedByUser)
+            .Where(item => item.IdpPlanId == plan.Id && item.IsActive)
+            .OrderByDescending(item => item.VersionNumber).ToListAsync();
         if (previousActive.Count > 1)
             return Conflict(new ApiResponse<IdpPlanVersionResponse>(false, null, "Multiple active IDP versions require reconciliation before a successor can be created."));
         var predecessor = previousActive.FirstOrDefault();
         if (predecessor != null && effectiveFrom <= predecessor.EffectiveFrom)
             return BadRequest(new ApiResponse<IdpPlanVersionResponse>(false, null, "A successor version must become effective after its predecessor."));
+        var predecessorSnapshot = predecessor == null ? null : VersionAuditSnapshot(
+            predecessor, plan.PublicId, predecessor.PredecessorVersion?.PublicId,
+            predecessor.CreatedByUser?.PublicId ?? user.PublicId, null);
 
         var nextVersion = plan.CurrentVersionNumber + 1;
         var entity = new IdpPlanVersion
@@ -398,8 +405,8 @@ public class IdpController : ControllerBase
             "IdpPlanVersion",
             entity.PublicId.ToString(),
             "Create",
-            null,
-            ToVersionResponse(entity, plan.PublicId, IdpPlanVersionMemberAccess.Full),
+            predecessorSnapshot,
+            VersionAuditSnapshot(entity, plan.PublicId, predecessor?.PublicId, user.PublicId, reason),
             user.Id,
             PerformanceApiSupport.GetIpAddress(HttpContext),
             reason);
@@ -2302,6 +2309,25 @@ public class IdpController : ControllerBase
             access.Summary ? version.SummaryOfChanges : null, version.IsActive, version.CreatedAt,
             access.Creator ? version.CreatedByUser?.PublicId : null, access.Creator ? version.CreatedByUser?.FullName : null,
             version.EffectiveFrom, version.EffectiveTo, version.PublishedAt, version.PublicationReference, Convert.ToBase64String(version.RowVersion));
+
+    private static IdpPlanVersionAuditSnapshot VersionAuditSnapshot(IdpPlanVersion version, Guid planPublicId,
+        Guid? predecessorPublicId, Guid createdByUserPublicId, string? reason) => new(
+            planPublicId,
+            version.PublicId,
+            predecessorPublicId,
+            version.VersionNumber,
+            version.VersionType,
+            version.VersionLabel,
+            version.ReviewYear,
+            version.SummaryOfChanges,
+            version.IsActive,
+            version.CreatedAt,
+            createdByUserPublicId,
+            version.EffectiveFrom,
+            version.EffectiveTo,
+            version.PublishedAt,
+            version.PublicationReference,
+            reason);
 
     private static string? NormalizeOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

@@ -124,7 +124,39 @@ public sealed class IdpPlanPersistenceGovernanceTests
 
         await FluentActions.Invoking(() => context.SaveChangesAsync())
             .Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*one exact reason-audited successor*");
+            .WithMessage("*one exact actor-bound predecessor/successor audit*");
+    }
+
+    [Fact]
+    public async Task Plan_version_successor_rejects_a_correctly_labelled_but_non_exact_audit()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var (plan, user) = await SeedPlanAsync(context);
+        var predecessor = await context.IdpPlanVersions.SingleAsync();
+        var effectiveFrom = predecessor.EffectiveFrom.AddYears(1);
+        var successor = new IdpPlanVersion
+        {
+            IdpPlan = plan,
+            PredecessorVersion = predecessor,
+            VersionNumber = 2,
+            VersionType = IdpVersionType.AnnualReview,
+            VersionLabel = "Annual review",
+            SummaryOfChanges = "Council-approved annual review",
+            EffectiveFrom = effectiveFrom,
+            CreatedByUserId = user.Id
+        };
+        predecessor.IsActive = false;
+        predecessor.EffectiveTo = effectiveFrom;
+        plan.CurrentVersionNumber = 2;
+        context.IdpPlanVersions.Add(successor);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            EntityName = nameof(IdpPlanVersion), EntityId = successor.PublicId.ToString(), Action = "Create",
+            OldValue = "{}", NewValue = "{}", ChangedBy = user.Id, Reason = "Disguised empty version evidence"
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact actor-bound predecessor/successor audit*");
     }
 
     [Fact]
@@ -150,14 +182,24 @@ public sealed class IdpPlanPersistenceGovernanceTests
         predecessor.EffectiveTo = successorEffectiveFrom;
         plan.CurrentVersionNumber = 2;
         context.IdpPlanVersions.Add(successor);
+        const string reason = "Council approved the annual review";
         context.AuditTrails.Add(new AuditTrail
         {
             EntityName = nameof(IdpPlanVersion),
             EntityId = successor.PublicId.ToString(),
             Action = "Create",
-            NewValue = "{\"versionNumber\":2}",
+            OldValue = JsonSerializer.Serialize(new IdpPlanVersionAuditSnapshot(
+                plan.PublicId, predecessor.PublicId, null, predecessor.VersionNumber, predecessor.VersionType,
+                predecessor.VersionLabel, predecessor.ReviewYear, predecessor.SummaryOfChanges, true,
+                predecessor.CreatedAt, user.PublicId, predecessor.EffectiveFrom, null, predecessor.PublishedAt,
+                predecessor.PublicationReference, null)),
+            NewValue = JsonSerializer.Serialize(new IdpPlanVersionAuditSnapshot(
+                plan.PublicId, successor.PublicId, predecessor.PublicId, successor.VersionNumber, successor.VersionType,
+                successor.VersionLabel, successor.ReviewYear, successor.SummaryOfChanges, successor.IsActive,
+                successor.CreatedAt, user.PublicId, successor.EffectiveFrom, successor.EffectiveTo, successor.PublishedAt,
+                successor.PublicationReference, reason)),
             ChangedBy = user.Id,
-            Reason = "Council approved the annual review"
+            Reason = reason
         });
 
         await context.SaveChangesAsync();

@@ -3108,13 +3108,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     || ReferenceEquals(candidate.Entity.PredecessorVersion, entry.Entity))
                 && candidate.Entity.VersionNumber == entry.Entity.VersionNumber + 1
                 && candidate.Entity.IsActive);
-            var successorAudit = successor == null ? null : ChangeTracker.Entries<AuditTrail>().SingleOrDefault(candidate =>
-                candidate.State == EntityState.Added
-                && candidate.Entity.EntityName == nameof(IdpPlanVersion)
-                && candidate.Entity.EntityId == successor.Entity.PublicId.ToString()
-                && candidate.Entity.Action == "Create"
-                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
-                && candidate.Entity.NewValue != null);
+            var planPublicId = ResolveIdpPlanPublicId(entry.Entity.IdpPlanId);
+            var planMunicipalityId = ResolveIdpPlanMunicipalityId(entry.Entity.IdpPlanId);
+            var hasExactAudit = successor != null && planPublicId.HasValue
+                && HasExactIdpPlanVersionAudit(entry, successor, planPublicId.Value, planMunicipalityId);
             if (changed.Any(property => !allowed.Contains(property))
                 || !entry.OriginalValues.GetValue<bool>(nameof(IdpPlanVersion.IsActive))
                 || entry.CurrentValues.GetValue<bool>(nameof(IdpPlanVersion.IsActive))
@@ -3124,8 +3121,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     <= entry.OriginalValues.GetValue<DateTime>(nameof(IdpPlanVersion.EffectiveFrom))
                 || successor == null
                 || successor.Entity.EffectiveFrom != entry.CurrentValues.GetValue<DateTime?>(nameof(IdpPlanVersion.EffectiveTo))
-                || successorAudit == null)
-                throw new InvalidOperationException("IDP plan versions are append-preserved; an active predecessor may only close beside its exact chronological, reason-audited successor in the same unit of work.");
+                || !hasExactAudit)
+                throw new InvalidOperationException("IDP plan versions are append-preserved; an active predecessor may only close beside its exact chronological, actor-bound predecessor/successor audit in the same unit of work.");
         }
         var c88GovernedTypes = new HashSet<Type>
         {
@@ -5966,17 +5963,15 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                         && candidate.Entity.VersionNumber == currentVersion)
                     .Select(candidate => candidate.Entity)
                     .ToArray();
-                var audit = successors.Length == 1
-                    ? ChangeTracker.Entries<AuditTrail>().SingleOrDefault(candidate => candidate.State == EntityState.Added
-                        && candidate.Entity.EntityName == nameof(IdpPlanVersion)
-                        && candidate.Entity.EntityId == successors[0].PublicId.ToString()
-                        && candidate.Entity.Action == "Create"
-                        && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
-                        && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
-                        && candidate.Entity.NewValue != null)
-                    : null;
-                if (currentVersion != originalVersion + 1 || successors.Length != 1 || audit == null)
-                    throw new InvalidOperationException("IDP plan version sequence may advance only by one exact reason-audited successor in the same unit of work.");
+                var predecessor = successors.Length == 1 ? ChangeTracker.Entries<IdpPlanVersion>().SingleOrDefault(candidate =>
+                    candidate.State == EntityState.Modified
+                    && (successors[0].PredecessorVersionId == candidate.Entity.Id
+                        || ReferenceEquals(successors[0].PredecessorVersion, candidate.Entity))) : null;
+                var hasExactAudit = successors.Length == 1
+                    && HasExactIdpPlanVersionAudit(predecessor, Entry(successors[0]), entry.Entity.PublicId,
+                        entry.Entity.MunicipalityId);
+                if (currentVersion != originalVersion + 1 || successors.Length != 1 || !hasExactAudit)
+                    throw new InvalidOperationException("IDP plan version sequence may advance only by one exact actor-bound predecessor/successor audit in the same unit of work.");
                 continue;
             }
 
@@ -6042,6 +6037,100 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 ? ResolveAuditPublicId<ApplicationUser>(property.CurrentValue) : property.CurrentValue;
         }
         return (before, after);
+    }
+
+    private bool HasExactIdpPlanVersionAudit(EntityEntry<IdpPlanVersion>? predecessor,
+        EntityEntry<IdpPlanVersion> successor, Guid planPublicId, long? municipalityId)
+    {
+        if (predecessor == null
+            && (successor.Entity.PredecessorVersionId.HasValue || successor.Entity.PredecessorVersion != null))
+            return false;
+        var predecessorCreatorPublicId = predecessor == null ? null : ResolveIdentityUserPublicId(
+            predecessor.OriginalValues.GetValue<string>(nameof(IdpPlanVersion.CreatedByUserId)));
+        var successorCreatorPublicId = ResolveIdentityUserPublicId(successor.Entity.CreatedByUserId);
+        if ((predecessor != null && !predecessorCreatorPublicId.HasValue) || !successorCreatorPublicId.HasValue) return false;
+
+        var predecessorSnapshot = predecessor == null ? null : new IdpPlanVersionAuditSnapshot(
+            planPublicId,
+            predecessor.OriginalValues.GetValue<Guid>(nameof(IdpPlanVersion.PublicId)),
+            ResolveIdpPlanVersionPublicId(predecessor.OriginalValues.GetValue<int?>(nameof(IdpPlanVersion.PredecessorVersionId))),
+            predecessor.OriginalValues.GetValue<int>(nameof(IdpPlanVersion.VersionNumber)),
+            predecessor.OriginalValues.GetValue<IdpVersionType>(nameof(IdpPlanVersion.VersionType)),
+            predecessor.OriginalValues.GetValue<string>(nameof(IdpPlanVersion.VersionLabel)),
+            predecessor.OriginalValues.GetValue<string?>(nameof(IdpPlanVersion.ReviewYear)),
+            predecessor.OriginalValues.GetValue<string?>(nameof(IdpPlanVersion.SummaryOfChanges)),
+            predecessor.OriginalValues.GetValue<bool>(nameof(IdpPlanVersion.IsActive)),
+            predecessor.OriginalValues.GetValue<DateTime>(nameof(IdpPlanVersion.CreatedAt)),
+            predecessorCreatorPublicId!.Value,
+            predecessor.OriginalValues.GetValue<DateTime>(nameof(IdpPlanVersion.EffectiveFrom)),
+            predecessor.OriginalValues.GetValue<DateTime?>(nameof(IdpPlanVersion.EffectiveTo)),
+            predecessor.OriginalValues.GetValue<DateTime?>(nameof(IdpPlanVersion.PublishedAt)),
+            predecessor.OriginalValues.GetValue<string?>(nameof(IdpPlanVersion.PublicationReference)),
+            null);
+
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == nameof(IdpPlanVersion)
+            && candidate.Entity.EntityId == successor.Entity.PublicId.ToString()
+            && candidate.Entity.Action == "Create"
+            && candidate.Entity.MunicipalityId == municipalityId
+            && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+            && candidate.Entity.ChangedBy == successor.Entity.CreatedByUserId
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && (predecessorSnapshot == null
+                ? candidate.Entity.OldValue == null
+                : ExactJsonMatches(candidate.Entity.OldValue, predecessorSnapshot))
+            && ExactJsonMatches(candidate.Entity.NewValue, new IdpPlanVersionAuditSnapshot(
+                planPublicId,
+                successor.Entity.PublicId,
+                predecessor?.Entity.PublicId,
+                successor.Entity.VersionNumber,
+                successor.Entity.VersionType,
+                successor.Entity.VersionLabel,
+                successor.Entity.ReviewYear,
+                successor.Entity.SummaryOfChanges,
+                successor.Entity.IsActive,
+                successor.Entity.CreatedAt,
+                successorCreatorPublicId.Value,
+                successor.Entity.EffectiveFrom,
+                successor.Entity.EffectiveTo,
+                successor.Entity.PublishedAt,
+                successor.Entity.PublicationReference,
+                candidate.Entity.Reason))).ToArray();
+        return audits.Length == 1;
+    }
+
+    private Guid? ResolveIdpPlanPublicId(int planId)
+    {
+        var tracked = ChangeTracker.Entries<IdpPlan>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == planId)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? IdpPlans.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == planId)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private long? ResolveIdpPlanMunicipalityId(int planId)
+    {
+        var tracked = ChangeTracker.Entries<IdpPlan>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == planId)
+            .Select(candidate => candidate.Entity.MunicipalityId).SingleOrDefault();
+        return tracked ?? IdpPlans.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == planId)
+            .Select(candidate => candidate.MunicipalityId).SingleOrDefault();
+    }
+
+    private Guid? ResolveIdpPlanVersionPublicId(int? versionId)
+    {
+        if (!versionId.HasValue) return null;
+        var tracked = ChangeTracker.Entries<IdpPlanVersion>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == versionId.Value)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? IdpPlanVersions.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == versionId.Value)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
     }
 
     private void RequireExactIdpPlanAudit(EntityEntry<IdpPlan> entry)
