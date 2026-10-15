@@ -523,6 +523,62 @@ const targetUnitByKind: Record<number, OPMSTarget['targetUnitType']> = {
   15: 'reverse_cumulative', 16: 'reverse_non_cumulative',
 };
 
+const reportingPeriodTypeByName: Record<string, number> = {
+  quarter1: 1,
+  quarter2: 2,
+  midterm: 3,
+  quarter3: 4,
+  quarter4: 5,
+  annual: 6,
+};
+
+const performanceUnitKindByName: Record<string, number> = {
+  none: 0,
+  percentagebased: 1,
+  absolutecount: 2,
+  financial: 3,
+  timebased: 4,
+  areabased: 5,
+  volumebased: 6,
+  indexscores: 7,
+  ratios: 8,
+  binary: 9,
+  date: 10,
+  readinessscale: 11,
+  binarydetermination: 12,
+  qualitativetargets: 13,
+  zerobased: 14,
+  reversecumulative: 15,
+  reversenoncumulative: 16,
+};
+
+const performanceDirectionByName: Record<string, number> = {
+  higherisbetter: 1,
+  lowerisbetter: 2,
+  exact: 3,
+};
+
+function normalizeEnumNumber(value: unknown, names: Record<string, number>): number {
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return 0;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  return names[value.replace(/[\s_-]/g, '').toLowerCase()] ?? 0;
+}
+
+function normalizePerformancePeriodTarget(row: PerformancePeriodTargetDto): PerformancePeriodTargetDto {
+  return {
+    ...row,
+    periodType: normalizeEnumNumber(row.periodType, reportingPeriodTypeByName),
+    unitKind: normalizeEnumNumber(row.unitKind, performanceUnitKindByName),
+    direction: normalizeEnumNumber(row.direction, performanceDirectionByName),
+    originalUnitKind: normalizeEnumNumber(row.originalUnitKind, performanceUnitKindByName),
+    revisedUnitKind: row.revisedUnitKind === null || row.revisedUnitKind === undefined
+      ? row.revisedUnitKind
+      : normalizeEnumNumber(row.revisedUnitKind, performanceUnitKindByName),
+  };
+}
+
 function canonicalPeriod(rows: PerformancePeriodTargetDto[], periodType: number) {
   return rows.find(item => item.periodType === periodType && item.isActive);
 }
@@ -535,7 +591,7 @@ function numericTarget(value?: string | null): number {
 function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
   const department = toDepartmentReference(dto.departmentPublicId, dto.departmentName, dto.departmentPublicId);
   const strategicGoal = toStrategicGoalReference(dto.strategicGoalPublicId, dto.strategicGoalName, dto.strategicGoalCode);
-  const periods = dto.periodTargets ?? [];
+  const periods = (dto.periodTargets ?? []).map(normalizePerformancePeriodTarget);
   const q1 = canonicalPeriod(periods, 1); const q2 = canonicalPeriod(periods, 2); const mid = canonicalPeriod(periods, 3);
   const q3 = canonicalPeriod(periods, 4); const q4 = canonicalPeriod(periods, 5); const annual = canonicalPeriod(periods, 6);
   const canonicalUnitType = targetUnitByKind[annual?.unitKind ?? periods[0]?.unitKind ?? 2] ?? 'absolute_count';
@@ -647,7 +703,7 @@ function toOpmsTargetModel(dto: OpmsTargetDto): OPMSTarget {
 function toIpmsTargetModel(dto: IpmsTargetDto): IPMSTarget {
   const department = toDepartmentReference(dto.departmentPublicId, dto.departmentName, dto.departmentPublicId);
   const strategicGoal = toStrategicGoalReference(dto.strategicGoalPublicId);
-  const periods = dto.periodTargets ?? [];
+  const periods = (dto.periodTargets ?? []).map(normalizePerformancePeriodTarget);
   const q1 = canonicalPeriod(periods, 1); const q2 = canonicalPeriod(periods, 2); const mid = canonicalPeriod(periods, 3);
   const q3 = canonicalPeriod(periods, 4); const q4 = canonicalPeriod(periods, 5); const annual = canonicalPeriod(periods, 6);
   const canonicalUnitType = targetUnitByKind[annual?.unitKind ?? periods[0]?.unitKind ?? 2] ?? 'absolute_count';

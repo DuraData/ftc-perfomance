@@ -749,6 +749,31 @@ describe('versioned API routes', () => {
     expect(target?.additionalAssignees).toEqual([expect.objectContaining({ id: 'employee-two', displayName: 'Not supplied by API' })]);
   });
 
+  it('normalizes named canonical period enums returned by the ASP.NET JSON contract', async () => {
+    const dto = {
+      publicId: 'target-period-public', rowVersion: 'AQ==', municipalityFinancialYearPublicId: 'year-public', municipalityFinancialYearName: '2026/27',
+      departmentPublicId: 'department-public', departmentName: 'Performance Management', unitPublicId: null, unitName: null,
+      assignedUserPublicId: null, assignedUserName: null, wardPublicIds: [], additionalAssigneePublicIds: [], voteNumberPublicIds: [],
+      indicatorNumber: 'OPMS-C88-001', nationalKpa: 'Basic Services', municipalKpa: 'Service Delivery',
+      performanceObjective: 'Deliver services', targetName: 'Canonical target', kpiDescription: 'Canonical annual target',
+      baseline: 10, weight: 10, kpiType: 'Quantitative', indicatorType: 'Output', isRevised: false, isWithdrawn: false,
+      kpiUnitOfMeasurePublicId: 'unit-public', kpiUnitOfMeasureName: 'C88 Count', kpiUnitOfMeasureSymbol: 'count', createdAt: '2026-07-01T00:00:00Z',
+      periodTargets: [{
+        publicId: 'period-target-public', reportingPeriodPublicId: 'annual-public', periodCode: 'ANNUAL', periodType: 'Annual',
+        unitKind: 'AbsoluteCount', direction: 'HigherIsBetter', targetValue: '84', budgetValue: null, description: null,
+        isActive: true, rowVersion: 'Ag==', originalUnitKind: 'AbsoluteCount', originalTargetValue: '84', originalBudgetValue: null,
+        isTargetRevised: false, revisedUnitKind: null, revisedTargetValue: null, isBudgetRevised: false, revisedBudgetValue: null,
+      }],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [dto], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const target = (await getOpmsTargetsPage({ page: 1, pageSize: 25 })).data?.items[0];
+
+    expect(target).toMatchObject({ annualTarget: 84, targetUnitType: 'absolute_count' });
+    expect(target?.periodTargets[0]).toMatchObject({ periodType: 6, unitKind: 2, direction: 1, originalUnitKind: 2 });
+  });
+
   it('projects submission actors and evidence uploaders only from API DTOs', async () => {
     const page = {
       items: [{
