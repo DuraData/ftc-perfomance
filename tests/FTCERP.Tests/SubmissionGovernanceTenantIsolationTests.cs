@@ -1,11 +1,9 @@
 namespace FTCERP.Tests;
 
-using System.Text.Json;
-
 public sealed class SubmissionGovernanceTenantIsolationTests
 {
     [Fact]
-    public async Task Score_and_due_date_ledgers_require_same_transaction_parent_audits()
+    public async Task Retired_score_and_orphan_due_date_ledgers_are_rejected()
     {
         const long municipalityId = 9799;
         var tenant = new Mock<ITenantContext>();
@@ -24,7 +22,7 @@ public sealed class SubmissionGovernanceTenantIsolationTests
             Score = 4, ScoredByUserId = user.Id
         });
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+            .WithMessage("*standalone submission-score ledger is retired*");
 
         context.ChangeTracker.Clear();
         context.DueDateExtensions.Add(new DueDateExtension
@@ -34,7 +32,7 @@ public sealed class SubmissionGovernanceTenantIsolationTests
             Reason = "Governed extension", ApprovedByUserId = user.Id
         });
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+            .WithMessage("*only alongside its exact governed parent-submission mutation*");
     }
 
     [Fact]
@@ -54,10 +52,8 @@ public sealed class SubmissionGovernanceTenantIsolationTests
         AddLedgerRows(context, null, user.Id, "selected-submission");
         await context.SaveChangesAsync();
 
-        context.ChangeTracker.Entries<DueDateExtension>().Single().Entity.MunicipalityId.Should().Be(municipalityId);
         context.ChangeTracker.Entries<ReviewComment>().Single().Entity.MunicipalityId.Should().Be(municipalityId);
         context.ChangeTracker.Entries<AuditFinding>().Single().Entity.MunicipalityId.Should().Be(municipalityId);
-        context.ChangeTracker.Entries<SubmissionScore>().Single().Entity.MunicipalityId.Should().Be(municipalityId);
 
         context.DueDateExtensions.Add(new DueDateExtension
         {
@@ -95,6 +91,8 @@ public sealed class SubmissionGovernanceTenantIsolationTests
         AddLedgerRows(context, municipalityA.Id, userA.Id, "submission-a");
         AddLedgerRows(context, municipalityB.Id, userB.Id, "submission-b");
         await context.SaveChangesAsync();
+        await InsertHistoricalRetiredLedgersAsync(context, municipalityA.Id, userA.Id, "submission-a");
+        await InsertHistoricalRetiredLedgersAsync(context, municipalityB.Id, userB.Id, "submission-b");
         context.ChangeTracker.Clear();
 
         selectedMunicipalityId = municipalityA.Id;
@@ -114,17 +112,6 @@ public sealed class SubmissionGovernanceTenantIsolationTests
     {
         var now = DateTime.UtcNow;
         context.AddRange(
-            new DueDateExtension
-            {
-                MunicipalityId = municipalityId,
-                SubmissionKind = SubmissionKind.Opms,
-                SubmissionId = submissionId,
-                OriginalDueDate = now,
-                ExtendedDueDate = now.AddDays(1),
-                Reason = "Governed extension",
-                ApprovedByUserId = userId,
-                ApprovedAt = now
-            },
             new ReviewComment
             {
                 MunicipalityId = municipalityId,
@@ -142,38 +129,30 @@ public sealed class SubmissionGovernanceTenantIsolationTests
                 Finding = "Governed finding",
                 CreatedByUserId = userId,
                 CreatedAt = now
-            },
-            new SubmissionScore
-            {
-                MunicipalityId = municipalityId,
-                SubmissionKind = SubmissionKind.Opms,
-                SubmissionId = submissionId,
-                Score = 3,
-                ScoredByUserId = userId,
-                ScoredAt = now
-            },
-            new AuditTrail
-            {
-                MunicipalityId = municipalityId,
-                EntityName = nameof(OpmsSubmission),
-                EntityId = submissionId,
-                Action = "ExtendDueDate",
-                OldValue = JsonSerializer.Serialize(new { DueDate = now }),
-                NewValue = JsonSerializer.Serialize(new { DueDate = now.AddDays(1), Reason = "Governed extension" }),
-                Reason = "Governed extension",
-                ChangedBy = userId,
-                ChangedAt = now
-            },
-            new AuditTrail
-            {
-                MunicipalityId = municipalityId,
-                EntityName = nameof(OpmsSubmission),
-                EntityId = submissionId,
-                Action = "Score",
-                NewValue = JsonSerializer.Serialize(new { Score = 3 }),
-                Reason = "Governed score",
-                ChangedBy = userId,
-                ChangedAt = now
             });
+    }
+
+    private static async Task InsertHistoricalRetiredLedgersAsync(
+        ApplicationDbContext context,
+        long municipalityId,
+        string userId,
+        string submissionId)
+    {
+        var now = DateTime.UtcNow;
+        var extensionId = Guid.NewGuid().ToString("N");
+        var scoreId = Guid.NewGuid().ToString("N");
+        var kind = (int)SubmissionKind.Opms;
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO DueDateExtensions
+                (Id, MunicipalityId, SubmissionKind, SubmissionId, OriginalDueDate, ExtendedDueDate, Reason, ApprovedByUserId, ApprovedAt)
+            VALUES
+                ({extensionId}, {municipalityId}, {kind}, {submissionId}, {now}, {now.AddDays(1)}, {"Preserved historical extension"}, {userId}, {now})
+            """);
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO SubmissionScores
+                (Id, MunicipalityId, SubmissionKind, SubmissionId, Score, Notes, ScoredByUserId, ScoredAt)
+            VALUES
+                ({scoreId}, {municipalityId}, {kind}, {submissionId}, {3m}, {"Preserved historical score"}, {userId}, {now})
+            """);
     }
 }

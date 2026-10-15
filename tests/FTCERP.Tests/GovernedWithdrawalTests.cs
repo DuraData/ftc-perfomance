@@ -260,33 +260,30 @@ public sealed class GovernedWithdrawalTests
         context.AddRange(target, submission, ipmsTarget, ipmsSubmission);
         await context.SaveChangesAsync();
         var firstApprovedAt = DateTime.UtcNow.AddMinutes(-2);
-        context.DueDateExtensions.AddRange(
-            new DueDateExtension
-            {
-                MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id,
-                OriginalDueDate = submission.DueDate!.Value, ExtendedDueDate = submission.DueDate.Value.AddDays(2),
-                Reason = "Protected first reason", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt
-            },
-            new DueDateExtension
-            {
-                MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id,
-                OriginalDueDate = submission.DueDate.Value.AddDays(2), ExtendedDueDate = submission.DueDate.Value.AddDays(4),
-                Reason = "Protected second reason", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt.AddMinutes(1)
-            },
-            new DueDateExtension
-            {
-                MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Ipms, SubmissionId = submission.Id,
-                OriginalDueDate = submission.DueDate.Value, ExtendedDueDate = submission.DueDate.Value.AddDays(9),
-                Reason = "Wrong submission kind", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt.AddMinutes(2)
-            },
-            new DueDateExtension
-            {
-                MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Ipms, SubmissionId = ipmsSubmission.Id,
-                OriginalDueDate = ipmsSubmission.DueDate!.Value, ExtendedDueDate = ipmsSubmission.DueDate.Value.AddDays(3),
-                Reason = "Protected IPMS reason", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt.AddMinutes(3)
-            });
-        QueueSubmissionLedgerAudits(context, user.Id);
-        await context.SaveChangesAsync();
+        await InsertHistoricalDueDateExtensionAsync(context, new DueDateExtension
+        {
+            MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id,
+            OriginalDueDate = submission.DueDate!.Value, ExtendedDueDate = submission.DueDate.Value.AddDays(2),
+            Reason = "Protected first reason", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt
+        });
+        await InsertHistoricalDueDateExtensionAsync(context, new DueDateExtension
+        {
+            MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id,
+            OriginalDueDate = submission.DueDate.Value.AddDays(2), ExtendedDueDate = submission.DueDate.Value.AddDays(4),
+            Reason = "Protected second reason", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt.AddMinutes(1)
+        });
+        await InsertHistoricalDueDateExtensionAsync(context, new DueDateExtension
+        {
+            MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Ipms, SubmissionId = submission.Id,
+            OriginalDueDate = submission.DueDate.Value, ExtendedDueDate = submission.DueDate.Value.AddDays(9),
+            Reason = "Wrong submission kind", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt.AddMinutes(2)
+        });
+        await InsertHistoricalDueDateExtensionAsync(context, new DueDateExtension
+        {
+            MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Ipms, SubmissionId = ipmsSubmission.Id,
+            OriginalDueDate = ipmsSubmission.DueDate!.Value, ExtendedDueDate = ipmsSubmission.DueDate.Value.AddDays(3),
+            Reason = "Protected IPMS reason", ApprovedByUserId = user.Id, ApprovedAt = firstApprovedAt.AddMinutes(3)
+        });
 
         var grants = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_SUBMISSION.READ" };
         var access = new Mock<IAccessControlService>();
@@ -636,24 +633,19 @@ public sealed class GovernedWithdrawalTests
         }
     };
 
-    private static void QueueSubmissionLedgerAudits(ApplicationDbContext context, string userId)
+    private static async Task InsertHistoricalDueDateExtensionAsync(
+        ApplicationDbContext context,
+        DueDateExtension extension)
     {
-        foreach (var entry in context.ChangeTracker.Entries<DueDateExtension>().Where(item => item.State == EntityState.Added).ToArray())
-        {
-            var extension = entry.Entity;
-            context.AuditTrails.Add(new AuditTrail
-            {
-                MunicipalityId = extension.MunicipalityId,
-                EntityName = extension.SubmissionKind == SubmissionKind.Opms ? nameof(OpmsSubmission) : nameof(IpmsSubmission),
-                EntityId = extension.SubmissionId,
-                Action = "ExtendDueDate",
-                OldValue = JsonSerializer.Serialize(new { DueDate = extension.OriginalDueDate }),
-                NewValue = JsonSerializer.Serialize(new { DueDate = extension.ExtendedDueDate, extension.Reason }),
-                Reason = extension.Reason,
-                ChangedBy = userId,
-                ChangedAt = extension.ApprovedAt
-            });
-        }
+        var kind = (int)extension.SubmissionKind;
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO DueDateExtensions
+                (Id, MunicipalityId, SubmissionKind, SubmissionId, OriginalDueDate, ExtendedDueDate, Reason, ApprovedByUserId, ApprovedAt)
+            VALUES
+                ({extension.Id}, {extension.MunicipalityId}, {kind}, {extension.SubmissionId},
+                 {extension.OriginalDueDate}, {extension.ExtendedDueDate}, {extension.Reason},
+                 {extension.ApprovedByUserId}, {extension.ApprovedAt})
+            """);
     }
 
     private sealed class TenantContext(long municipalityId, string userId) : ITenantContext

@@ -171,12 +171,20 @@ public sealed class LegacyRatingReconciliationControllerTests
             ScoredByUserId = setup.Actor.Id,
             ScoredAt = setup.Action.OccurredAt
         };
-        context.AddRange(existing, generic);
+        context.Add(existing);
         new WorkflowGovernanceService(context,
                 tenantContext: IdpTestFixture.Tenant(setup.Municipality.Id, setup.Actor.Id))
             .QueueAuditTrail(nameof(OpmsSubmission), setup.Submission.Id, "Score", null,
                 new { generic.Score, generic.Notes }, setup.Actor.Id, "127.0.0.1", "Seed preserved historical score evidence.");
         await context.SaveChangesAsync();
+        var submissionKind = (int)generic.SubmissionKind;
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO SubmissionScores
+                (Id, MunicipalityId, SubmissionKind, SubmissionId, Score, Notes, ScoredByUserId, ScoredAt)
+            VALUES
+                ({generic.Id}, {generic.MunicipalityId}, {submissionKind}, {generic.SubmissionId}, {generic.Score},
+                 {generic.Notes}, {generic.ScoredByUserId}, {generic.ScoredAt})
+            """);
         var controller = Controller(context, setup);
         var reason = "Link the exact pre-existing canonical rating evidence.";
 

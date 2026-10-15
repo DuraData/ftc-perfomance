@@ -2501,14 +2501,23 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             || ChangeTracker.Entries<AuditFinding>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<SubmissionScore>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Submission extension, review, finding, and score ledgers are append-only.");
-        foreach (var group in ChangeTracker.Entries<DueDateExtension>().Where(entry => entry.State == EntityState.Added)
-                     .GroupBy(entry => new { entry.Entity.SubmissionKind, entry.Entity.SubmissionId, entry.Entity.MunicipalityId }))
-            RequireGovernanceAudit(SubmissionEntityName(group.Key.SubmissionKind), group.Key.SubmissionId,
-                group.Key.MunicipalityId, "ExtendDueDate", requireOldValue: true, requiredAuditCount: group.Count());
-        foreach (var group in ChangeTracker.Entries<SubmissionScore>().Where(entry => entry.State == EntityState.Added)
-                     .GroupBy(entry => new { entry.Entity.SubmissionKind, entry.Entity.SubmissionId, entry.Entity.MunicipalityId }))
-            RequireGovernanceAudit(SubmissionEntityName(group.Key.SubmissionKind), group.Key.SubmissionId,
-                group.Key.MunicipalityId, "Score", requireOldValue: false, requiredAuditCount: group.Count());
+        foreach (var extension in ChangeTracker.Entries<DueDateExtension>().Where(entry => entry.State == EntityState.Added))
+        {
+            var parentType = extension.Entity.SubmissionKind switch
+            {
+                SubmissionKind.Opms => typeof(OpmsSubmission),
+                SubmissionKind.Ipms => typeof(IpmsSubmission),
+                _ => throw new InvalidOperationException("A due-date extension ledger requires an OPMS or IPMS submission kind.")
+            };
+            var hasModifiedParent = ChangeTracker.Entries().Any(parent => parent.Metadata.ClrType == parentType
+                && parent.State == EntityState.Modified
+                && parent.CurrentValues.GetValue<string>(nameof(OpmsSubmission.Id)) == extension.Entity.SubmissionId
+                && parent.OriginalValues.GetValue<long?>(nameof(OpmsSubmission.MunicipalityId)) == extension.Entity.MunicipalityId);
+            if (!hasModifiedParent)
+                throw new InvalidOperationException("A due-date extension ledger may be appended only alongside its exact governed parent-submission mutation.");
+        }
+        if (ChangeTracker.Entries<SubmissionScore>().Any(entry => entry.State == EntityState.Added))
+            throw new InvalidOperationException("The legacy standalone submission-score ledger is retired and cannot accept new application writes.");
         if (ChangeTracker.Entries<UserScope>().Any(entry => entry.State == EntityState.Deleted)
             || ChangeTracker.Entries<UserAssignment>().Any(entry => entry.State == EntityState.Deleted))
             throw new InvalidOperationException("User scope and operational-assignment history cannot be hard deleted.");
@@ -6252,27 +6261,4 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException(message);
     }
 
-    private void RequireGovernanceAudit(string entityName, Guid publicId, long? municipalityId, string action = "Update")
-        => RequireGovernanceAudit(entityName, publicId.ToString(), municipalityId, action, requireOldValue: true);
-
-    private void RequireGovernanceAudit(string entityName, string entityId, long? municipalityId, string action, bool requireOldValue, int requiredAuditCount = 1)
-    {
-        var auditCount = ChangeTracker.Entries<AuditTrail>().Count(candidate => candidate.State == EntityState.Added
-            && candidate.Entity.EntityName == entityName
-            && candidate.Entity.EntityId == entityId
-            && candidate.Entity.Action == action
-            && candidate.Entity.MunicipalityId == municipalityId
-            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
-            && (!requireOldValue || candidate.Entity.OldValue != null)
-            && candidate.Entity.NewValue != null);
-        if (auditCount != requiredAuditCount)
-            throw new InvalidOperationException($"{entityName} changes require same-transaction reasoned before/after audit evidence.");
-    }
-
-    private static string SubmissionEntityName(SubmissionKind kind) => kind switch
-    {
-        SubmissionKind.Opms => nameof(OpmsSubmission),
-        SubmissionKind.Ipms => nameof(IpmsSubmission),
-        _ => throw new InvalidOperationException("Submission governance history requires an OPMS or IPMS submission kind.")
-    };
 }
