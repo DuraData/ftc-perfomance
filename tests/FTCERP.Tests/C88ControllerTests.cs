@@ -227,7 +227,7 @@ public class C88ControllerTests
             })
         });
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*exact actor-bound same-transaction before/after audit*");
+            .WithMessage("Audit history requires stable identity, entity/action/actor evidence, a valid event time and at least one valid JSON snapshot*");
 
         context.ChangeTracker.Clear();
         (await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == module.Configuration.PublicId)).PublicId = Guid.NewGuid();
@@ -306,7 +306,7 @@ public class C88ControllerTests
             })
         });
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*exact actor-bound same-transaction before/after audit*");
+            .WithMessage("Audit history requires stable identity, entity/action/actor evidence, a valid event time and at least one valid JSON snapshot*");
 
         context.ChangeTracker.Clear();
         (await context.C88IndicatorPlans.SingleAsync(item => item.PublicId == planId)).PublicId = Guid.NewGuid();
@@ -428,7 +428,7 @@ public class C88ControllerTests
                 futureAuditReason))
         });
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*exact chronological, actor-bound predecessor/successor audit*");
+            .WithMessage("Audit history requires stable identity, entity/action/actor evidence, a valid event time and at least one valid JSON snapshot*");
 
         context.ChangeTracker.Clear();
         context.C88MunicipalityConfigurations.Remove(await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == module.Configuration.PublicId));

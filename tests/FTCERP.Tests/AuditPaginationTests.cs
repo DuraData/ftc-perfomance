@@ -271,6 +271,7 @@ public sealed class AuditPaginationTests
         Action = action,
         ChangedBy = actor,
         ChangedAt = occurredAt,
+        NewValue = "{}",
         CorrelationId = $"correlation-{entityId}"
     };
 

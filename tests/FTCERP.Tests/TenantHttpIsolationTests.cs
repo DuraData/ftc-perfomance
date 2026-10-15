@@ -327,8 +327,8 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
         };
         context.PoeFiles.Add(evidenceB);
         context.AuditTrails.AddRange(
-            new AuditTrail { MunicipalityId = tenantA.Id, EntityName = "Test", EntityId = "tenant-a-audit", Action = "Seed", ChangedBy = userA.Id },
-            new AuditTrail { MunicipalityId = tenantB.Id, EntityName = "Test", EntityId = "tenant-b-audit", Action = "Seed", ChangedBy = userB.Id });
+            new AuditTrail { MunicipalityId = tenantA.Id, EntityName = "Test", EntityId = "tenant-a-audit", Action = "Seed", ChangedBy = userA.Id, NewValue = "{}" },
+            new AuditTrail { MunicipalityId = tenantB.Id, EntityName = "Test", EntityId = "tenant-b-audit", Action = "Seed", ChangedBy = userB.Id, NewValue = "{}" });
         await context.SaveChangesAsync();
 
         var opmsReadPermissionId = permissions.Single(item => item.Code == "OPMS_KPI.READ").Id;

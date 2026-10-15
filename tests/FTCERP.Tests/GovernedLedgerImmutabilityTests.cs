@@ -37,6 +37,51 @@ public sealed class GovernedLedgerImmutabilityTests
             .WithMessage("*append-only*");
     }
 
+    public static TheoryData<AuditTrail> InvalidAuditCreationRows => new()
+    {
+        new AuditTrail
+        {
+            PublicId = Guid.Empty, EntityName = "Test", EntityId = "record-1", Action = "Create",
+            ChangedBy = "actor", NewValue = "{}"
+        },
+        new AuditTrail
+        {
+            EntityName = "Test", EntityId = "record-2", Action = "Create", ChangedBy = "",
+            NewValue = "{}"
+        },
+        new AuditTrail
+        {
+            EntityName = "Test", EntityId = "record-3", Action = "Update", ChangedBy = "actor",
+            OldValue = "not-json", NewValue = "{}"
+        },
+        new AuditTrail
+        {
+            EntityName = "Test", EntityId = "record-null", Action = "Update", ChangedBy = "actor",
+            NewValue = "null"
+        },
+        new AuditTrail
+        {
+            EntityName = "Test", EntityId = "record-4", Action = "Update", ChangedBy = "actor",
+            ChangedAt = DateTime.UtcNow.AddHours(1), NewValue = "{}"
+        },
+        new AuditTrail
+        {
+            EntityName = "Test", EntityId = "record-5", Action = "Observe", ChangedBy = "actor"
+        }
+    };
+
+    [Theory]
+    [MemberData(nameof(InvalidAuditCreationRows))]
+    public async Task Audit_creation_rejects_incomplete_malformed_or_future_evidence(AuditTrail row)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.AuditTrails.Add(row);
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Audit history requires stable identity, entity/action/actor evidence, a valid event time and at least one valid JSON snapshot*");
+    }
+
     [Fact]
     public async Task Idp_plan_version_business_content_cannot_be_rewritten()
     {

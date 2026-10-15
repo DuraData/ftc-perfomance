@@ -2911,6 +2911,21 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("POE legal-hold history is append-only.");
         if (ChangeTracker.Entries<PoeDisposalEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("POE disposal history is append-only.");
+        foreach (var entry in ChangeTracker.Entries<AuditTrail>().Where(entry => entry.State == EntityState.Added))
+        {
+            var row = entry.Entity;
+            if (row.PublicId == Guid.Empty
+                || string.IsNullOrWhiteSpace(row.EntityName)
+                || string.IsNullOrWhiteSpace(row.EntityId)
+                || string.IsNullOrWhiteSpace(row.Action)
+                || string.IsNullOrWhiteSpace(row.ChangedBy)
+                || row.ChangedAt == default
+                || row.ChangedAt > DateTime.UtcNow.AddMinutes(5)
+                || row.OldValue == null && row.NewValue == null
+                || row.OldValue != null && !IsJson(row.OldValue)
+                || row.NewValue != null && !IsJson(row.NewValue))
+                throw new InvalidOperationException("Audit history requires stable identity, entity/action/actor evidence, a valid event time and at least one valid JSON snapshot.");
+        }
         if (ChangeTracker.Entries<AuditTrail>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Audit history is append-only.");
         if (ChangeTracker.Entries<AuthenticationEvent>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
@@ -3380,6 +3395,19 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         {
             using var document = System.Text.Json.JsonDocument.Parse(value);
             return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsJson(string value)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(value);
+            return document.RootElement.ValueKind is not (System.Text.Json.JsonValueKind.Undefined or System.Text.Json.JsonValueKind.Null);
         }
         catch (System.Text.Json.JsonException)
         {

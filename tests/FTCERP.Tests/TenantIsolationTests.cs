@@ -106,7 +106,7 @@ public class TenantIsolationTests
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         await using var tenant = new ApplicationDbContext(options, new TestTenantContext(7));
-        var audit = new AuditTrail { EntityName = "OpmsSubmission", EntityId = "submission-1", Action = "Submit", ChangedBy = "user" };
+        var audit = new AuditTrail { EntityName = "OpmsSubmission", EntityId = "submission-1", Action = "Submit", ChangedBy = "user", NewValue = "{}" };
         tenant.AuditTrails.Add(audit);
         await tenant.SaveChangesAsync();
 
