@@ -6,6 +6,7 @@ import {
   CheckSquare,
   Eye,
   Library,
+  Pencil,
   Plus,
   Save,
   Search,
@@ -1282,6 +1283,13 @@ export function OPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
             <Badge variant="default">v{template.version}</Badge>
           </div>
           <div className="flex flex-wrap gap-2">
+            {!template.isArchived && <Button
+              variant="outline"
+              icon={<Pencil className="h-4 w-4" />}
+              onClick={() => setCurrentPath(`/opms/library/${template.id}/edit`)}
+            >
+              Edit
+            </Button>}
             {canDuplicateProtected && <Button
               variant="outline"
               icon={<Copy className="h-4 w-4" />}
@@ -1892,6 +1900,13 @@ export function IPMSTargetLibraryDetail({ templateId }: { templateId: string }) 
             <Badge variant="default">v{template.version}</Badge>
           </div>
           <div className="flex flex-wrap gap-2">
+            {!template.isArchived && <Button
+              variant="outline"
+              icon={<Pencil className="h-4 w-4" />}
+              onClick={() => setCurrentPath(`/ipms/library/${template.id}/edit`)}
+            >
+              Edit
+            </Button>}
             {canDuplicateProtected && <Button
               variant="outline"
               icon={<Copy className="h-4 w-4" />}

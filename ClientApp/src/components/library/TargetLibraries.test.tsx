@@ -174,6 +174,50 @@ describe('target library registers', () => {
     await waitFor(() => expect(api.getIpmsTargetTemplatesPage).toHaveBeenCalledWith(expect.objectContaining({ sortBy: 'templateCode', page: 1 })));
   });
 
+  it.each([
+    {
+      label: 'OPMS',
+      component: <OPMSTargetLibraryDetail templateId="opms-public-id" />,
+      load: () => api.getOpmsTargetTemplate.mockResolvedValue({
+        success: true,
+        data: {
+          ...opmsTemplate,
+          publicId: 'opms-public-id', rowVersion: 'row-version', baseline: 5, annualTarget: 40,
+          annualTargetDescription: 'Annual description', unitOfMeasure: { id: '', name: 'Kilometers' },
+          strategicGoal: { id: '', name: 'Service Delivery Excellence' },
+          strategicObjective: { id: '', name: 'Improve Road Infrastructure' },
+          performanceObjective: 'Improve roads', budgetSource: { id: '', name: 'Grant' },
+          budgetType: { id: '', name: 'Capital' }, weight: 10, indicatorType: 'Quantitative',
+          defaultQuarterlyTargets: [], createdDate: '2026-10-10T00:00:00Z',
+        },
+      }),
+      editPath: '/opms/library/1/edit',
+    },
+    {
+      label: 'IPMS',
+      component: <IPMSTargetLibraryDetail templateId="ipms-public-id" />,
+      load: () => api.getIpmsTargetTemplate.mockResolvedValue({
+        success: true,
+        data: {
+          ...ipmsTemplate,
+          publicId: 'ipms-public-id', rowVersion: 'row-version', jobGrade: '16',
+          unitOfMeasure: { id: '', name: 'Percentage' }, annualTarget: 100,
+          annualTargetDescription: 'Annual description', weight: 20, defaultRatingMethod: 'Weighted',
+          defaultScoreScale: '1-5', defaultPoeRequirements: 'Evidence', defaultTaskTemplates: [],
+          linkedOpmsTargetRequired: false, createdDate: '2026-10-10T00:00:00Z',
+        },
+      }),
+      editPath: '/ipms/library/2/edit',
+    },
+  ])('opens the $label edit form from an active template detail', async ({ component, load, editPath }) => {
+    load();
+    render(component);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+
+    expect(app.setCurrentPath).toHaveBeenCalledWith(editPath);
+  });
+
   it('does not render or duplicate hostile OPMS protected values without member reads', async () => {
     security.canReadField.mockReturnValue(false);
     security.canEditField.mockReturnValue(false);
