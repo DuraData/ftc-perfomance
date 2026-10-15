@@ -2881,12 +2881,25 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             var originalCompletedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(IdpTaskAssignment.CompletedAt));
             var currentCompletedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(IdpTaskAssignment.CompletedAt));
             if (originalCompleted == currentCompleted
+                || originalCompleted != originalCompletedAt.HasValue
                 || currentCompleted && !currentCompletedAt.HasValue
                 || !currentCompleted && currentCompletedAt.HasValue
-                || originalCompleted && !originalCompletedAt.HasValue)
+                || currentCompletedAt > DateTime.UtcNow.AddMinutes(5))
                 throw new InvalidOperationException("IDP task completion must be a complete state transition.");
-            RequireGovernanceAudit("IdpTask", entry.Entity.PublicId.ToString(), _tenantContext?.MunicipalityId,
-                currentCompleted ? "Complete" : "Reopen", requireOldValue: true);
+            var actor = _tenantContext?.UserId;
+            var action = currentCompleted ? "Complete" : "Reopen";
+            var snapshotFields = new[] { nameof(IdpTaskAssignment.IsCompleted), nameof(IdpTaskAssignment.CompletedAt) };
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == "IdpTask"
+                && candidate.Entity.EntityId == entry.OriginalValues.GetValue<Guid>(nameof(IdpTaskAssignment.PublicId)).ToString()
+                && candidate.Entity.Action == action
+                && candidate.Entity.MunicipalityId == _tenantContext?.MunicipalityId
+                && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
+                && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException("IdpTask completion changes require one exact actor-bound same-transaction before/after audit.");
         }
         if (ChangeTracker.Entries<OpmsImportRow>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("OPMS import reconciliation rows are append-only.");
@@ -3727,6 +3740,15 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         return tracked ?? Users.IgnoreQueryFilters().AsNoTracking()
             .Where(candidate => candidate.Id == identityUserId)
             .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private bool GovernanceActorMatches(string? auditActor, string? contextActor)
+    {
+        if (string.IsNullOrWhiteSpace(auditActor)) return false;
+        if (!string.IsNullOrWhiteSpace(contextActor)) return auditActor == contextActor;
+        return ChangeTracker.Entries<ApplicationUser>().Any(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                   && candidate.Entity.Id == auditActor)
+            || Users.IgnoreQueryFilters().AsNoTracking().Any(candidate => candidate.Id == auditActor);
     }
 
     private static bool EmployeeIdentitySnapshotMatches(string? json, Guid? expectedPublicId)

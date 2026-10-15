@@ -207,7 +207,7 @@ public class IdpSecondaryGovernanceTests
         task.CompletedAt = DateTime.UtcNow;
         await FluentActions.Invoking(() => context.SaveChangesAsync())
             .Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*IdpTask changes require same-transaction reasoned before/after audit evidence*");
+            .WithMessage("*one exact actor-bound same-transaction before/after audit*");
 
         context.ChangeTracker.Clear();
         task = await context.IdpTaskAssignments.SingleAsync(item => item.PublicId == task.PublicId);
@@ -226,6 +226,39 @@ public class IdpSecondaryGovernanceTests
         audit.OldValue.Should().NotBeNull();
         audit.NewValue.Should().NotBeNull();
 
+        context.ChangeTracker.Clear();
+        task = await context.IdpTaskAssignments.SingleAsync(item => item.PublicId == task.PublicId);
+        before = new { task.IsCompleted, task.CompletedAt };
+        task.IsCompleted = false;
+        task.CompletedAt = null;
+        new WorkflowGovernanceService(context, tenantContext: tenant).QueueAuditTrail(
+            "IdpTask", task.PublicId.ToString(), "Reopen", before,
+            new { task.IsCompleted, task.CompletedAt }, "forged-task-actor", null, "Returned for correction");
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*one exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        task = await context.IdpTaskAssignments.SingleAsync(item => item.PublicId == task.PublicId);
+        var forgedBefore = new { task.IsCompleted, CompletedAt = (DateTime?)DateTime.UnixEpoch };
+        task.IsCompleted = false;
+        task.CompletedAt = null;
+        new WorkflowGovernanceService(context, tenantContext: tenant).QueueAuditTrail(
+            "IdpTask", task.PublicId.ToString(), "Reopen", forgedBefore,
+            new { task.IsCompleted, task.CompletedAt }, actor.Id, null, "Returned for correction");
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*one exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        task = await context.IdpTaskAssignments.SingleAsync(item => item.PublicId == task.PublicId);
+        task.PublicId = Guid.NewGuid();
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*identity, assignment, content and due-date evidence are immutable*");
+
+        context.ChangeTracker.Clear();
+        task = await context.IdpTaskAssignments.SingleAsync();
         task.Title = "Rewritten title";
         new WorkflowGovernanceService(context, tenantContext: tenant).QueueAuditTrail(
             "IdpTask", task.PublicId.ToString(), "Complete", new { Title = "Review plan" },
