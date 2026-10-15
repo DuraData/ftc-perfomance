@@ -3188,15 +3188,50 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(ApplicationRole.UpdatedAt), nameof(ApplicationRole.ConcurrencyStamp), nameof(ApplicationRole.RowVersion)],
                 "Dynamic role identity, tenant ownership, stable code, system classification and creation evidence are immutable.");
 
-            var hasAudit = ChangeTracker.Entries<AuditTrail>().Any(candidate => candidate.State == EntityState.Added
+            var changed = entry.Properties.Where(property => property.IsModified)
+                .Select(property => property.Metadata.Name).ToHashSet(StringComparer.Ordinal);
+            var definitionFields = new[]
+            {
+                nameof(ApplicationRole.Name), nameof(ApplicationRole.Description), nameof(ApplicationRole.IsActive),
+                nameof(ApplicationRole.EffectiveFrom), nameof(ApplicationRole.EffectiveTo)
+            };
+            var actor = _tenantContext?.UserId;
+            var updatedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(ApplicationRole.UpdatedAt));
+            if (!updatedAt.HasValue)
+                throw new InvalidOperationException("Dynamic role changes require an immutable update timestamp and same-transaction reasoned audit evidence.");
+
+            if (changed.Overlaps(definitionFields)
+                || changed.Contains(nameof(ApplicationRole.NormalizedName)))
+            {
+                var name = entry.CurrentValues.GetValue<string?>(nameof(ApplicationRole.Name));
+                var normalizedName = entry.CurrentValues.GetValue<string?>(nameof(ApplicationRole.NormalizedName));
+                var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.EntityName == "SecurityRole"
+                    && candidate.Entity.EntityId == entry.Entity.PublicId.ToString()
+                    && candidate.Entity.Action == "Update"
+                    && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                    && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
+                    && candidate.Entity.ChangedAt == updatedAt.Value
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, definitionFields)
+                    && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, definitionFields)).ToArray();
+                if (string.IsNullOrWhiteSpace(name) || normalizedName != name.ToUpperInvariant() || audits.Length != 1)
+                    throw new InvalidOperationException("Dynamic role definition changes require one exact actor-bound same-transaction before/after audit.");
+                continue;
+            }
+
+            var permissionAudits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == "SecurityRolePermissions"
                 && candidate.Entity.EntityId == entry.Entity.PublicId.ToString()
+                && candidate.Entity.Action == "ReplacePermissions"
                 && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
+                && candidate.Entity.ChangedAt == updatedAt.Value
                 && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
-                && candidate.Entity.NewValue != null
-                && ((candidate.Entity.EntityName == "SecurityRole" && candidate.Entity.Action == "Update" && candidate.Entity.OldValue != null)
-                    || candidate.Entity.EntityName == "SecurityRolePermissions" && candidate.Entity.Action == "ReplacePermissions"));
-            if (!hasAudit)
-                throw new InvalidOperationException("Dynamic role changes require same-transaction reasoned audit evidence.");
+                && candidate.Entity.OldValue != null
+                && candidate.Entity.NewValue != null).ToArray();
+            if (permissionAudits.Length != 1)
+                throw new InvalidOperationException("Dynamic role permission changes require one exact actor-bound same-transaction audit.");
         }
     }
 

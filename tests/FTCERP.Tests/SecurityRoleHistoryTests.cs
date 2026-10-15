@@ -66,9 +66,9 @@ public sealed class SecurityRoleHistoryTests
     [Fact]
     public async Task Role_rewrite_requires_reasoned_same_transaction_audit_and_preserves_stable_identity()
     {
-        await using var context = IdpTestFixture.CreateRelationalContext();
-        var role = NewRole("governed-role", "GOVERNED_ROLE");
         var actor = IdpTestFixture.CreateUser("role-history-actor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(null, actor.Id, true));
+        var role = NewRole("governed-role", "GOVERNED_ROLE");
         context.AddRange(role, actor);
         await context.SaveChangesAsync();
 
@@ -79,7 +79,7 @@ public sealed class SecurityRoleHistoryTests
 
         context.ChangeTracker.Clear();
         role = await context.Roles.SingleAsync(item => item.Id == "governed-role");
-        var oldName = role.Name;
+        var oldValue = new { role.Name, role.Description, role.IsActive, role.EffectiveFrom, role.EffectiveTo };
         role.Name = "Governed Role Updated";
         role.NormalizedName = "GOVERNED ROLE UPDATED";
         role.UpdatedAt = DateTime.UtcNow;
@@ -88,8 +88,8 @@ public sealed class SecurityRoleHistoryTests
             EntityName = "SecurityRole",
             EntityId = role.PublicId.ToString(),
             Action = "Update",
-            OldValue = JsonSerializer.Serialize(new { Name = oldName }),
-            NewValue = JsonSerializer.Serialize(new { role.Name }),
+            OldValue = JsonSerializer.Serialize(oldValue),
+            NewValue = JsonSerializer.Serialize(new { role.Name, role.Description, role.IsActive, role.EffectiveFrom, role.EffectiveTo }),
             ChangedBy = actor.Id,
             ChangedAt = role.UpdatedAt.Value,
             Reason = "Approved role display-name correction"
@@ -98,14 +98,33 @@ public sealed class SecurityRoleHistoryTests
 
         context.ChangeTracker.Clear();
         role = await context.Roles.SingleAsync(item => item.Id == "governed-role");
+        role.Description = "Definition rewrite hidden behind permission audit";
+        role.UpdatedAt = DateTime.UtcNow;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            EntityName = "SecurityRolePermissions",
+            EntityId = role.PublicId.ToString(),
+            Action = "ReplacePermissions",
+            OldValue = "[]",
+            NewValue = "[]",
+            ChangedBy = actor.Id,
+            ChangedAt = role.UpdatedAt.Value,
+            Reason = "Attempt role rewrite through permission audit"
+        });
+        var disguisedRewrite = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        disguisedRewrite.Message.Should().Contain("exact actor-bound");
+
+        context.ChangeTracker.Clear();
+        role = await context.Roles.SingleAsync(item => item.Id == "governed-role");
         role.RoleCode = "REWRITTEN_CODE";
+        var stableOldValue = new { role.Name, role.Description, role.IsActive, role.EffectiveFrom, role.EffectiveTo };
         context.AuditTrails.Add(new AuditTrail
         {
             EntityName = "SecurityRole",
             EntityId = role.PublicId.ToString(),
             Action = "Update",
-            OldValue = "{}",
-            NewValue = "{}",
+            OldValue = JsonSerializer.Serialize(stableOldValue),
+            NewValue = JsonSerializer.Serialize(stableOldValue),
             ChangedBy = actor.Id,
             ChangedAt = DateTime.UtcNow,
             Reason = "Attempt stable-code rewrite"
