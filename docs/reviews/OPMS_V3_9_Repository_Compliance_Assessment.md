@@ -4658,6 +4658,12 @@ IDP task completion now derives the task's `CompletedAt` value and its same-tran
 
 Relational adversarial coverage supplies an otherwise exact actor-bound completion audit whose timestamp differs by one second and proves that persistence rejects it. The production controller lifecycle additionally proves that the persisted completion and audit timestamps are equal. The focused IDP governance group passes **47/47**, complete backend regression passes **962 tests with 1 explicit native SQL Server-only skip and 0 failures**, and Release compilation reports **0 warnings and 0 errors**. Implementation commit `51dec5ebf4aca56b7f8bbbfb54007654628c027f` is on both branches; GitHub Actions run `38718531567`, job `116367061014`, verified the exact revision in **5m16s** with every quality and security gate passing.
 
+### 11.403 Circular 88 configuration and indicator-plan audit time integrity
+
+Circular 88 municipality-configuration and indicator-plan rewrites now accept their exact same-transaction audits only when the recorded audit time is non-default and not future-dated. Existing authenticated-actor binding, tenant ownership, governance reason, stable referenced public identities, exact before/after snapshots, mutation allow-lists and RowVersion concurrency remain mandatory. The production controller already emits these audits through the central UTC-stamped governance service, so the strengthened persistence boundary closes forged-time writes without changing the public contract or database schema.
+
+Relational adversarial coverage constructs otherwise exact actor-bound configuration and indicator-plan audits with future timestamps and proves that both writes fail closed. The focused Circular 88 controller suite passes **15/15**, complete backend regression passes **962 tests with 1 explicit native SQL Server-only skip and 0 failures**, and Release compilation reports **0 warnings and 0 errors**. Implementation commit `1bd1787f62241fbb5d5e0d46bafe24da218eb54a` is on both branches; GitHub Actions run `38720661606`, job `116374120047`, verified the exact revision in **4m53s** with every quality and security gate passing.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
