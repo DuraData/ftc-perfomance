@@ -2,7 +2,7 @@
 
 **Repository:** `ftc-perfomance`  
 **Requirements baseline:** `OPMS Requirements V3.9.docx`  
-**Assessment date:** 2026-10-14
+**Assessment date:** 2026-10-15
 **Assessment type:** Current-state repository, schema, configuration, migration, and automated-test review
 
 ## 1. Executive summary
@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **919 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **400 frontend tests pass** across 80 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **920 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **400 frontend tests pass** across 80 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -56,7 +56,7 @@ Absence from the reviewed repository is classified as **NOT IMPLEMENTED** when t
 |---|---|---|
 | Backend build | Passed with 0 errors and 0 warnings | The host compiles, but compilation is not requirements compliance. |
 | Frontend unit tests | 400/400 passed across 80 files | Component, mapping, routing, security-administration and governed-capture coverage passes. |
-| Backend tests via ordinary `dotnet test` | 919 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite. |
+| Backend tests via ordinary `dotnet test` | 920 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite. |
 | Frontend type-check | Passed | The production TypeScript project has no static type errors. |
 | Frontend lint | Passed | The client passes the configured ESLint gate. |
 | Accessibility automation | 2/2 passed | The shared application shell and form contract pass the automated axe checks; manual certification remains external acceptance work. |
@@ -4443,6 +4443,14 @@ Implementation commit `22c39830abf5a50ae2860415ae5f033ffdc85b38` is on both `cod
 A new relational adversarial scenario proves public-identity rewrite denial, hard-delete denial and rejection of an otherwise correctly shaped treatment audit containing a forged owner public ID. Existing valid coverage continues to prove tenant-user owner resolution, protected narrative/owner member permissions, audited create/update behavior, RowVersion concurrency, terminal-state immutability, completion invariants and heatmap integration. The focused strategic-risk suite passes **11/11**; complete backend regression passes **919 tests with 1 explicit native SQL Server-only skip and 0 failures**; and Release compilation reports **0 warnings and 0 errors**. No model, migration, provider-specific runtime branch or frontend change is introduced; treatment audit ownership becomes consistently public-ID based.
 
 Implementation commit `826190512985df627dfd1285ad5333579adcc38e` is on both `codex/dev` and `main`. GitHub Actions run `38658747853`, job `116174687021`, verified that exact revision in **7m17s**: **919 backend tests passed, 1 explicit native SQL Server-only skip, 400/400 frontend tests across 80 files, 2/2 accessibility tests, zero build warnings/errors, no vulnerable backend packages, 2,113 transformed modules, a passing 77-chunk/401.6-KiB bundle budget, no detected secrets and zero annotations**. Migration generation, recovery-safety validation, TypeScript type-check, ESLint and the frontend dependency audit also passed.
+
+### 11.374 Governed municipality consolidation-policy root
+
+`MunicipalityConsolidationPolicy` previously rejected hard deletion but accepted any generically shaped `Edit` audit, so a direct tracked write could replace stable identity, municipality ownership, calculation-type association or creation evidence, and an unrelated before/after payload could authorize a business mutation. The controller now emits the same stable public calculation-type identity and complete policy field set on both sides of an update. The persistence boundary makes identity, calculation-type association, tenant ownership and creation evidence immutable; permits only consolidation rule, missing-value policy, derived-target controls and active state plus update evidence; requires a non-empty actor and timestamp; and requires exactly one same-transaction reasoned `Edit` audit whose actor, tenant, public identity, public calculation-type reference and complete old/new business values match the tracked mutation.
+
+A new relational adversarial scenario proves public-identity rewrite denial and rejects an otherwise correctly shaped audit containing a forged calculation-type public ID. Existing valid coverage continues to prove tenant isolation, authorized policy administration, calculation behavior, duplicate-policy rejection, RowVersion concurrency, hard-delete denial and exact-audit enforcement. The focused performance-consolidation suite passes **38/38**; complete backend regression passes **920 tests with 1 explicit native SQL Server-only skip and 0 failures**; and Release compilation reports **0 warnings and 0 errors**. No model, migration, provider-specific runtime branch or frontend change is introduced.
+
+Implementation commit `992b943513acdbaa3396ff6ce2bfc9ac3600af99` is on both `codex/dev` and `main`. GitHub Actions run `38660915666`, job `116181664594`, verified that exact revision in **7m11s**: **920 backend tests passed, 1 explicit native SQL Server-only skip, 400/400 frontend tests across 80 files, 2/2 accessibility tests, zero build warnings/errors, no vulnerable backend packages, 2,113 transformed modules, a passing 77-chunk/401.6-KiB bundle budget, no detected secrets and zero annotations**. Migration generation, recovery-safety validation, TypeScript type-check, ESLint and the frontend dependency audit also passed.
 
 ### 12.1 Final verdict
 
