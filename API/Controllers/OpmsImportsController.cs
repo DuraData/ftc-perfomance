@@ -328,8 +328,9 @@ public sealed class OpmsImportsController(
             }
             batch.Status = OpmsImportBatchStatus.Committed; batch.CommittedAt = DateTime.UtcNow; batch.CommittedByUserId = user.Id; batch.CommittedByUser = user;
             context.Entry(batch).Property(x => x.RowVersion).OriginalValue = version;
-            workflow.QueueAuditTrail("OpmsImportBatch", batch.PublicId.ToString(), "Commit", new { Status = "Staged" },
-                new { Status = "Committed", Reason = request.Reason.Trim() }, user.Id,
+            var auditSnapshots = context.BuildImportBatchAuditSnapshots(batch);
+            workflow.QueueAuditTrail("OpmsImportBatch", batch.PublicId.ToString(), "Commit", auditSnapshots.Before,
+                auditSnapshots.After, user.Id,
                 PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
             await context.SaveChangesAsync();
             await transaction.CommitAsync();

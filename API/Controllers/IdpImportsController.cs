@@ -343,22 +343,25 @@ public class IdpImportsController(
                 var entity = candidate.Existing ?? new IdpKpi();
                 if (candidate.Existing != null && candidate.Row.ExpectedEntityRowVersion != null)
                     context.Entry(candidate.Existing).Property(item => item.RowVersion).OriginalValue = candidate.Row.ExpectedEntityRowVersion;
-                var before = candidate.Existing == null ? null : Snapshot(entity);
                 IdpKpiDefinitionPolicy.Apply(entity, candidate.Definition!);
                 if (candidate.Existing == null) context.IdpKpis.Add(entity);
-                else workflowGovernanceService.QueueAuditTrail(
-                    nameof(IdpKpi), entity.PublicId.ToString(), "ImportUpdate", before, Snapshot(entity), user.Id,
-                    PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
+                else
+                {
+                    var auditSnapshots = context.BuildIdpImportDefinitionAuditSnapshots(entity);
+                    workflowGovernanceService.QueueAuditTrail(
+                        nameof(IdpKpi), entity.PublicId.ToString(), "ImportUpdate", auditSnapshots.Before,
+                        auditSnapshots.After, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
+                }
             }
 
             batch.Status = IdpImportBatchStatus.Committed;
             batch.CommittedAt = DateTime.UtcNow;
             batch.CommittedByUserId = user.Id;
             batch.CommittedByUser = user;
+            var batchAuditSnapshots = context.BuildImportBatchAuditSnapshots(batch);
             workflowGovernanceService.QueueAuditTrail(
                 "IdpImportBatch", batch.PublicId.ToString(), "Commit",
-                new { Status = IdpImportBatchStatus.Staged.ToString() },
-                new { Status = batch.Status.ToString(), Reason = request.Reason.Trim(), batch.NewRows, batch.UnchangedRows, batch.ChangedRows },
+                batchAuditSnapshots.Before, batchAuditSnapshots.After,
                 user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
             await context.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -447,10 +450,10 @@ public class IdpImportsController(
             batch.CommittedAt = DateTime.UtcNow;
             batch.CommittedByUserId = user.Id;
             batch.CommittedByUser = user;
+            var batchAuditSnapshots = context.BuildImportBatchAuditSnapshots(batch);
             workflowGovernanceService.QueueAuditTrail(
                 "IdpImportBatch", batch.PublicId.ToString(), "CommitHierarchy",
-                new { Status = IdpImportBatchStatus.Staged.ToString() },
-                new { Status = batch.Status.ToString(), Reason = request.Reason.Trim(), batch.NewRows, batch.UnchangedRows, batch.ChangedRows },
+                batchAuditSnapshots.Before, batchAuditSnapshots.After,
                 user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
             await context.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -666,8 +669,9 @@ public class IdpImportsController(
     {
         if (before == null || EqualityComparer<TDefinition>.Default.Equals(before, after)) return;
         var publicId = (Guid)context.Entry(entity).Property(nameof(IdpStrategicOutcome.PublicId)).CurrentValue!;
+        var auditSnapshots = context.BuildIdpImportDefinitionAuditSnapshots(entity);
         workflowGovernanceService.QueueAuditTrail(
-            typeof(TEntity).Name, publicId.ToString(), "ImportUpdate", before, after, userId,
+            typeof(TEntity).Name, publicId.ToString(), "ImportUpdate", auditSnapshots.Before, auditSnapshots.After, userId,
             PerformanceApiSupport.GetIpAddress(HttpContext), reason);
     }
 

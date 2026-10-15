@@ -5858,7 +5858,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || !entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsImportBatch.CommittedAt)).HasValue
                 || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(OpmsImportBatch.CommittedByUserId))))
                 throw new InvalidOperationException("An OPMS import may advance only once from Staged to Committed with complete actor and timestamp evidence.");
-            RequireGovernanceAudit(nameof(OpmsImportBatch), entry.Entity.PublicId, entry.Entity.MunicipalityId, "Commit");
+            RequireExactImportBatchAudit(entry, nameof(OpmsImportBatch), "Commit");
         }
 
         foreach (var entry in ChangeTracker.Entries<IdpImportBatch>().Where(entry => entry.State == EntityState.Modified))
@@ -5874,8 +5874,62 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             var action = string.Equals(entry.Entity.ImportType, "HIERARCHY", StringComparison.OrdinalIgnoreCase)
                 ? "CommitHierarchy"
                 : "Commit";
-            RequireGovernanceAudit(nameof(IdpImportBatch), entry.Entity.PublicId, entry.Entity.MunicipalityId, action);
+            RequireExactImportBatchAudit(entry, nameof(IdpImportBatch), action);
         }
+    }
+
+    internal (IReadOnlyDictionary<string, object?> Before, IReadOnlyDictionary<string, object?> After)
+        BuildImportBatchAuditSnapshots(object batch)
+    {
+        if (batch is not OpmsImportBatch && batch is not IdpImportBatch)
+            throw new ArgumentException("An import-batch audit snapshot requires an OPMS or IDP import batch.", nameof(batch));
+
+        ChangeTracker.DetectChanges();
+        var entry = Entry(batch);
+        var fields = entry.Properties.Where(property => property.IsModified
+                && property.Metadata.Name != nameof(OpmsImportBatch.RowVersion))
+            .OrderBy(property => property.Metadata.Name, StringComparer.Ordinal)
+            .ToArray();
+        var before = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            [nameof(OpmsImportBatch.PublicId)] = entry.OriginalValues[nameof(OpmsImportBatch.PublicId)]
+        };
+        var after = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            [nameof(OpmsImportBatch.PublicId)] = entry.CurrentValues[nameof(OpmsImportBatch.PublicId)]
+        };
+        foreach (var property in fields)
+        {
+            var field = property.Metadata.Name;
+            var auditField = field == nameof(OpmsImportBatch.CommittedByUserId) ? "CommittedByUserPublicId" : field;
+            before[auditField] = field == nameof(OpmsImportBatch.CommittedByUserId)
+                ? ResolveAuditPublicId<ApplicationUser>(property.OriginalValue) : property.OriginalValue;
+            after[auditField] = field == nameof(OpmsImportBatch.CommittedByUserId)
+                ? ResolveAuditPublicId<ApplicationUser>(property.CurrentValue) : property.CurrentValue;
+        }
+        return (before, after);
+    }
+
+    private void RequireExactImportBatchAudit(EntityEntry entry, string entityName, string action)
+    {
+        var snapshots = BuildImportBatchAuditSnapshots(entry.Entity);
+        var contextActor = _tenantContext?.UserId;
+        var committedBy = entry.CurrentValues.GetValue<string?>(nameof(OpmsImportBatch.CommittedByUserId));
+        var publicId = entry.OriginalValues.GetValue<Guid>(nameof(OpmsImportBatch.PublicId));
+        var municipalityId = entry.OriginalValues.GetValue<long>(nameof(OpmsImportBatch.MunicipalityId));
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName
+            && candidate.Entity.EntityId == publicId.ToString()
+            && candidate.Entity.Action == action
+            && candidate.Entity.MunicipalityId == municipalityId
+            && GovernanceActorMatches(candidate.Entity.ChangedBy, contextActor)
+            && GovernanceActorMatches(committedBy, contextActor)
+            && candidate.Entity.ChangedBy == committedBy
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && ExactSnapshotMatches(candidate.Entity.OldValue, snapshots.Before)
+            && ExactSnapshotMatches(candidate.Entity.NewValue, snapshots.After)).ToArray();
+        if (audits.Length != 1)
+            throw new InvalidOperationException($"{entityName} {action} requires one exact actor-bound same-transaction reasoned before/after audit evidence.");
     }
 
     private void EnforceIdpDefinitionHistory()
@@ -5894,7 +5948,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 [nameof(IdpStrategicOutcome.Code), nameof(IdpStrategicOutcome.Name), nameof(IdpStrategicOutcome.Description),
                     nameof(IdpStrategicOutcome.SortOrder), nameof(IdpStrategicOutcome.RowVersion)],
                 "IDP outcome identity and plan association are immutable.");
-            RequireIdpImportUpdateAudit(nameof(IdpStrategicOutcome), entry.Entity.PublicId, entry.Entity.IdpPlanId, "HIERARCHY");
+            RequireIdpImportUpdateAudit(entry, entry.Entity.IdpPlanId, "HIERARCHY");
         }
         foreach (var entry in ChangeTracker.Entries<IdpStrategicObjective>().Where(entry => entry.State == EntityState.Modified))
         {
@@ -5905,7 +5959,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(IdpStrategicObjective.EndDate), nameof(IdpStrategicObjective.BudgetAllocation),
                     nameof(IdpStrategicObjective.SortOrder), nameof(IdpStrategicObjective.RowVersion)],
                 "IDP objective identity, outcome association and strategic-owner evidence are immutable.");
-            RequireIdpImportUpdateAudit(nameof(IdpStrategicObjective), entry.Entity.PublicId,
+            RequireIdpImportUpdateAudit(entry,
                 entry.Entity.IdpStrategicOutcome?.IdpPlanId ?? int.MinValue, "HIERARCHY");
         }
         foreach (var entry in ChangeTracker.Entries<IdpDevelopmentPriority>().Where(entry => entry.State == EntityState.Modified))
@@ -5915,7 +5969,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(IdpDevelopmentPriority.Description), nameof(IdpDevelopmentPriority.SortOrder),
                     nameof(IdpDevelopmentPriority.RowVersion)],
                 "IDP development-priority identity and objective association are immutable.");
-            RequireIdpImportUpdateAudit(nameof(IdpDevelopmentPriority), entry.Entity.PublicId,
+            RequireIdpImportUpdateAudit(entry,
                 entry.Entity.IdpStrategicObjective?.IdpStrategicOutcome?.IdpPlanId ?? int.MinValue, "HIERARCHY");
         }
         foreach (var entry in ChangeTracker.Entries<IdpProgramme>().Where(entry => entry.State == EntityState.Modified))
@@ -5925,7 +5979,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(IdpProgramme.ResponsibleDepartmentId), nameof(IdpProgramme.PlannedBudget),
                     nameof(IdpProgramme.ApprovedBudget), nameof(IdpProgramme.ActualExpenditure), nameof(IdpProgramme.RowVersion)],
                 "IDP programme identity and development-priority association are immutable.");
-            RequireIdpImportUpdateAudit(nameof(IdpProgramme), entry.Entity.PublicId,
+            RequireIdpImportUpdateAudit(entry,
                 entry.Entity.IdpDevelopmentPriority?.IdpStrategicObjective?.IdpStrategicOutcome?.IdpPlanId ?? int.MinValue,
                 "HIERARCHY");
         }
@@ -5937,7 +5991,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(IdpProject.FundingSource), nameof(IdpProject.StartDate), nameof(IdpProject.EndDate),
                     nameof(IdpProject.Status), nameof(IdpProject.CommunityNeedReference), nameof(IdpProject.RowVersion)],
                 "IDP project identity and programme association are immutable.");
-            RequireIdpImportUpdateAudit(nameof(IdpProject), entry.Entity.PublicId,
+            RequireIdpImportUpdateAudit(entry,
                 entry.Entity.IdpProgramme?.IdpDevelopmentPriority?.IdpStrategicObjective?.IdpStrategicOutcome?.IdpPlanId ?? int.MinValue,
                 "HIERARCHY");
         }
@@ -5950,13 +6004,48 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(IdpKpi.IndicatorType), nameof(IdpKpi.Circular88Linked), nameof(IdpKpi.TreasuryTidLinked),
                     nameof(IdpKpi.RowVersion)],
                 "IDP KPI identity and project association are immutable.");
-            RequireIdpImportUpdateAudit(nameof(IdpKpi), entry.Entity.PublicId,
+            RequireIdpImportUpdateAudit(entry,
                 entry.Entity.IdpProject?.IdpProgramme?.IdpDevelopmentPriority?.IdpStrategicObjective?.IdpStrategicOutcome?.IdpPlanId ?? int.MinValue,
                 "KPI");
         }
     }
 
-    private void RequireIdpImportUpdateAudit(string entityName, Guid publicId, int planId, string importType)
+    internal (IReadOnlyDictionary<string, object?> Before, IReadOnlyDictionary<string, object?> After)
+        BuildIdpImportDefinitionAuditSnapshots(object entity)
+    {
+        if (entity is not IdpStrategicOutcome && entity is not IdpStrategicObjective
+            && entity is not IdpDevelopmentPriority && entity is not IdpProgramme
+            && entity is not IdpProject && entity is not IdpKpi)
+            throw new ArgumentException("An IDP import-definition audit snapshot requires a governed IDP hierarchy or KPI entity.", nameof(entity));
+
+        ChangeTracker.DetectChanges();
+        var entry = Entry(entity);
+        var fields = entry.Properties.Where(property => property.IsModified
+                && property.Metadata.Name != nameof(IdpKpi.RowVersion))
+            .OrderBy(property => property.Metadata.Name, StringComparer.Ordinal)
+            .ToArray();
+        var before = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            [nameof(IdpKpi.PublicId)] = entry.OriginalValues[nameof(IdpKpi.PublicId)]
+        };
+        var after = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            [nameof(IdpKpi.PublicId)] = entry.CurrentValues[nameof(IdpKpi.PublicId)]
+        };
+        foreach (var property in fields)
+        {
+            var field = property.Metadata.Name;
+            var auditField = field is nameof(IdpKpi.ResponsibleDepartmentId) or nameof(IdpProject.DepartmentId)
+                ? "DepartmentPublicId" : field;
+            before[auditField] = auditField == "DepartmentPublicId"
+                ? ResolveAuditPublicId<Department>(property.OriginalValue) : property.OriginalValue;
+            after[auditField] = auditField == "DepartmentPublicId"
+                ? ResolveAuditPublicId<Department>(property.CurrentValue) : property.CurrentValue;
+        }
+        return (before, after);
+    }
+
+    private void RequireIdpImportUpdateAudit(EntityEntry entry, int planId, string importType)
     {
         var committedBatches = ChangeTracker.Entries<IdpImportBatch>()
             .Where(entry => entry.State == EntityState.Modified
@@ -5968,7 +6057,38 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .ToArray();
         if (committedBatches.Length != 1)
             throw new InvalidOperationException("IDP hierarchy and KPI definitions may be rewritten only by one governed import commit.");
-        RequireGovernanceAudit(entityName, publicId, committedBatches[0].MunicipalityId, "ImportUpdate");
+        var snapshots = BuildIdpImportDefinitionAuditSnapshots(entry.Entity);
+        var contextActor = _tenantContext?.UserId;
+        var batch = committedBatches[0];
+        var batchAction = string.Equals(importType, "HIERARCHY", StringComparison.OrdinalIgnoreCase)
+            ? "CommitHierarchy" : "Commit";
+        var batchSnapshots = BuildImportBatchAuditSnapshots(batch);
+        var batchAudits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == nameof(IdpImportBatch)
+            && candidate.Entity.EntityId == batch.PublicId.ToString()
+            && candidate.Entity.Action == batchAction
+            && candidate.Entity.MunicipalityId == batch.MunicipalityId
+            && candidate.Entity.ChangedBy == batch.CommittedByUserId
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && ExactSnapshotMatches(candidate.Entity.OldValue, batchSnapshots.Before)
+            && ExactSnapshotMatches(candidate.Entity.NewValue, batchSnapshots.After)).ToArray();
+        var entityName = entry.Metadata.ClrType.Name;
+        var publicId = entry.OriginalValues.GetValue<Guid>(nameof(IdpKpi.PublicId));
+        var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+            && candidate.Entity.EntityName == entityName
+            && candidate.Entity.EntityId == publicId.ToString()
+            && candidate.Entity.Action == "ImportUpdate"
+            && candidate.Entity.MunicipalityId == batch.MunicipalityId
+            && GovernanceActorMatches(candidate.Entity.ChangedBy, contextActor)
+            && GovernanceActorMatches(batch.CommittedByUserId, contextActor)
+            && candidate.Entity.ChangedBy == batch.CommittedByUserId
+            && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+            && batchAudits.Length == 1
+            && candidate.Entity.Reason == batchAudits[0].Entity.Reason
+            && ExactSnapshotMatches(candidate.Entity.OldValue, snapshots.Before)
+            && ExactSnapshotMatches(candidate.Entity.NewValue, snapshots.After)).ToArray();
+        if (audits.Length != 1)
+            throw new InvalidOperationException($"{entityName} ImportUpdate requires one exact actor-bound same-transaction before/after audit.");
     }
 
     private void EnforceEvidenceLifecycle()

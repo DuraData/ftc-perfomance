@@ -32,6 +32,103 @@ public class IdpImportControllerTests
     }
 
     [Fact]
+    public async Task Import_commit_rejects_forged_exact_snapshot_and_forged_persisted_actor()
+    {
+        const long municipalityId = 501;
+        const string expectedActorId = "importer";
+        await using var context = IdpTestFixture.CreateRelationalContext(
+            IdpTestFixture.Tenant(municipalityId, expectedActorId));
+        var setup = await SeedPlanAsync(context);
+        var forgedActor = IdpTestFixture.CreateUser("idp-import-forged-actor");
+        forgedActor.MunicipalityId = municipalityId;
+        context.Users.Add(forgedActor);
+        await context.SaveChangesAsync();
+        var controller = CreateController(context, setup.User, Mock.Of<IWorkflowGovernanceService>());
+        var staged = Payload(await controller.StageKpis(setup.Plan.PublicId, new StageIdpKpiImportRequest(
+            Guid.NewGuid(), "exact-audit.csv", [Row(2, setup.Project.ProjectCode, "NEW-EXACT", "Exact audit KPI")])));
+
+        context.ChangeTracker.Clear();
+        var batch = await context.IdpImportBatches.SingleAsync(item => item.PublicId == staged.PublicId);
+        batch.Status = IdpImportBatchStatus.Committed;
+        batch.CommittedAt = DateTime.UtcNow;
+        batch.CommittedByUserId = expectedActorId;
+        var snapshots = context.BuildImportBatchAuditSnapshots(batch);
+        var forgedAfter = snapshots.After.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        forgedAfter[nameof(IdpImportBatch.Status)] = IdpImportBatchStatus.Staged;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId, EntityName = nameof(IdpImportBatch), EntityId = batch.PublicId.ToString(),
+            Action = "Commit", OldValue = System.Text.Json.JsonSerializer.Serialize(snapshots.Before),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(forgedAfter), ChangedBy = expectedActorId,
+            Reason = "Forged snapshot"
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("IdpImportBatch Commit requires one exact actor-bound same-transaction reasoned before/after audit evidence.*");
+
+        context.ChangeTracker.Clear();
+        batch = await context.IdpImportBatches.SingleAsync(item => item.PublicId == staged.PublicId);
+        batch.Status = IdpImportBatchStatus.Committed;
+        batch.CommittedAt = DateTime.UtcNow;
+        batch.CommittedByUserId = expectedActorId;
+        snapshots = context.BuildImportBatchAuditSnapshots(batch);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId, EntityName = nameof(IdpImportBatch), EntityId = batch.PublicId.ToString(),
+            Action = "Commit", OldValue = System.Text.Json.JsonSerializer.Serialize(snapshots.Before),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(snapshots.After), ChangedBy = forgedActor.Id,
+            Reason = "Forged actor"
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("IdpImportBatch Commit requires one exact actor-bound same-transaction reasoned before/after audit evidence.*");
+    }
+
+    [Fact]
+    public async Task Imported_definition_update_rejects_forged_exact_snapshot()
+    {
+        const long municipalityId = 501;
+        const string actorId = "importer";
+        await using var context = IdpTestFixture.CreateRelationalContext(
+            IdpTestFixture.Tenant(municipalityId, actorId));
+        var setup = await SeedPlanAsync(context);
+        var controller = CreateController(context, setup.User, Mock.Of<IWorkflowGovernanceService>());
+        var staged = Payload(await controller.StageKpis(setup.Plan.PublicId, new StageIdpKpiImportRequest(
+            Guid.NewGuid(), "definition-audit.csv", [Row(2, setup.Project.ProjectCode, "CHANGE-1", "Changed KPI", annualTarget: 99)])));
+
+        context.ChangeTracker.Clear();
+        var batch = await context.IdpImportBatches.SingleAsync(item => item.PublicId == staged.PublicId);
+        batch.Status = IdpImportBatchStatus.Committed;
+        batch.CommittedAt = DateTime.UtcNow;
+        batch.CommittedByUserId = actorId;
+        var batchSnapshots = context.BuildImportBatchAuditSnapshots(batch);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId, EntityName = nameof(IdpImportBatch), EntityId = batch.PublicId.ToString(),
+            Action = "Commit", OldValue = System.Text.Json.JsonSerializer.Serialize(batchSnapshots.Before),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(batchSnapshots.After), ChangedBy = actorId,
+            Reason = "Governed import"
+        });
+        var kpi = await context.IdpKpis
+            .Include(item => item.IdpProject).ThenInclude(item => item.IdpProgramme)
+            .ThenInclude(item => item.IdpDevelopmentPriority).ThenInclude(item => item.IdpStrategicObjective)
+            .ThenInclude(item => item.IdpStrategicOutcome)
+            .SingleAsync(item => item.KpiCode == "CHANGE-1");
+        kpi.AnnualTarget = 99;
+        var definitionSnapshots = context.BuildIdpImportDefinitionAuditSnapshots(kpi);
+        var forgedAfter = definitionSnapshots.After.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        forgedAfter[nameof(IdpKpi.AnnualTarget)] = 100m;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId, EntityName = nameof(IdpKpi), EntityId = kpi.PublicId.ToString(),
+            Action = "ImportUpdate", OldValue = System.Text.Json.JsonSerializer.Serialize(definitionSnapshots.Before),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(forgedAfter), ChangedBy = actorId,
+            Reason = "Forged definition snapshot"
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("IdpKpi ImportUpdate requires one exact actor-bound same-transaction before/after audit.*");
+    }
+
+    [Fact]
     public async Task StageKpis_ClassifiesEveryRow_AndBlocksInvalidBatchCommit()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
