@@ -3746,14 +3746,26 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             var requiresAdministrationAudit = governedProfileFields.Length > 0 || changed.Any(metadataFields.Contains);
             if (requiresAdministrationAudit)
             {
+                if (!changed.Contains(nameof(ApplicationUser.UpdatedAt)))
+                    throw new InvalidOperationException("Application-user governed changes require actor and timestamp metadata in the same transaction.");
+                var updatedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(ApplicationUser.UpdatedAt));
+                var updatedBy = entry.CurrentValues.GetValue<string?>(nameof(ApplicationUser.UpdatedBy));
+                var originalUpdatedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(ApplicationUser.UpdatedAt));
+                if (!updatedAt.HasValue || string.IsNullOrWhiteSpace(updatedBy)
+                    || originalUpdatedAt.HasValue && updatedAt <= originalUpdatedAt)
+                    throw new InvalidOperationException("Application-user governed changes require monotonic actor and timestamp metadata.");
+                var allowedActions = governedProfileFields.Length > 0
+                    ? new HashSet<string>(["Update", "ProfileUpdate", "Enable", "Disable", "Delete"], StringComparer.Ordinal)
+                    : new HashSet<string>(["Update", "ProfileUpdate", "Enable", "Disable", "Delete", "AssignRoles", "RemoveRole", "UpdateScopes", "UpdateAssignments"], StringComparer.Ordinal);
                 var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
                     && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
                     && candidate.Entity.EntityName == nameof(ApplicationUser)
                     && candidate.Entity.EntityId == entry.Entity.PublicId.ToString()
-                    && !string.IsNullOrWhiteSpace(candidate.Entity.Action)
+                    && allowedActions.Contains(candidate.Entity.Action)
+                    && candidate.Entity.ChangedBy == updatedBy
+                    && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+                    && candidate.Entity.ChangedAt == updatedAt.Value
                     && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
-                    && (!changed.Contains(nameof(ApplicationUser.UpdatedBy))
-                        || candidate.Entity.ChangedBy == entry.Entity.UpdatedBy)
                     && (governedProfileFields.Length == 0
                         || ApplicationUserSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, governedProfileFields)
                             && ApplicationUserSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, governedProfileFields))).ToArray();

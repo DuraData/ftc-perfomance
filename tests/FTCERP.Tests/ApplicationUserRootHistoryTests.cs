@@ -99,6 +99,28 @@ public sealed class ApplicationUserRootHistoryTests
     }
 
     [Fact]
+    public async Task Application_user_profile_rejects_an_exact_audit_from_a_different_context_actor()
+    {
+        var municipality = Municipality();
+        var contextActor = User("profile-context-actor", municipality);
+        await using var context = IdpTestFixture.CreateRelationalContext(
+            IdpTestFixture.Tenant(null, contextActor.Id, true));
+        var forgedActor = User("profile-different-actor", municipality);
+        var user = User("profile-context-target", municipality);
+        context.AddRange(municipality, contextActor, forgedActor, user);
+        await context.SaveChangesAsync();
+
+        var before = user.FirstName;
+        user.FirstName = "Governed value";
+        user.UpdatedAt = DateTime.UtcNow;
+        user.UpdatedBy = forgedActor.Id;
+        context.AuditTrails.Add(Audit(user, forgedActor, "Update", new { FirstName = before }, new { user.FirstName }));
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Application-user profile, lifecycle and administration changes require one exact same-transaction reasoned audit*");
+    }
+
+    [Fact]
     public async Task Application_user_password_remediation_requires_exact_authentication_audit()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -215,7 +237,7 @@ public sealed class ApplicationUserRootHistoryTests
         OldValue = System.Text.Json.JsonSerializer.Serialize(oldValue),
         NewValue = System.Text.Json.JsonSerializer.Serialize(newValue),
         ChangedBy = actor.Id,
-        ChangedAt = DateTime.UtcNow,
+        ChangedAt = user.UpdatedAt ?? DateTime.UtcNow,
         Reason = "Authorized user administration change."
     };
 }

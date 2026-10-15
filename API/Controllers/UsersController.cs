@@ -804,7 +804,7 @@ public class UsersController : ControllerBase
             OldValue = oldValue == null ? null : JsonSerializer.Serialize(oldValue),
             NewValue = newValue == null ? null : JsonSerializer.Serialize(newValue),
             ChangedBy = actorId,
-            ChangedAt = DateTime.UtcNow,
+            ChangedAt = user.UpdatedAt ?? DateTime.UtcNow,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent = Request.Headers.UserAgent.ToString(),
             CorrelationId = HttpContext.TraceIdentifier,

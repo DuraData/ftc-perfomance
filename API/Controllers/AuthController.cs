@@ -506,7 +506,7 @@ public class AuthController : ControllerBase
             OldValue = oldValue == null ? null : JsonSerializer.Serialize(oldValue),
             NewValue = newValue == null ? null : JsonSerializer.Serialize(newValue),
             ChangedBy = user.Id,
-            ChangedAt = DateTime.UtcNow,
+            ChangedAt = user.UpdatedAt ?? DateTime.UtcNow,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
             CorrelationId = HttpContext.TraceIdentifier,
             Reason = reason,
