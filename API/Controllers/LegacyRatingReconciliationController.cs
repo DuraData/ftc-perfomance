@@ -140,9 +140,9 @@ public sealed class LegacyRatingReconciliationController(
             CorrelationId = HttpContext.TraceIdentifier[..Math.Min(100, HttpContext.TraceIdentifier.Length)]
         };
         context.LegacySubmissionRatingReconciliations.Add(reconciliation);
-        governance.QueueAuditTrail(nameof(LegacySubmissionRatingReconciliation), reconciliation.PublicId.ToString(), "Reconcile",
+        governance.QueueAuditTrailAt(nameof(LegacySubmissionRatingReconciliation), reconciliation.PublicId.ToString(), "Reconcile",
             null, new { source.SubmissionPublicId, source.SourceKind, source.SourceKey, source.Score, WorkflowActionPublicId = action.PublicId, StagePublicId = action.FromStage.PublicId, RatingValuePublicId = value.PublicId, UsedExistingRating = usedExisting },
-            actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
+            actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason, reconciliation.ReconciledAt);
         try
         {
             await context.SaveChangesAsync();

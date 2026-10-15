@@ -148,19 +148,7 @@ public sealed class LegacyRatingReconciliationControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var setup = await Seed(context, includeWrongActorAction: true);
         context.ChangeTracker.Clear();
-        var existing = new SubmissionStageRating
-        {
-            MunicipalityId = setup.Municipality.Id,
-            SubmissionWorkflowInstanceId = setup.Instance.Id,
-            SubmissionWorkflowActionId = setup.Action.Id,
-            WorkflowStageDefinitionId = setup.Stage.Id,
-            RatingSchemeId = setup.Scheme.Id,
-            RatingSchemeValueId = setup.RatingValue.Id,
-            Value = 4m,
-            LabelSnapshot = setup.RatingValue.Label,
-            RatedByUserId = setup.Actor.Id,
-            RatedAt = setup.Action.OccurredAt
-        };
+        var existingPublicId = Guid.NewGuid();
         var generic = new SubmissionScore
         {
             MunicipalityId = setup.Municipality.Id,
@@ -171,12 +159,20 @@ public sealed class LegacyRatingReconciliationControllerTests
             ScoredByUserId = setup.Actor.Id,
             ScoredAt = setup.Action.OccurredAt
         };
-        context.Add(existing);
         new WorkflowGovernanceService(context,
                 tenantContext: IdpTestFixture.Tenant(setup.Municipality.Id, setup.Actor.Id))
             .QueueAuditTrail(nameof(OpmsSubmission), setup.Submission.Id, "Score", null,
                 new { generic.Score, generic.Notes }, setup.Actor.Id, "127.0.0.1", "Seed preserved historical score evidence.");
         await context.SaveChangesAsync();
+        await context.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO SubmissionStageRatings
+                (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, SubmissionWorkflowActionId,
+                 WorkflowStageDefinitionId, RatingSchemeId, RatingSchemeValueId, Value, LabelSnapshot,
+                 AchievementPercent, Comment, RatedByUserId, RatedAt, CorrelationId)
+            VALUES ({existingPublicId}, {setup.Municipality.Id}, {setup.Instance.Id}, {setup.Action.Id},
+                 {setup.Stage.Id}, {setup.Scheme.Id}, {setup.RatingValue.Id}, {4m}, {setup.RatingValue.Label},
+                 NULL, NULL, {setup.Actor.Id}, {setup.Action.OccurredAt}, {"historic-existing-rating"})");
+        var existing = await context.SubmissionStageRatings.SingleAsync(item => item.PublicId == existingPublicId);
         var submissionKind = (int)generic.SubmissionKind;
         await context.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO SubmissionScores
@@ -248,7 +244,7 @@ public sealed class LegacyRatingReconciliationControllerTests
         var otherActor = IdpTestFixture.CreateUser("unrelated-reviewer", "Unrelated", "Reviewer");
         var financialYear = new FinancialYear
         {
-            Code = "2038/39", Name = "2038/39", StartDate = new(2038, 7, 1), EndDate = new(2039, 6, 30)
+            Code = "2024/25", Name = "2024/25", StartDate = new(2024, 7, 1), EndDate = new(2025, 6, 30)
         };
         administrator.Municipality = municipality;
         actor.Municipality = municipality;
@@ -295,10 +291,10 @@ public sealed class LegacyRatingReconciliationControllerTests
             BaseState = SubmissionBaseStates.Submitted,
             Status = "verified",
             SubmittedByUserId = actor.Id,
-            SubmittedAt = new DateTime(2038, 8, 1, 8, 0, 0, DateTimeKind.Utc),
+            SubmittedAt = new DateTime(2024, 8, 1, 8, 0, 0, DateTimeKind.Utc),
             VerifierScore = 4m,
             VerifierUserId = actor.Id,
-            VerifiedAt = new DateTime(2038, 8, 2, 9, 30, 0, DateTimeKind.Utc),
+            VerifiedAt = new DateTime(2024, 8, 2, 9, 30, 0, DateTimeKind.Utc),
             VerifierComments = "Historical verifier comment"
         };
         var workflow = new WorkflowDefinition
@@ -340,27 +336,12 @@ public sealed class LegacyRatingReconciliationControllerTests
         context.SubmissionWorkflowInstances.Add(instance);
         await context.SaveChangesAsync();
         var occurredAt = submission.VerifiedAt!.Value;
-        var action = new SubmissionWorkflowAction
-        {
-            MunicipalityId = municipality.Id,
-            SubmissionWorkflowInstanceId = instance.Id,
-            SubmissionWorkflowInstance = instance,
-            Sequence = 1,
-            FromStageId = stage.Id,
-            FromStage = stage,
-            ActionCode = "VERIFY",
-            Outcome = WorkflowActionOutcome.Approve,
-            ActorUserId = actor.Id,
-            ActorUser = actor,
-            OccurredAt = occurredAt
-        };
-        context.SubmissionWorkflowActions.Add(action);
-        SubmissionWorkflowAction? conflictingAction = null;
+        WorkflowStageDefinition? otherStage = null;
         if (includeConflictingAction)
         {
             var otherScheme = new RatingScheme { MunicipalityId = municipality.Id, Code = "OTHER", Name = "Other scheme" };
             otherScheme.Values.Add(new RatingSchemeValue { MunicipalityId = municipality.Id, Value = 3m, Label = "Other", SortOrder = 1 });
-            var otherStage = new WorkflowStageDefinition
+            otherStage = new WorkflowStageDefinition
             {
                 MunicipalityId = municipality.Id,
                 WorkflowDefinition = workflow,
@@ -372,38 +353,47 @@ public sealed class LegacyRatingReconciliationControllerTests
                 RequiresRating = true,
                 RatingScheme = otherScheme
             };
-            conflictingAction = new SubmissionWorkflowAction
-            {
-                MunicipalityId = municipality.Id,
-                SubmissionWorkflowInstance = instance,
-                Sequence = 2,
-                FromStage = otherStage,
-                ActionCode = "OTHER",
-                Outcome = WorkflowActionOutcome.Approve,
-                ActorUserId = actor.Id,
-                ActorUser = actor,
-                OccurredAt = occurredAt.AddMinutes(1)
-            };
-            context.AddRange(otherScheme, otherStage, conflictingAction);
+            context.AddRange(otherScheme, otherStage);
+            await context.SaveChangesAsync();
         }
-        SubmissionWorkflowAction? wrongActorAction = null;
+
+        var actionPublicId = Guid.NewGuid();
+        await context.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO SubmissionWorkflowActions
+                (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, Sequence, FromStageId, ToStageId,
+                 ActionCode, Outcome, ActorUserId, Comment, RatingValue, CorrelationId, OccurredAt)
+            VALUES ({actionPublicId}, {municipality.Id}, {instance.Id}, 1, {stage.Id}, NULL,
+                 {"VERIFY"}, {(int)WorkflowActionOutcome.Approve}, {actor.Id}, {submission.VerifierComments}, NULL,
+                 {"historic-legacy-rating"}, {occurredAt})");
+        Guid? conflictingPublicId = null;
+        if (otherStage != null)
+        {
+            conflictingPublicId = Guid.NewGuid();
+            await context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO SubmissionWorkflowActions
+                    (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, Sequence, FromStageId, ToStageId,
+                     ActionCode, Outcome, ActorUserId, Comment, RatingValue, CorrelationId, OccurredAt)
+                VALUES ({conflictingPublicId.Value}, {municipality.Id}, {instance.Id}, 2, {otherStage.Id}, NULL,
+                     {"OTHER"}, {(int)WorkflowActionOutcome.Approve}, {actor.Id}, NULL, NULL,
+                     {"historic-conflicting-rating"}, {occurredAt.AddMinutes(1)})");
+        }
+        Guid? wrongActorPublicId = null;
         if (includeWrongActorAction)
         {
-            wrongActorAction = new SubmissionWorkflowAction
-            {
-                MunicipalityId = municipality.Id,
-                SubmissionWorkflowInstance = instance,
-                Sequence = 3,
-                FromStage = stage,
-                ActionCode = "VERIFY-WRONG-ACTOR",
-                Outcome = WorkflowActionOutcome.Approve,
-                ActorUserId = otherActor.Id,
-                ActorUser = otherActor,
-                OccurredAt = occurredAt.AddMinutes(2)
-            };
-            context.Add(wrongActorAction);
+            wrongActorPublicId = Guid.NewGuid();
+            await context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO SubmissionWorkflowActions
+                    (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, Sequence, FromStageId, ToStageId,
+                     ActionCode, Outcome, ActorUserId, Comment, RatingValue, CorrelationId, OccurredAt)
+                VALUES ({wrongActorPublicId.Value}, {municipality.Id}, {instance.Id}, 3, {stage.Id}, NULL,
+                     {"VERIFY-WRONG-ACTOR"}, {(int)WorkflowActionOutcome.Approve}, {otherActor.Id}, NULL, NULL,
+                     {"historic-wrong-actor-rating"}, {occurredAt.AddMinutes(2)})");
         }
-        await context.SaveChangesAsync();
+        var action = await context.SubmissionWorkflowActions.SingleAsync(item => item.PublicId == actionPublicId);
+        var conflictingAction = conflictingPublicId.HasValue
+            ? await context.SubmissionWorkflowActions.SingleAsync(item => item.PublicId == conflictingPublicId.Value) : null;
+        var wrongActorAction = wrongActorPublicId.HasValue
+            ? await context.SubmissionWorkflowActions.SingleAsync(item => item.PublicId == wrongActorPublicId.Value) : null;
         return new(municipality, administrator, actor, submission, workflow, stage, scheme, ratingValue,
             instance, action, conflictingAction, wrongActorAction);
     }

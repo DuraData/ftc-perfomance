@@ -284,12 +284,12 @@ public sealed class InternalAuditAssessmentsController(
             };
             context.PerformanceRfis.Add(rfi);
             entity.PerformanceRfi = rfi;
-            context.SubmissionWorkflowActions.Add(NewAction(loaded.Instance, permissionCode, WorkflowActionOutcome.RaiseRfi, user.Id, entity.DetailedObservation));
+            context.SubmissionWorkflowActions.Add(NewAction(loaded.Instance, permissionCode, WorkflowActionOutcome.RaiseRfi, user.Id, entity.DetailedObservation, now));
             governance.QueueWorkflowNotifications(loaded.Recipients, NotificationType.InternalAuditRfi, "Internal Audit RFI raised", $"Internal Audit raised an RFI for {kind} submission '{submissionId}'.", kind + "Submission", submissionId);
         }
         context.InternalAuditAssessments.Add(entity);
-        var auditAction = NewAction(loaded.Instance, request.Outcome is InternalAuditAssessmentOutcome.Achieved or InternalAuditAssessmentOutcome.Satisfactory ? "AUDIT_ACCEPTED" : "AUDIT_REJECTED", WorkflowActionOutcome.Complete, user.Id, entity.DetailedObservation);
-        auditAction.RatingValue = effectiveScore;
+        var auditAction = NewAction(loaded.Instance, request.Outcome is InternalAuditAssessmentOutcome.Achieved or InternalAuditAssessmentOutcome.Satisfactory ? "AUDIT_ACCEPTED" : "AUDIT_REJECTED", WorkflowActionOutcome.Complete, user.Id, entity.DetailedObservation, now);
+        auditAction.RatingValue = ratingValue?.Value;
         context.SubmissionWorkflowActions.Add(auditAction);
         if (ratingValue != null && auditStage?.RatingScheme != null)
             context.SubmissionStageRatings.Add(new SubmissionStageRating
@@ -382,11 +382,11 @@ public sealed class InternalAuditAssessmentsController(
             new[] { owner, submitter }.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
     }
 
-    private SubmissionWorkflowAction NewAction(SubmissionWorkflowInstance instance, string code, WorkflowActionOutcome outcome, string userId, string comment) => new()
+    private SubmissionWorkflowAction NewAction(SubmissionWorkflowInstance instance, string code, WorkflowActionOutcome outcome, string userId, string comment, DateTime occurredAt) => new()
     {
         MunicipalityId = tenantContext.MunicipalityId!.Value, SubmissionWorkflowInstanceId = instance.Id, SubmissionWorkflowInstance = instance,
         Sequence = instance.NextSequence++, FromStageId = instance.CurrentStageId, ToStageId = instance.CurrentStageId, ActionCode = code,
-        Outcome = outcome, ActorUserId = userId, Comment = comment, CorrelationId = HttpContext.TraceIdentifier
+        Outcome = outcome, ActorUserId = userId, Comment = comment, CorrelationId = HttpContext.TraceIdentifier, OccurredAt = occurredAt
     };
 
     private async Task<ApplicationUser?> CurrentUser() { var id = User.FindFirstValue(ClaimTypes.NameIdentifier); return id == null ? null : await userManager.FindByIdAsync(id); }

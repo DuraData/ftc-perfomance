@@ -453,50 +453,46 @@ public sealed class WorkflowConfigurationControllerTests
         context.AddRange(instance, otherInstance);
         await context.SaveChangesAsync();
         var occurredAt = new DateTime(2033, 8, 1, 0, 0, 0, DateTimeKind.Utc);
-        var actions = new List<SubmissionWorkflowAction>();
+        var actionPublicIds = new List<Guid>();
         for (var index = 0; index < 21; index++)
         {
-            var action = new SubmissionWorkflowAction
-            {
-                MunicipalityId = municipality.Id,
-                SubmissionWorkflowInstanceId = instance.Id,
-                SubmissionWorkflowInstance = instance,
-                Sequence = index + 1,
-                ActionCode = $"MATCH-ACTION-{index:00}",
-                Outcome = WorkflowActionOutcome.Approve,
-                ActorUserId = user.Id,
-                Comment = $"match-comment-{index:00}",
-                OccurredAt = occurredAt.AddMinutes(index)
-            };
-            actions.Add(action);
-            context.SubmissionWorkflowActions.Add(action);
+            var publicId = Guid.NewGuid();
+            actionPublicIds.Add(publicId);
+            await context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO SubmissionWorkflowActions
+                    (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, Sequence, FromStageId, ToStageId,
+                     ActionCode, Outcome, ActorUserId, Comment, RatingValue, CorrelationId, OccurredAt)
+                VALUES ({publicId}, {municipality.Id}, {instance.Id}, {index + 1}, NULL, NULL,
+                     {$"MATCH-ACTION-{index:00}"}, {(int)WorkflowActionOutcome.Approve}, {user.Id}, {$"match-comment-{index:00}"}, {value.Value}, {$"historic-action-{index:00}"}, {occurredAt.AddMinutes(index)})");
         }
-        var outsideAction = new SubmissionWorkflowAction { MunicipalityId = municipality.Id, SubmissionWorkflowInstanceId = otherInstance.Id, SubmissionWorkflowInstance = otherInstance, Sequence = 1, ActionCode = "MATCH-OUTSIDE", Outcome = WorkflowActionOutcome.Approve, ActorUserId = user.Id, OccurredAt = occurredAt };
-        context.SubmissionWorkflowActions.Add(outsideAction);
-        await context.SaveChangesAsync();
+        var outsidePublicId = Guid.NewGuid();
+        await context.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO SubmissionWorkflowActions
+                (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, Sequence, FromStageId, ToStageId,
+                 ActionCode, Outcome, ActorUserId, Comment, RatingValue, CorrelationId, OccurredAt)
+            VALUES ({outsidePublicId}, {municipality.Id}, {otherInstance.Id}, 1, NULL, NULL,
+                 {"MATCH-OUTSIDE"}, {(int)WorkflowActionOutcome.Approve}, {user.Id}, NULL, {value.Value}, {"historic-action-outside"}, {occurredAt})");
+        var actions = await context.SubmissionWorkflowActions.Where(item => actionPublicIds.Contains(item.PublicId)).OrderBy(item => item.Sequence).ToListAsync();
+        var outsideAction = await context.SubmissionWorkflowActions.SingleAsync(item => item.PublicId == outsidePublicId);
         for (var index = 0; index < actions.Count; index++)
         {
-            context.SubmissionStageRatings.Add(new SubmissionStageRating
-            {
-                MunicipalityId = municipality.Id,
-                SubmissionWorkflowInstanceId = instance.Id,
-                SubmissionWorkflowInstance = instance,
-                SubmissionWorkflowActionId = actions[index].Id,
-                SubmissionWorkflowAction = actions[index],
-                WorkflowStageDefinitionId = stage.Id,
-                WorkflowStageDefinition = stage,
-                RatingSchemeId = scheme.Id,
-                RatingScheme = scheme,
-                RatingSchemeValueId = value.Id,
-                RatingSchemeValue = value,
-                Value = value.Value,
-                LabelSnapshot = $"match-label-{index:00}",
-                RatedByUserId = user.Id,
-                RatedAt = occurredAt.AddMinutes(index)
-            });
+            await context.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO SubmissionStageRatings
+                    (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, SubmissionWorkflowActionId,
+                     WorkflowStageDefinitionId, RatingSchemeId, RatingSchemeValueId, Value, LabelSnapshot,
+                     AchievementPercent, Comment, RatedByUserId, RatedAt, CorrelationId)
+                VALUES ({Guid.NewGuid()}, {municipality.Id}, {instance.Id}, {actions[index].Id},
+                     {stage.Id}, {scheme.Id}, {value.Id}, {value.Value}, {$"match-label-{index:00}"},
+                     NULL, NULL, {user.Id}, {occurredAt.AddMinutes(index)}, {$"historic-rating-{index:00}"})");
         }
-        context.SubmissionStageRatings.Add(new SubmissionStageRating { MunicipalityId = municipality.Id, SubmissionWorkflowInstanceId = otherInstance.Id, SubmissionWorkflowInstance = otherInstance, SubmissionWorkflowActionId = outsideAction.Id, SubmissionWorkflowAction = outsideAction, WorkflowStageDefinitionId = stage.Id, WorkflowStageDefinition = stage, RatingSchemeId = scheme.Id, RatingScheme = scheme, RatingSchemeValueId = value.Id, RatingSchemeValue = value, Value = value.Value, LabelSnapshot = "match-outside", RatedByUserId = user.Id, RatedAt = occurredAt });
-        await context.SaveChangesAsync();
+        await context.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO SubmissionStageRatings
+                (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, SubmissionWorkflowActionId,
+                 WorkflowStageDefinitionId, RatingSchemeId, RatingSchemeValueId, Value, LabelSnapshot,
+                 AchievementPercent, Comment, RatedByUserId, RatedAt, CorrelationId)
+            VALUES ({Guid.NewGuid()}, {municipality.Id}, {otherInstance.Id}, {outsideAction.Id},
+                 {stage.Id}, {scheme.Id}, {value.Id}, {value.Value}, {"match-outside"},
+                 NULL, NULL, {user.Id}, {occurredAt}, {"historic-rating-outside"})");
 
         var controller = Controller(context, municipality.Id, user);
         var actionResult = await controller.HistoryPage(SubmissionKind.Opms, submission.PublicId.ToString(),

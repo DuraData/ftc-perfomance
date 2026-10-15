@@ -2737,6 +2737,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Submission stage rating history is append-only.");
         if (ChangeTracker.Entries<LegacySubmissionRatingReconciliation>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Legacy submission rating reconciliation evidence is append-only.");
+        EnforceSubmissionWorkflowLedgerCreation();
         if (ChangeTracker.Entries<LegacySubmissionPeriodReconciliation>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Legacy submission period reconciliation evidence is append-only.");
         if (ChangeTracker.Entries<LegacyTenantOwnershipReconciliation>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
@@ -7156,6 +7157,260 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || !exactLifecycleWrite)
                 throw new InvalidOperationException("RFI evidence creation requires an exact same-transaction lifecycle action, actor, tenant, submission and released governed POE record.");
         }
+    }
+
+    private void EnforceSubmissionWorkflowLedgerCreation()
+    {
+        var addedActions = ChangeTracker.Entries<SubmissionWorkflowAction>()
+            .Where(entry => entry.State == EntityState.Added).Select(entry => entry.Entity).ToArray();
+        var addedRatings = ChangeTracker.Entries<SubmissionStageRating>()
+            .Where(entry => entry.State == EntityState.Added).Select(entry => entry.Entity).ToArray();
+        var addedReconciliations = ChangeTracker.Entries<LegacySubmissionRatingReconciliation>()
+            .Where(entry => entry.State == EntityState.Added).Select(entry => entry.Entity).ToArray();
+        if (addedActions.Length == 0 && addedRatings.Length == 0 && addedReconciliations.Length == 0) return;
+
+        SubmissionWorkflowInstance? ResolveInstance(long id, SubmissionWorkflowInstance? navigation = null)
+        {
+            var tracked = ChangeTracker.Entries<SubmissionWorkflowInstance>()
+                .Where(entry => entry.State != EntityState.Deleted
+                    && (navigation != null && ReferenceEquals(entry.Entity, navigation)
+                        || id != 0 && entry.Entity.Id == id))
+                .Select(entry => entry.Entity).SingleOrDefault();
+            return tracked ?? (id == 0 ? null : SubmissionWorkflowInstances.IgnoreQueryFilters().AsNoTracking()
+                .SingleOrDefault(item => item.Id == id));
+        }
+
+        WorkflowStageDefinition? ResolveStage(long? id, WorkflowStageDefinition? navigation = null)
+        {
+            if (!id.HasValue && navigation == null) return null;
+            var tracked = ChangeTracker.Entries<WorkflowStageDefinition>()
+                .Where(entry => entry.State != EntityState.Deleted
+                    && (navigation != null && ReferenceEquals(entry.Entity, navigation)
+                        || id.HasValue && id.Value != 0 && entry.Entity.Id == id.Value))
+                .Select(entry => entry.Entity).SingleOrDefault();
+            return tracked ?? (!id.HasValue || id.Value == 0 ? null : WorkflowStageDefinitions.IgnoreQueryFilters().AsNoTracking()
+                .SingleOrDefault(item => item.Id == id.Value));
+        }
+
+        RatingScheme? ResolveScheme(long id, RatingScheme? navigation = null)
+        {
+            var tracked = ChangeTracker.Entries<RatingScheme>()
+                .Where(entry => entry.State != EntityState.Deleted
+                    && (navigation != null && ReferenceEquals(entry.Entity, navigation)
+                        || id != 0 && entry.Entity.Id == id))
+                .Select(entry => entry.Entity).SingleOrDefault();
+            return tracked ?? (id == 0 ? null : RatingSchemes.IgnoreQueryFilters().AsNoTracking()
+                .SingleOrDefault(item => item.Id == id));
+        }
+
+        RatingSchemeValue? ResolveValue(long id, RatingSchemeValue? navigation = null)
+        {
+            var tracked = ChangeTracker.Entries<RatingSchemeValue>()
+                .Where(entry => entry.State != EntityState.Deleted
+                    && (navigation != null && ReferenceEquals(entry.Entity, navigation)
+                        || id != 0 && entry.Entity.Id == id))
+                .Select(entry => entry.Entity).SingleOrDefault();
+            return tracked ?? (id == 0 ? null : RatingSchemeValues.IgnoreQueryFilters().AsNoTracking()
+                .SingleOrDefault(item => item.Id == id));
+        }
+
+        ApplicationUser? ResolveActor(string id)
+        {
+            var tracked = ChangeTracker.Entries<ApplicationUser>()
+                .Where(entry => entry.State != EntityState.Deleted && entry.Entity.Id == id)
+                .Select(entry => entry.Entity).SingleOrDefault();
+            return tracked ?? Users.IgnoreQueryFilters().AsNoTracking().SingleOrDefault(item => item.Id == id);
+        }
+
+        SubmissionWorkflowAction? ResolveAction(SubmissionStageRating rating)
+        {
+            var tracked = ChangeTracker.Entries<SubmissionWorkflowAction>()
+                .Where(entry => entry.State != EntityState.Deleted
+                    && (ReferenceEquals(entry.Entity, rating.SubmissionWorkflowAction)
+                        || rating.SubmissionWorkflowActionId != 0 && entry.Entity.Id == rating.SubmissionWorkflowActionId))
+                .Select(entry => entry.Entity).SingleOrDefault();
+            return tracked ?? (rating.SubmissionWorkflowActionId == 0 ? null : SubmissionWorkflowActions.IgnoreQueryFilters().AsNoTracking()
+                .SingleOrDefault(item => item.Id == rating.SubmissionWorkflowActionId));
+        }
+
+        foreach (var action in addedActions)
+        {
+            var instance = ResolveInstance(action.SubmissionWorkflowInstanceId, action.SubmissionWorkflowInstance);
+            var actor = ResolveActor(action.ActorUserId);
+            var from = ResolveStage(action.FromStageId, action.FromStage);
+            var to = ResolveStage(action.ToStageId, action.ToStage);
+            var instanceEntry = instance == null ? null : ChangeTracker.Entries<SubmissionWorkflowInstance>()
+                .SingleOrDefault(entry => entry.State != EntityState.Deleted && ReferenceEquals(entry.Entity, instance));
+
+            if (action.PublicId == Guid.Empty || action.MunicipalityId <= 0 || action.Sequence <= 0
+                || string.IsNullOrWhiteSpace(action.ActionCode) || action.ActionCode.Length > 100
+                || !Enum.IsDefined(action.Outcome) || string.IsNullOrWhiteSpace(action.ActorUserId)
+                || action.OccurredAt == default || action.OccurredAt > DateTime.UtcNow.AddMinutes(5)
+                || string.IsNullOrWhiteSpace(action.CorrelationId) || action.CorrelationId.Length > 100
+                || instance == null || Database.IsRelational() && actor == null
+                || instanceEntry?.State is not (EntityState.Added or EntityState.Modified)
+                || action.SubmissionWorkflowInstanceId != 0 && instance.Id != 0 && action.SubmissionWorkflowInstanceId != instance.Id
+                || instance.MunicipalityId != action.MunicipalityId
+                || actor != null && actor.MunicipalityId.HasValue && actor.MunicipalityId != action.MunicipalityId
+                || action.OccurredAt < instance.StartedAt
+                || action.FromStageId.HasValue && (from == null || from.MunicipalityId != action.MunicipalityId || from.WorkflowDefinitionId != instance.WorkflowDefinitionId)
+                || action.ToStageId.HasValue && (to == null || to.MunicipalityId != action.MunicipalityId || to.WorkflowDefinitionId != instance.WorkflowDefinitionId))
+                throw new InvalidOperationException("Workflow action creation requires an exact tracked lifecycle advance, canonical actor, tenant, stage, sequence, timestamp and correlation identity.");
+
+            var pairedRatings = addedRatings.Count(rating => ReferenceEquals(rating.SubmissionWorkflowAction, action)
+                || action.Id != 0 && rating.SubmissionWorkflowActionId == action.Id);
+            if (action.RatingValue.HasValue != (pairedRatings == 1))
+                throw new InvalidOperationException("A workflow action rating value requires exactly one canonical stage-rating record in the same unit of work.");
+        }
+
+        foreach (var instanceEntry in ChangeTracker.Entries<SubmissionWorkflowInstance>().Where(entry => entry.State == EntityState.Added))
+        {
+            var instance = instanceEntry.Entity;
+            var actions = addedActions.Where(action => ReferenceEquals(action.SubmissionWorkflowInstance, instance)
+                    || instance.Id != 0 && action.SubmissionWorkflowInstanceId == instance.Id)
+                .OrderBy(action => action.Sequence).ToArray();
+            if (actions.Length > 0 && (instance.NextSequence != actions.Length + 1
+                || !actions.Select(action => action.Sequence).SequenceEqual(Enumerable.Range(1, actions.Length))))
+                throw new InvalidOperationException("A new workflow instance must append a contiguous action sequence beginning at one.");
+        }
+
+        foreach (var rating in addedRatings)
+        {
+            var instance = ResolveInstance(rating.SubmissionWorkflowInstanceId, rating.SubmissionWorkflowInstance);
+            var action = ResolveAction(rating);
+            var stage = ResolveStage(rating.WorkflowStageDefinitionId, rating.WorkflowStageDefinition);
+            var scheme = ResolveScheme(rating.RatingSchemeId, rating.RatingScheme);
+            var value = ResolveValue(rating.RatingSchemeValueId, rating.RatingSchemeValue);
+            var actor = ResolveActor(rating.RatedByUserId);
+            var actionIsAdded = action != null && addedActions.Contains(action);
+            var reconciliation = addedReconciliations.SingleOrDefault(item => ReferenceEquals(item.SubmissionStageRating, rating));
+
+            if (rating.PublicId == Guid.Empty || rating.MunicipalityId <= 0
+                || string.IsNullOrWhiteSpace(rating.LabelSnapshot) || rating.LabelSnapshot.Length > 200
+                || rating.Comment?.Length > 2000 || string.IsNullOrWhiteSpace(rating.RatedByUserId)
+                || rating.RatedAt == default || rating.RatedAt > DateTime.UtcNow.AddMinutes(5)
+                || string.IsNullOrWhiteSpace(rating.CorrelationId) || rating.CorrelationId.Length > 100
+                || instance == null || action == null || stage == null || scheme == null || value == null
+                || Database.IsRelational() && actor == null
+                || rating.SubmissionWorkflowInstanceId != 0 && instance.Id != 0 && rating.SubmissionWorkflowInstanceId != instance.Id
+                || rating.SubmissionWorkflowActionId != 0 && action.Id != 0 && rating.SubmissionWorkflowActionId != action.Id
+                || action.SubmissionWorkflowInstanceId != 0 && instance.Id != 0 && action.SubmissionWorkflowInstanceId != instance.Id
+                || rating.WorkflowStageDefinitionId != 0 && stage.Id != 0 && rating.WorkflowStageDefinitionId != stage.Id
+                || rating.RatingSchemeId != 0 && scheme.Id != 0 && rating.RatingSchemeId != scheme.Id
+                || rating.RatingSchemeValueId != 0 && value.Id != 0 && rating.RatingSchemeValueId != value.Id
+                || instance.MunicipalityId != rating.MunicipalityId || action.MunicipalityId != rating.MunicipalityId
+                || stage.MunicipalityId != rating.MunicipalityId || scheme.MunicipalityId != rating.MunicipalityId
+                || value.MunicipalityId != rating.MunicipalityId
+                || actor != null && actor.MunicipalityId.HasValue && actor.MunicipalityId != rating.MunicipalityId
+                || stage.WorkflowDefinitionId != instance.WorkflowDefinitionId
+                || stage.RatingSchemeId != scheme.Id || value.RatingSchemeId != scheme.Id
+                || rating.Value != value.Value || !string.Equals(rating.LabelSnapshot, value.Label, StringComparison.Ordinal)
+                || actionIsAdded && action.RatingValue != rating.Value
+                || action.ActorUserId != rating.RatedByUserId || action.OccurredAt != rating.RatedAt
+                || actionIsAdded && (!string.Equals(action.CorrelationId, rating.CorrelationId, StringComparison.Ordinal) || reconciliation != null)
+                || !actionIsAdded && reconciliation == null)
+                throw new InvalidOperationException("Stage-rating creation requires one exact canonical workflow action, stage, scheme, value, actor, tenant and immutable snapshot.");
+        }
+
+        foreach (var reconciliation in addedReconciliations)
+        {
+            var rating = addedRatings.SingleOrDefault(item => ReferenceEquals(item, reconciliation.SubmissionStageRating))
+                ?? (reconciliation.SubmissionStageRatingId == 0 ? null : SubmissionStageRatings.IgnoreQueryFilters().AsNoTracking()
+                    .SingleOrDefault(item => item.Id == reconciliation.SubmissionStageRatingId));
+            var instance = ResolveInstance(reconciliation.SubmissionWorkflowInstanceId, reconciliation.SubmissionWorkflowInstance);
+            var action = rating == null ? null : ResolveAction(rating);
+            var stage = ResolveStage(reconciliation.WorkflowStageDefinitionId, reconciliation.WorkflowStageDefinition);
+            var scheme = ResolveScheme(reconciliation.RatingSchemeId, reconciliation.RatingScheme);
+            var value = ResolveValue(reconciliation.RatingSchemeValueId, reconciliation.RatingSchemeValue);
+            var actor = ResolveActor(reconciliation.ReconciledByUserId);
+            var ratingIsAdded = rating != null && addedRatings.Contains(rating);
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(entry => entry.State == EntityState.Added
+                && entry.Entity.MunicipalityId == reconciliation.MunicipalityId
+                && entry.Entity.EntityName == nameof(LegacySubmissionRatingReconciliation)
+                && entry.Entity.EntityId == reconciliation.PublicId.ToString()
+                && entry.Entity.Action == "Reconcile"
+                && entry.Entity.ChangedBy == reconciliation.ReconciledByUserId
+                && entry.Entity.ChangedAt == reconciliation.ReconciledAt
+                && entry.Entity.Reason == reconciliation.Reason).ToArray();
+
+            if (reconciliation.PublicId == Guid.Empty || reconciliation.MunicipalityId <= 0
+                || !Enum.IsDefined(reconciliation.SubmissionKind) || !Enum.IsDefined(reconciliation.SourceKind)
+                || string.IsNullOrWhiteSpace(reconciliation.SubmissionId)
+                || string.IsNullOrWhiteSpace(reconciliation.SourceKey) || reconciliation.SourceKey.Length > 550
+                || string.IsNullOrWhiteSpace(reconciliation.SourceActorUserIdSnapshot) || reconciliation.SourceActorUserIdSnapshot.Length > 450
+                || reconciliation.SourceCommentSnapshot?.Length > 2000
+                || string.IsNullOrWhiteSpace(reconciliation.ReconciledByUserId)
+                || reconciliation.ReconciledAt == default || reconciliation.ReconciledAt > DateTime.UtcNow.AddMinutes(5)
+                || string.IsNullOrWhiteSpace(reconciliation.Reason) || reconciliation.Reason.Length > 1000
+                || string.IsNullOrWhiteSpace(reconciliation.CorrelationId) || reconciliation.CorrelationId.Length > 100
+                || rating == null || instance == null || action == null || stage == null || scheme == null || value == null
+                || Database.IsRelational() && actor == null
+                || reconciliation.UsedExistingRating == ratingIsAdded
+                || instance.MunicipalityId != reconciliation.MunicipalityId || instance.SubmissionKind != reconciliation.SubmissionKind
+                || !string.Equals(instance.SubmissionId, reconciliation.SubmissionId, StringComparison.Ordinal)
+                || action.MunicipalityId != reconciliation.MunicipalityId || rating.MunicipalityId != reconciliation.MunicipalityId
+                || action.SubmissionWorkflowInstanceId != instance.Id || rating.SubmissionWorkflowInstanceId != instance.Id
+                || rating.SubmissionWorkflowActionId != action.Id || rating.WorkflowStageDefinitionId != stage.Id
+                || rating.RatingSchemeId != scheme.Id || rating.RatingSchemeValueId != value.Id
+                || action.FromStageId != stage.Id || action.ActorUserId != reconciliation.SourceActorUserIdSnapshot
+                || rating.Value != reconciliation.SourceScore || value.Value != reconciliation.SourceScore
+                || actor != null && actor.MunicipalityId.HasValue && actor.MunicipalityId != reconciliation.MunicipalityId
+                || audits.Length != 1 || !LegacyRatingSourceMatches(reconciliation))
+                throw new InvalidOperationException("Legacy rating reconciliation creation requires exact canonical source, workflow, rating, actor, tenant and provenance relationships.");
+        }
+    }
+
+    private bool LegacyRatingSourceMatches(LegacySubmissionRatingReconciliation row)
+    {
+        if (row.SourceKind == LegacyRatingSourceKind.GenericSubmissionScore
+            && row.SourceKey.StartsWith("GENERIC:", StringComparison.Ordinal))
+        {
+            var sourceId = row.SourceKey[8..];
+            var genericSource = SubmissionScores.IgnoreQueryFilters().AsNoTracking().SingleOrDefault(item => item.Id == sourceId);
+            return genericSource != null && genericSource.MunicipalityId == row.MunicipalityId
+                && genericSource.SubmissionKind == row.SubmissionKind && genericSource.SubmissionId == row.SubmissionId
+                && genericSource.Score == row.SourceScore && genericSource.ScoredByUserId == row.SourceActorUserIdSnapshot
+                && genericSource.ScoredAt == row.SourceOccurredAtSnapshot
+                && string.Equals(genericSource.Notes, row.SourceCommentSnapshot, StringComparison.Ordinal);
+        }
+
+        var expectedPrefix = row.SubmissionKind == SubmissionKind.Opms ? "OPMS:" : "IPMS:";
+        if (!row.SourceKey.StartsWith(expectedPrefix, StringComparison.Ordinal)
+            || !row.SourceKey.EndsWith($":{row.SourceKind}", StringComparison.Ordinal)) return false;
+
+        (decimal? Score, string? Actor, DateTime? OccurredAt, string? Comment)? source = null;
+        if (row.SubmissionKind == SubmissionKind.Opms)
+        {
+            var submission = OpmsSubmissions.IgnoreQueryFilters().AsNoTracking()
+                .SingleOrDefault(item => item.Id == row.SubmissionId && item.MunicipalityId == row.MunicipalityId);
+            if (submission != null && row.SourceKey == $"OPMS:{submission.PublicId:N}:{row.SourceKind}") source = row.SourceKind switch
+            {
+                LegacyRatingSourceKind.SubmitterScore => (submission.SubmitterScore, submission.SubmittedByUserId, submission.SubmittedAt, null),
+                LegacyRatingSourceKind.VerifierScore => (submission.VerifierScore, submission.VerifierUserId, submission.VerifiedAt, submission.VerifierComments),
+                LegacyRatingSourceKind.ApproverScore => (submission.ApproverScore, submission.ApproverUserId, submission.ApprovedAt, submission.ApproverComments),
+                LegacyRatingSourceKind.PmsScore => (submission.PmsScore, submission.PmsOfficerUserId, submission.PmsReviewedAt, submission.PmsComments),
+                LegacyRatingSourceKind.AuditorScore => (submission.AuditorScore, submission.AuditorUserId, submission.AuditedAt, submission.AuditorComments),
+                _ => null
+            };
+        }
+        else if (row.SubmissionKind == SubmissionKind.Ipms)
+        {
+            var submission = IpmsSubmissions.IgnoreQueryFilters().AsNoTracking()
+                .SingleOrDefault(item => item.Id == row.SubmissionId && item.MunicipalityId == row.MunicipalityId);
+            if (submission != null && row.SourceKey == $"IPMS:{submission.PublicId:N}:{row.SourceKind}") source = row.SourceKind switch
+            {
+                LegacyRatingSourceKind.SubmitterScore => (submission.SubmitterScore, submission.SubmittedByUserId, submission.SubmittedAt, null),
+                LegacyRatingSourceKind.VerifierScore => (submission.VerifierScore, submission.VerifierUserId, submission.VerifiedAt, submission.VerifierComments),
+                LegacyRatingSourceKind.ApproverScore => (submission.ApproverScore, submission.ApproverUserId, submission.ApprovedAt, submission.ApproverComments),
+                LegacyRatingSourceKind.PmsScore => (submission.PmsScore, submission.PmsOfficerUserId, submission.PmsReviewedAt, submission.PmsComments),
+                LegacyRatingSourceKind.AuditorScore => (submission.AuditorScore, submission.AuditorUserId, submission.AuditedAt, submission.AuditorComments),
+                _ => null
+            };
+        }
+        return source.HasValue && source.Value.Score == row.SourceScore
+            && source.Value.Actor == row.SourceActorUserIdSnapshot
+            && source.Value.OccurredAt == row.SourceOccurredAtSnapshot
+            && string.Equals(source.Value.Comment, row.SourceCommentSnapshot, StringComparison.Ordinal);
     }
 
     private static void EnsureOnlyProperties<TEntity>(EntityEntry<TEntity> entry, string[] allowedProperties, string message) where TEntity : class
