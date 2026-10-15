@@ -155,6 +155,72 @@ public sealed class AuthSessionTests
     }
 
     [Fact]
+    public async Task Successful_local_login_persists_user_and_both_ledgers_at_one_authoritative_time()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(null, "system-auth", true));
+        var municipality = new Municipality { Code = "LOCAL-AUTH", Name = "Local Authentication" };
+        context.Municipalities.Add(municipality);
+        await context.SaveChangesAsync();
+        var user = User("local-login-user");
+        user.MunicipalityId = municipality.Id;
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var userManager = IdpTestFixture.CreateUserManagerMock(user);
+        userManager.Setup(manager => manager.FindByEmailAsync(user.Email!)).ReturnsAsync(user);
+        userManager.Setup(manager => manager.GetTwoFactorEnabledAsync(user)).ReturnsAsync(false);
+        userManager.Setup(manager => manager.GetRolesAsync(user)).ReturnsAsync([]);
+        var signInManager = new Mock<SignInManager<ApplicationUser>>(
+            userManager.Object,
+            new Mock<Microsoft.AspNetCore.Http.IHttpContextAccessor>().Object,
+            new Mock<IUserClaimsPrincipalFactory<ApplicationUser>>().Object,
+            Options.Create(new IdentityOptions()),
+            new Mock<Microsoft.Extensions.Logging.ILogger<SignInManager<ApplicationUser>>>().Object,
+            new Mock<Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider>().Object,
+            new Mock<IUserConfirmation<ApplicationUser>>().Object);
+        signInManager.Setup(manager => manager.CheckPasswordSignInAsync(user, "ValidPassword!1", true))
+            .ReturnsAsync(Microsoft.AspNetCore.Identity.SignInResult.Success);
+        var policies = new Mock<IAuthenticationPolicyResolver>();
+        policies.Setup(resolver => resolver.ResolveAsync(user, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EffectiveAuthenticationPolicy(12, 5, 15, true, true, true, 30, 24, 5));
+        var jwt = new Mock<IJwtService>();
+        jwt.Setup(service => service.GenerateTokensAsync(user, It.IsAny<string?>(), It.IsAny<string?>(), null, null, "LOCAL"))
+            .ReturnsAsync(("access-token", "refresh-token", DateTime.UtcNow.AddMinutes(15)));
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetEffectiveAccessAsync(user))
+            .ReturnsAsync(new EffectiveAccessResult([], [], [], [], [], []));
+        access.Setup(service => service.GetAuthorizedNavigationAsync(user)).ReturnsAsync([]);
+        var environment = new Mock<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
+        environment.SetupGet(item => item.EnvironmentName).Returns(Environments.Development);
+        var services = new ServiceCollection().AddSingleton(environment.Object).BuildServiceProvider();
+        var controller = new AuthController(userManager.Object, signInManager.Object, jwt.Object, access.Object, context,
+            Options.Create(new JwtSettings()), null!, policies.Object, IdpTestFixture.Tenant(municipality.Id, user.Id))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    TraceIdentifier = "local-login-correlation",
+                    RequestServices = services
+                }
+            }
+        };
+
+        var response = await controller.Login(new LoginRequest(user.Email!, "ValidPassword!1"));
+
+        Assert.True(Assert.IsType<ApiResponse<LoginResponse>>(Assert.IsType<OkObjectResult>(response.Result).Value).Success);
+        var persistedUser = await context.Users.AsNoTracking().SingleAsync(item => item.Id == user.Id);
+        var authenticationEvent = await context.AuthenticationEvents.AsNoTracking().SingleAsync();
+        var loginAudit = await context.LoginAuditLogs.AsNoTracking().SingleAsync();
+        persistedUser.LastLoginAt.Should().NotBeNull();
+        authenticationEvent.OccurredAt.Should().Be(persistedUser.LastLoginAt);
+        loginAudit.LoggedAt.Should().Be(persistedUser.LastLoginAt);
+        authenticationEvent.CorrelationId.Should().Be("local-login-correlation");
+        authenticationEvent.Success.Should().BeTrue();
+        loginAudit.Success.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Sqlite_enforces_unique_session_token_digests()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

@@ -124,7 +124,7 @@ public sealed class EnterpriseAuthenticationTests
         });
 
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
-        failure.Message.Should().Contain("append-only successful authentication event");
+        failure.Message.Should().Contain("chronologically valid success or failure evidence");
         context.ChangeTracker.Clear();
         (await context.UserAuthenticators.AsNoTracking().SingleAsync()).LastAuthenticatedAt.Should().NotBe(future);
         (await context.AuthenticationEvents.AsNoTracking().CountAsync()).Should().Be(0);

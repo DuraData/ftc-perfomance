@@ -92,10 +92,10 @@ public class AuthController : ControllerBase
             return Unauthorized(new ApiResponse<LoginResponse>(false, null, "Invalid credentials"));
         }
 
-        await RecordAuthenticationEventAsync(user.Id, user.Email ?? request.Email, true, null);
-
-        user.LastLoginAt = DateTime.UtcNow;
-        await _userManager.UpdateAsync(user);
+        var authenticatedAt = DateTime.UtcNow;
+        await QueueAuthenticationEventAsync(user.Id, user.Email ?? request.Email, true, null, authenticatedAt);
+        user.LastLoginAt = authenticatedAt;
+        await _context.SaveChangesAsync();
 
         var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString());
         SetSessionCookies(accessToken, refreshToken, expiresAt);
@@ -530,6 +530,12 @@ public class AuthController : ControllerBase
 
     private async Task RecordAuthenticationEventAsync(string? userId, string email, bool success, string? failureReason)
     {
+        await QueueAuthenticationEventAsync(userId, email, success, failureReason, DateTime.UtcNow);
+        await _context.SaveChangesAsync();
+    }
+
+    private async Task QueueAuthenticationEventAsync(string? userId, string email, bool success, string? failureReason, DateTime occurredAt)
+    {
         var municipalityId = string.IsNullOrWhiteSpace(userId)
             ? null
             : await _context.Users.IgnoreQueryFilters().Where(item => item.Id == userId).Select(item => item.MunicipalityId).SingleOrDefaultAsync();
@@ -542,11 +548,12 @@ public class AuthController : ControllerBase
             UserAgent = Request.Headers.UserAgent.ToString(),
             Success = success,
             FailureReason = failureReason,
-            LoggedAt = DateTime.UtcNow
+            LoggedAt = occurredAt
         });
-        if (!string.IsNullOrWhiteSpace(userId) && municipalityId.HasValue)
+        if (!string.IsNullOrWhiteSpace(userId))
         {
-            HttpContext.Items[TenantResolutionMiddleware.MunicipalityItem] = municipalityId.Value;
+            if (municipalityId.HasValue)
+                HttpContext.Items[TenantResolutionMiddleware.MunicipalityItem] = municipalityId.Value;
             _context.AuthenticationEvents.Add(new AuthenticationEvent
             {
                 MunicipalityId = municipalityId,
@@ -558,10 +565,9 @@ public class AuthController : ControllerBase
                 IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
                 UserAgent = Request.Headers.UserAgent.ToString(),
                 CorrelationId = HttpContext.TraceIdentifier,
-                OccurredAt = DateTime.UtcNow
+                OccurredAt = occurredAt
             });
         }
-        await _context.SaveChangesAsync();
     }
 
     private async Task<bool> IsLocalSignInEnabledAsync(ApplicationUser user)

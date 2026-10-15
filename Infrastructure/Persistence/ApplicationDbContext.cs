@@ -2339,6 +2339,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
     private void EnforceAppendOnlyRecords()
     {
+        EnforceAuthenticationLedgerHistory();
         EnforceRetiredLegacyProjectionHistory();
         EnforceRolePermissionHistory();
         EnforceSecurityRoleHistory();
@@ -3245,6 +3246,36 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         }
     }
 
+    private void EnforceAuthenticationLedgerHistory()
+    {
+        var latestAcceptedTime = DateTime.UtcNow.AddMinutes(5);
+        foreach (var entry in ChangeTracker.Entries<AuthenticationEvent>().Where(entry => entry.State == EntityState.Added))
+        {
+            var row = entry.Entity;
+            if (row.PublicId == Guid.Empty
+                || string.IsNullOrWhiteSpace(row.ProviderCode)
+                || string.IsNullOrWhiteSpace(row.EventType)
+                || string.IsNullOrWhiteSpace(row.CorrelationId)
+                || row.OccurredAt == default
+                || row.OccurredAt > latestAcceptedTime
+                || row.Success && (string.IsNullOrWhiteSpace(row.UserId) || row.FailureCode != null)
+                || !row.Success && string.IsNullOrWhiteSpace(row.FailureCode))
+                throw new InvalidOperationException("Authentication events require complete, chronologically valid success or failure evidence.");
+        }
+
+        foreach (var entry in ChangeTracker.Entries<LoginAuditLog>().Where(entry => entry.State == EntityState.Added))
+        {
+            var row = entry.Entity;
+            if (row.PublicId == Guid.Empty
+                || string.IsNullOrWhiteSpace(row.Email)
+                || row.LoggedAt == default
+                || row.LoggedAt > latestAcceptedTime
+                || row.Success && (string.IsNullOrWhiteSpace(row.UserId) || row.FailureReason != null)
+                || !row.Success && string.IsNullOrWhiteSpace(row.FailureReason))
+                throw new InvalidOperationException("Login audit records require complete, chronologically valid success or failure evidence.");
+        }
+    }
+
     private void EnforceRetiredLegacyProjectionHistory()
     {
         if (ChangeTracker.Entries<UserPermissionOverride>().Any(entry => entry.State != EntityState.Unchanged))
@@ -3759,8 +3790,32 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             {
                 var before = entry.OriginalValues.GetValue<DateTime?>(nameof(ApplicationUser.LastLoginAt));
                 var after = entry.CurrentValues.GetValue<DateTime?>(nameof(ApplicationUser.LastLoginAt));
-                if (!after.HasValue || before.HasValue && after <= before)
-                    throw new InvalidOperationException("Application-user last-login evidence may advance only monotonically.");
+                var successEvents = ChangeTracker.Entries<AuthenticationEvent>().Where(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                    && candidate.Entity.UserId == entry.Entity.Id
+                    && candidate.Entity.Success
+                    && candidate.Entity.FailureCode == null
+                    && candidate.Entity.OccurredAt == after).ToArray();
+                var isLocal = successEvents.Length == 1
+                    && successEvents[0].Entity.ProviderCode == "LOCAL"
+                    && successEvents[0].Entity.EventType == "LocalSignIn";
+                var isExternal = successEvents.Length == 1
+                    && successEvents[0].Entity.ProviderCode != "LOCAL"
+                    && successEvents[0].Entity.EventType == "ExternalSignIn";
+                var loginAudits = isLocal
+                    ? ChangeTracker.Entries<LoginAuditLog>().Where(candidate => candidate.State == EntityState.Added
+                        && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                        && candidate.Entity.UserId == entry.Entity.Id
+                        && candidate.Entity.Success
+                        && candidate.Entity.FailureReason == null
+                        && candidate.Entity.LoggedAt == after).ToArray()
+                    : [];
+                if (!after.HasValue || before.HasValue && after <= before
+                    || after > DateTime.UtcNow.AddMinutes(5)
+                    || successEvents.Length != 1
+                    || !isLocal && !isExternal
+                    || isLocal && loginAudits.Length != 1)
+                    throw new InvalidOperationException("Application-user last-login evidence may advance only with its exact append-only authentication ledgers.");
             }
 
             var governedProfileFields = changed.Where(profileFields.Contains).ToArray();

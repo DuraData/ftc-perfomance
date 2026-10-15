@@ -305,7 +305,7 @@ public sealed class ApplicationUserRootHistoryTests
     }
 
     [Fact]
-    public async Task Application_user_last_login_may_only_advance()
+    public async Task Application_user_last_login_may_only_advance_with_exact_authentication_ledgers()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var municipality = Municipality();
@@ -313,12 +313,93 @@ public sealed class ApplicationUserRootHistoryTests
         context.AddRange(municipality, user);
         await context.SaveChangesAsync();
 
-        user.LastLoginAt = DateTime.UtcNow;
+        var authenticatedAt = DateTime.UtcNow;
+        user.LastLoginAt = authenticatedAt;
+        context.AuthenticationEvents.Add(new AuthenticationEvent
+        {
+            MunicipalityId = municipality.Id,
+            UserId = user.Id,
+            ProviderCode = "LOCAL",
+            EventType = "LocalSignIn",
+            Success = true,
+            OccurredAt = authenticatedAt,
+            CorrelationId = "login-evidence"
+        });
+        context.LoginAuditLogs.Add(new LoginAuditLog
+        {
+            MunicipalityId = municipality.Id,
+            UserId = user.Id,
+            Email = user.Email!,
+            Success = true,
+            LoggedAt = authenticatedAt
+        });
         await context.SaveChangesAsync();
         user.LastLoginAt = user.LastLoginAt.Value.AddMinutes(-1);
 
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("Application-user last-login evidence may advance only monotonically*");
+            .WithMessage("Application-user last-login evidence may advance only with its exact append-only authentication ledgers*");
+    }
+
+    [Fact]
+    public async Task Application_user_last_login_rejects_future_exact_local_ledgers_atomically()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = Municipality();
+        var user = User("future-login-evidence-user", municipality);
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+
+        var future = DateTime.UtcNow.AddHours(1);
+        user.LastLoginAt = future;
+        context.AuthenticationEvents.Add(new AuthenticationEvent
+        {
+            MunicipalityId = municipality.Id,
+            UserId = user.Id,
+            ProviderCode = "LOCAL",
+            EventType = "LocalSignIn",
+            Success = true,
+            OccurredAt = future,
+            CorrelationId = "future-login-evidence"
+        });
+        context.LoginAuditLogs.Add(new LoginAuditLog
+        {
+            MunicipalityId = municipality.Id,
+            UserId = user.Id,
+            Email = user.Email!,
+            Success = true,
+            LoggedAt = future
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>();
+        context.ChangeTracker.Clear();
+        (await context.Users.AsNoTracking().SingleAsync(item => item.Id == user.Id)).LastLoginAt.Should().BeNull();
+        (await context.AuthenticationEvents.AsNoTracking().CountAsync()).Should().Be(0);
+        (await context.LoginAuditLogs.AsNoTracking().CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Authentication_ledgers_reject_failure_rows_without_failure_evidence()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.AuthenticationEvents.Add(new AuthenticationEvent
+        {
+            ProviderCode = "LOCAL",
+            EventType = "LocalSignIn",
+            Success = false,
+            CorrelationId = "missing-authentication-failure"
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Authentication events require complete, chronologically valid success or failure evidence*");
+        context.ChangeTracker.Clear();
+        context.LoginAuditLogs.Add(new LoginAuditLog
+        {
+            Email = "failed@example.test",
+            Success = false
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Login audit records require complete, chronologically valid success or failure evidence*");
     }
 
     private static Municipality Municipality() => new()

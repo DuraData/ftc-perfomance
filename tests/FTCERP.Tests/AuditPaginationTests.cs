@@ -31,7 +31,7 @@ public sealed class AuditPaginationTests
             setup.LoginAuditLogs.AddRange(
                 Login(tenantAId, "anna@example.test", false, "Account locked", new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc)),
                 Login(tenantAId, "alex@example.test", false, "Invalid credentials", new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc)),
-                Login(tenantAId, "amy@example.test", true, null, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
+                Login(tenantAId, "amy@example.test", false, "Other failure", new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
                 Login(tenantBId, "other@example.test", false, "Account locked", new DateTime(2026, 1, 4, 0, 0, 0, DateTimeKind.Utc)));
             setup.AuditTrails.AddRange(
                 Trail(tenantAId, "OpmsSubmission", "a-1", "Approve", "auditor-a", new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc)),
@@ -58,8 +58,8 @@ public sealed class AuditPaginationTests
             Page = 1, PageSize = 1, Search = "a", SortBy = "email", SortDirection = "asc"
         }, failuresOnly: true);
         var loginPage = Assert.IsType<ApiResponse<PagedResponse<LoginAuditLogResponse>>>(Assert.IsType<OkObjectResult>(loginResult.Result).Value).Data!;
-        loginPage.TotalCount.Should().Be(2);
-        loginPage.TotalPages.Should().Be(2);
+        loginPage.TotalCount.Should().Be(3);
+        loginPage.TotalPages.Should().Be(3);
         loginPage.Items.Should().ContainSingle().Which.Email.Should().Be("alex@example.test");
         loginPage.Items.Should().OnlyContain(item => item.PublicId != Guid.Empty);
         loginPage.Items.Should().NotContain(item => item.Email == "other@example.test");
@@ -240,7 +240,7 @@ public sealed class AuditPaginationTests
             await setup.SaveChangesAsync();
             tenantAId = tenantA.Id;
             tenantBId = tenantB.Id;
-            setup.LoginAuditLogs.AddRange(Login(tenantAId, "a@example.test", true, null, DateTime.UtcNow), Login(tenantBId, "b@example.test", true, null, DateTime.UtcNow));
+            setup.LoginAuditLogs.AddRange(Login(tenantAId, "a@example.test", false, "Invalid credentials", DateTime.UtcNow), Login(tenantBId, "b@example.test", false, "Invalid credentials", DateTime.UtcNow));
             await setup.SaveChangesAsync();
         }
 
