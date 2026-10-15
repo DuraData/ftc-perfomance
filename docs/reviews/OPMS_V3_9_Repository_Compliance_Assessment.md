@@ -19,7 +19,7 @@ The remaining release blockers are explicit:
 - complete representative load/query-plan work, browser/accessibility testing and formal role/tenant UAT; and
 - rotate and verify revocation of credentials that existed in prior repository history.
 
-Current automated evidence is substantial: **961 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **400 frontend tests pass** across 80 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
+Current automated evidence is substantial: **962 backend tests pass** with one intentionally skipped native SQL Server acceptance test, and **400 frontend tests pass** across 80 files. TypeScript type-check, ESLint, accessibility automation, Release compilation, the frontend production build, the executable bundle budget, SQL Server model/snapshot consistency, and idempotent SQL Server migration-script generation pass. These prove repository behavior within their scope; they do not replace the deployment/UAT evidence listed above.
 
 No overall compliance percentage is stated. V3.9 requirements are not equally weighted, and a percentage would obscure that tenant isolation, authoritative value modelling, workflow immutability, and secure evidence handling are gating controls.
 
@@ -56,7 +56,7 @@ Absence from the reviewed repository is classified as **NOT IMPLEMENTED** when t
 |---|---|---|
 | Backend build | Passed with 0 errors and 0 warnings | The host compiles, but compilation is not requirements compliance. |
 | Frontend unit tests | 400/400 passed across 80 files | Component, mapping, routing, security-administration and governed-capture coverage passes. |
-| Backend tests via ordinary `dotnet test` | 961 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite, including actor-bound TID, authentication-state and enterprise-identity lifecycle audit coverage. |
+| Backend tests via ordinary `dotnet test` | 962 passed, 0 failed, 1 environment-gated SQL Server test skipped | The project is correctly identified as a test project and the ordinary developer/CI command executes the complete suite, including actor-bound TID, authentication-state, enterprise-identity and IDP-task lifecycle audit coverage. |
 | Frontend type-check | Passed | The production TypeScript project has no static type errors. |
 | Frontend lint | Passed | The client passes the configured ESLint gate. |
 | Accessibility automation | 2/2 passed | The shared application shell and form contract pass the automated axe checks; manual certification remains external acceptance work. |
@@ -4651,6 +4651,12 @@ The production authentication controller now emits both sides of each password-c
 An enterprise-authenticator disablement audit must now use the exact timestamp persisted in `DisabledAt`; all enable/disable audits must also be non-default and cannot be future-dated. Existing actor-context binding, complete active/disabled tuple validation, stable public actor projection, exact old/new snapshots, reason, and RowVersion controls remain mandatory. The production administration controller already derives the audit and disablement values from one `changedAt` instant, so the strengthened persistence boundary validates the intended contract without changing its API.
 
 Relational adversarial coverage supplies an otherwise exact actor-bound disablement audit whose timestamp differs by one second and proves that persistence rejects it, while the production controller lifecycle additionally asserts equality between the saved disablement and audit timestamps. The focused enterprise-authentication and governed-ledger group passes **78/78**, complete backend regression passes **961 tests with 1 explicit native SQL Server-only skip and 0 failures**, and Release compilation reports **0 warnings and 0 errors**. Implementation commit `3607f2cbed52a75535b035dbb304a3bd3f9e3949` is on both branches; GitHub Actions run `38715679163`, job `116357654372`, verified the exact revision in **5m11s** with every quality and security gate passing.
+
+### 11.402 IDP task completion audit time integrity
+
+IDP task completion now derives the task's `CompletedAt` value and its same-transaction audit timestamp from one captured authoritative instant. The persistence boundary requires every completion audit to be non-default, non-future and exactly equal to `CompletedAt`, while preserving the existing authenticated-actor binding, governance reason, exact before/after snapshots, municipality ownership and RowVersion concurrency controls. Reopening retains the non-default/non-future audit-time requirement because its authoritative completed timestamp is deliberately cleared.
+
+Relational adversarial coverage supplies an otherwise exact actor-bound completion audit whose timestamp differs by one second and proves that persistence rejects it. The production controller lifecycle additionally proves that the persisted completion and audit timestamps are equal. The focused IDP governance group passes **47/47**, complete backend regression passes **962 tests with 1 explicit native SQL Server-only skip and 0 failures**, and Release compilation reports **0 warnings and 0 errors**. Implementation commit `51dec5ebf4aca56b7f8bbbfb54007654628c027f` is on both branches; GitHub Actions run `38718531567`, job `116367061014`, verified the exact revision in **5m16s** with every quality and security gate passing.
 
 ### 12.1 Final verdict
 
