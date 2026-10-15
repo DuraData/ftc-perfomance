@@ -2134,10 +2134,11 @@ public class IdpController : ControllerBase
             return Conflict(new ApiResponse<IdpTaskResponse>(false, null,
                 request.IsCompleted ? "The task is already completed." : "The task is already open."));
         var before = new { entity.IsCompleted, entity.CompletedAt };
+        var changedAt = DateTime.UtcNow;
         entity.IsCompleted = request.IsCompleted;
-        entity.CompletedAt = request.IsCompleted ? DateTime.UtcNow : null;
-        _workflowGovernanceService.QueueAuditTrail("IdpTask", entity.PublicId.ToString(), request.IsCompleted ? "Complete" : "Reopen",
-            before, new { entity.IsCompleted, entity.CompletedAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason);
+        entity.CompletedAt = request.IsCompleted ? changedAt : null;
+        _workflowGovernanceService.QueueAuditTrailAt("IdpTask", entity.PublicId.ToString(), request.IsCompleted ? "Complete" : "Reopen",
+            before, new { entity.IsCompleted, entity.CompletedAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason, changedAt);
         try
         {
             await _context.SaveChangesAsync();

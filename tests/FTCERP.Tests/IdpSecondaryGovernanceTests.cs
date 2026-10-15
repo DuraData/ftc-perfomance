@@ -212,11 +212,12 @@ public class IdpSecondaryGovernanceTests
         context.ChangeTracker.Clear();
         task = await context.IdpTaskAssignments.SingleAsync(item => item.PublicId == task.PublicId);
         var before = new { task.IsCompleted, task.CompletedAt };
+        var completedAt = DateTime.UtcNow;
         task.IsCompleted = true;
-        task.CompletedAt = DateTime.UtcNow;
-        new WorkflowGovernanceService(context, tenantContext: tenant).QueueAuditTrail(
+        task.CompletedAt = completedAt;
+        new WorkflowGovernanceService(context, tenantContext: tenant).QueueAuditTrailAt(
             "IdpTask", task.PublicId.ToString(), "Complete", before,
-            new { task.IsCompleted, task.CompletedAt }, actor.Id, null, "Reviewed and accepted");
+            new { task.IsCompleted, task.CompletedAt }, actor.Id, null, "Reviewed and accepted", completedAt);
         await context.SaveChangesAsync();
 
         var audit = await context.AuditTrails.SingleAsync(item => item.EntityName == "IdpTask"

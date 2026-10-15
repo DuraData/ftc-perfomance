@@ -2971,6 +2971,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.MunicipalityId == _tenantContext?.MunicipalityId
                 && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
                 && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && candidate.Entity.ChangedAt != default
+                && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
+                && (!currentCompleted || candidate.Entity.ChangedAt == currentCompletedAt)
                 && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
                 && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)).ToArray();
             if (audits.Length != 1)

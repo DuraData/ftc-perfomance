@@ -1194,6 +1194,7 @@ public class IdpControllerFunctionalityTests
             .OrderBy(item => item.ChangedAt).ToArrayAsync();
         taskAudits.Select(item => item.Action).Should().Equal("Create", "Complete");
         taskAudits[1].Reason.Should().Be("Reviewed and accepted");
+        taskAudits[1].ChangedAt.Should().Be(updated.CompletedAt);
         taskAudits[1].OldValue.Should().NotBeNull();
         taskAudits[1].NewValue.Should().NotBeNull();
 
@@ -1215,6 +1216,61 @@ public class IdpControllerFunctionalityTests
         var staleResult = await controller.CompleteTaskByPublicId(task.PublicId,
             new CompleteIdpTaskRequest(true, originalVersion, "Attempt with a stale version"));
         staleResult.Result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task Idp_task_completion_rejects_audit_timestamp_that_does_not_match_completion()
+    {
+        var creator = IdpTestFixture.CreateUser("task-time-creator");
+        var assignee = IdpTestFixture.CreateUser("task-time-assignee", "Assigned", "Person");
+        await using var context = IdpTestFixture.CreateRelationalContext(
+            IdpTestFixture.Tenant(null, creator.Id, true));
+        var plan = new IdpPlan
+        {
+            MunicipalityName = "Task Audit Municipality",
+            PlanTitle = "Task audit plan",
+            PlanCode = "IDP-TASK-TIME",
+            StartFinancialYear = 2026,
+            EndFinancialYear = 2031,
+            CreatedByUserId = creator.Id
+        };
+        var task = new IdpTaskAssignment
+        {
+            IdpPlan = plan,
+            Title = "Timestamp-governed task",
+            Description = "Prove exact completion time correlation",
+            AssignedToUserId = assignee.Id,
+            AssignedByUserId = creator.Id,
+            DueDate = DateTime.UtcNow.AddDays(7)
+        };
+        context.AddRange(creator, assignee, plan, task);
+        await context.SaveChangesAsync();
+
+        var completedAt = DateTime.UtcNow;
+        task.IsCompleted = true;
+        task.CompletedAt = completedAt;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            EntityName = "IdpTask",
+            EntityId = task.PublicId.ToString(),
+            Action = "Complete",
+            OldValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                IsCompleted = false,
+                CompletedAt = (DateTime?)null
+            }),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                IsCompleted = true,
+                CompletedAt = (DateTime?)completedAt
+            }),
+            ChangedBy = creator.Id,
+            ChangedAt = completedAt.AddSeconds(-1),
+            Reason = "Completion audit must share the authoritative task timestamp."
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("IdpTask completion changes require one exact actor-bound same-transaction before/after audit.");
     }
 
     [Fact]
