@@ -2524,6 +2524,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     entry.OriginalValues.GetValue<string?>(nameof(UserAuthenticator.DisabledByUserId)));
                 var currentDisabledBy = entry.CurrentValues.GetValue<string?>(nameof(UserAuthenticator.DisabledByUserId));
                 var currentDisabledByPublicId = ResolveIdentityUserPublicId(currentDisabledBy);
+                var currentDisabledAt = entry.CurrentValues.GetValue<DateTime?>(nameof(UserAuthenticator.DisabledAt));
                 var snapshotFields = new[] { nameof(UserAuthenticator.IsActive), nameof(UserAuthenticator.DisabledAt) };
                 var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
                     && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
@@ -2533,6 +2534,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
                     && (currentActive || candidate.Entity.ChangedBy == currentDisabledBy)
                     && candidate.Entity.ChangedAt != default
+                    && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
+                    && (currentActive || candidate.Entity.ChangedAt == currentDisabledAt)
                     && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
                     && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
                     && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
@@ -2541,9 +2544,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 if (bindingChanged || authenticatedChanged || originalActive == currentActive
                     || status.Any(property => !changed.Contains(property))
                     || currentActive && (entry.CurrentValues.GetValue<string?>(nameof(UserAuthenticator.DisabledByUserId)) != null
-                        || entry.CurrentValues.GetValue<DateTime?>(nameof(UserAuthenticator.DisabledAt)).HasValue)
+                        || currentDisabledAt.HasValue)
                     || !currentActive && (string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(UserAuthenticator.DisabledByUserId)))
-                        || !entry.CurrentValues.GetValue<DateTime?>(nameof(UserAuthenticator.DisabledAt)).HasValue)
+                        || !currentDisabledAt.HasValue)
                     || audits.Length != 1)
                     throw new InvalidOperationException("Enterprise-authenticator status changes require a complete state tuple and one exact actor-bound append-only governance audit evidence record.");
             }

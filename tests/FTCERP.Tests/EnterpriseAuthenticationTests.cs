@@ -487,6 +487,7 @@ public sealed class EnterpriseAuthenticationTests
         var disabledAudit = await context.AuditTrails.SingleAsync(item => item.Action == "EnterpriseIdentityDisabled");
         Assert.Equal("UserAuthenticator", disabledAudit.EntityName);
         Assert.Equal(actor.Id, disabledAudit.ChangedBy);
+        Assert.Equal(authenticator.DisabledAt, disabledAudit.ChangedAt);
         Assert.Contains(actor.PublicId.ToString(), disabledAudit.NewValue);
         Assert.Contains("\"isActive\":false", disabledAudit.NewValue, StringComparison.OrdinalIgnoreCase);
 
@@ -530,6 +531,56 @@ public sealed class EnterpriseAuthenticationTests
             ChangedBy = actor.Id,
             ChangedAt = DateTime.UtcNow,
             Reason = "Attempt forged status evidence"
+        });
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("one exact actor-bound", exception.Message);
+    }
+
+    [Fact]
+    public async Task Authenticator_status_change_rejects_audit_timestamp_that_does_not_match_disablement()
+    {
+        var municipality = new Municipality { Code = "AUTH-TIME", Name = "Authentication Audit Time" };
+        var actor = User("authentication-time-admin", municipality);
+        var linked = User("authentication-time-user", municipality);
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(null, actor.Id, true));
+        var authenticator = new UserAuthenticator
+        {
+            Municipality = municipality,
+            User = linked,
+            ProviderRegistrationCode = "ENTRA",
+            ExpectedEmail = linked.Email!,
+            CreatedByUserId = actor.Id,
+            IsActive = true
+        };
+        context.AddRange(municipality, actor, linked, authenticator);
+        await context.SaveChangesAsync();
+
+        var disabledAt = DateTime.UtcNow;
+        authenticator.IsActive = false;
+        authenticator.DisabledAt = disabledAt;
+        authenticator.DisabledByUserId = actor.Id;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = "UserAuthenticator",
+            EntityId = authenticator.PublicId.ToString(),
+            Action = "EnterpriseIdentityDisabled",
+            OldValue = JsonSerializer.Serialize(new
+            {
+                IsActive = true,
+                DisabledByUserPublicId = (Guid?)null,
+                DisabledAt = (DateTime?)null
+            }),
+            NewValue = JsonSerializer.Serialize(new
+            {
+                IsActive = false,
+                DisabledByUserPublicId = (Guid?)actor.PublicId,
+                DisabledAt = (DateTime?)disabledAt
+            }),
+            ChangedBy = actor.Id,
+            ChangedAt = disabledAt.AddSeconds(-1),
+            Reason = "Timestamp must match the authoritative disablement evidence."
         });
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
