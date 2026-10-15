@@ -158,6 +158,40 @@ public sealed class MunicipalityRootHistoryTests
             .WithMessage("Municipality TID settings require a coherent state and exact same-transaction reasoned audit evidence*");
     }
 
+    [Fact]
+    public async Task Municipality_tid_projection_rejects_exact_audit_from_a_different_actor()
+    {
+        const long municipalityId = 9150;
+        var municipality = Municipality();
+        municipality.Id = municipalityId;
+        var actor = IdpTestFixture.CreateUser("municipality-tid-context-actor");
+        var forgedActor = IdpTestFixture.CreateUser("municipality-tid-different-actor");
+        actor.MunicipalityId = municipalityId;
+        forgedActor.MunicipalityId = municipalityId;
+        await using var context = IdpTestFixture.CreateRelationalContext(
+            IdpTestFixture.Tenant(municipalityId, actor.Id));
+        context.AddRange(municipality, actor, forgedActor);
+        await context.SaveChangesAsync();
+
+        municipality.TidEnabled = true;
+        municipality.TidAllKpisRequired = true;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = "TidConfiguration",
+            EntityId = municipality.PublicId.ToString(),
+            Action = "Update",
+            OldValue = "{\"tidEnabled\":false,\"tidAllKpisRequired\":false}",
+            NewValue = "{\"tidEnabled\":true,\"tidAllKpisRequired\":true}",
+            ChangedBy = forgedActor.Id,
+            ChangedAt = DateTime.UtcNow,
+            Reason = "Exact snapshots must not authorize another actor."
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Municipality TID settings require a coherent state and exact same-transaction reasoned audit evidence*");
+    }
+
     private static Municipality Municipality() => new()
     {
         Code = $"ROOT-{Guid.NewGuid():N}"[..20],

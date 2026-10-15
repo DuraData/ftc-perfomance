@@ -3630,6 +3630,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     && candidate.Entity.EntityName == "TidConfiguration"
                     && candidate.Entity.EntityId == entry.Entity.PublicId.ToString()
                     && candidate.Entity.Action == "Update"
+                    && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+                    && candidate.Entity.ChangedAt != default
+                    && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
                     && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
                     && MunicipalityTidSnapshotMatches(candidate.Entity.OldValue,
                         entry.OriginalValues.GetValue<bool>(nameof(Municipality.TidEnabled)),
