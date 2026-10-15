@@ -7,7 +7,7 @@ import {
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { C88Assignment, C88CatalogueItem, C88CatalogueItemKind, C88CatalogueVersion, C88ComplianceQuestion, C88Configuration, C88Indicator, C88IndicatorPlan, C88IndicatorReport, C88Mapping, C88ReportingCalendar, C88Workflow, MunicipalEmployeeDto } from '../../types';
+import type { C88Assignment, C88CatalogueItem, C88CatalogueItemKind, C88CatalogueVersion, C88ComplianceQuestion, C88Configuration, C88Indicator, C88IndicatorPlan, C88IndicatorReport, C88Mapping, C88ReportingCalendar, C88Workflow, MunicipalEmployeeDto, ReportingPeriodMasterDto } from '../../types';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { AppShell } from '../layout/AppShell';
 import { TargetPicker } from '../common/TargetPicker';
@@ -15,6 +15,21 @@ import { Badge, Button, Card, EmptyState } from '../ui';
 
 const field = 'mt-1 w-full rounded border border-secondary-300 bg-white px-2 py-1.5 text-sm dark:border-secondary-700 dark:bg-secondary-900';
 const today = () => new Date().toISOString().slice(0, 10);
+const utcDateTime = (offsetDays: number, endOfDay = false) => {
+  const value = new Date();
+  value.setUTCDate(value.getUTCDate() + offsetDays);
+  value.setUTCHours(endOfDay ? 23 : 0, endOfDay ? 59 : 0, 0, 0);
+  return value.toISOString().slice(0, 16);
+};
+const reportingPeriodDates = (period: ReportingPeriodMasterDto) => {
+  const due = new Date(`${period.endDate.slice(0, 10)}T00:00:00Z`);
+  due.setUTCDate(due.getUTCDate() + 1);
+  return {
+    opensAt: `${period.startDate.slice(0, 10)}T00:00`,
+    closesAt: `${period.endDate.slice(0, 10)}T23:59`,
+    dueAt: `${due.toISOString().slice(0, 10)}T23:59`,
+  };
+};
 function Section({ title, children }: { title: string; children: ReactNode }) { return <Card><h2 className="mb-3 text-lg font-semibold">{title}</h2>{children}</Card>; }
 
 function CatalogueItemPicker({ versionId, kind, value, onChange, placeholder }: { versionId: string; kind: C88CatalogueItemKind; value: string; onChange: (value: string) => void; placeholder: string }) {
@@ -124,7 +139,7 @@ export function C88Workspace() {
   const [catalogueItem, setCatalogueItem] = useState({ catalogueVersionPublicId: '', kind: 'Sector' as C88CatalogueItemKind, code: '', name: '', parentItemPublicId: '' });
   const [indicatorDraft, setIndicatorDraft] = useState({ catalogueVersionPublicId: '', code: '', name: '', definition: '', officialTechnicalIndicatorDescription: '', valueType: 'Decimal', calculationOperator: 'None', elementCode: '', elementName: '', municipalCategoryPublicId: '', readinessTierPublicId: '' });
   const [plan, setPlan] = useState({ baselineValue: '', mediumTermTarget: '', annualTarget: '', missingDataExplanation: '', estimatedAvailability: '' });
-  const [calendar, setCalendar] = useState({ reportTypePublicId: '', code: '', name: '', opensAt: today(), closesAt: today(), dueAt: today() });
+  const [calendar, setCalendar] = useState({ reportTypePublicId: '', reportingPeriodPublicId: '', code: '', name: '', opensAt: utcDateTime(0), closesAt: utcDateTime(30, true), dueAt: utcDateTime(31, true) });
   const [assignment, setAssignment] = useState({ employeePublicId: '', role: 'PrimaryCapturer' });
   const [mapping, setMapping] = useState({ opmsTargetPublicId: '', mappingType: 'Direct' });
   const [reportValues, setReportValues] = useState<Record<string, string>>({});
@@ -156,6 +171,9 @@ export function C88Workspace() {
   const indicator = indicatorRows.find(item => item.publicId === indicatorId) ?? selectedIndicator;
   const activeVersionId = configuration?.catalogueVersionPublicId ?? catalogueItem.catalogueVersionPublicId;
   const selectedCalendar = calendarRows.find(item => item.publicId === calendarId);
+  const calendarWindowIsValid = Boolean(calendar.opensAt && calendar.closesAt && calendar.dueAt
+    && new Date(calendar.closesAt) >= new Date(calendar.opensAt)
+    && new Date(calendar.dueAt) >= new Date(calendar.opensAt));
   const indicatorOptions = indicator && !indicatorRows.some(item => item.publicId === indicator.publicId) ? [indicator, ...indicatorRows] : indicatorRows;
   const versionOptions = [...versionRows];
   for (const item of [configuredVersion, selectedCatalogueVersion])
@@ -182,7 +200,9 @@ export function C88Workspace() {
       getC88WorkflowsPage({ page: workflowPage, pageSize: 10, search: workflowSearch, sortBy: 'versionNumber', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: yearId || undefined, configurationPublicId: effectiveConfigurationId || undefined }),
       getC88ComplianceQuestionsPage({ page: questionPage, pageSize: 10, search: questionSearch, sortBy: 'sequence', sortDirection: 'asc' }, { catalogueVersionPublicId: catalogueItem.catalogueVersionPublicId || activeVersionId || undefined }),
     ]);
-    setReportRows(reportResult.data?.items ?? []);
+    const loadedReports = reportResult.data?.items ?? [];
+    setReportRows(loadedReports);
+    setSelectedReport(current => current ? loadedReports.find(item => item.publicId === current.publicId) ?? null : current);
     setConfigurationRows(configurationResult.data?.items ?? []); setConfigurationTotalCount(configurationResult.data?.totalCount ?? 0); setConfigurationTotalPages(configurationResult.data?.totalPages ?? 0);
     setVersionRows(versionResult.data?.items ?? []); setVersionTotalCount(versionResult.data?.totalCount ?? 0); setVersionTotalPages(versionResult.data?.totalPages ?? 0);
     setCatalogueRows(catalogueResult.data?.items ?? []); setCatalogueTotalCount(catalogueResult.data?.totalCount ?? 0); setCatalogueTotalPages(catalogueResult.data?.totalPages ?? 0);
@@ -359,7 +379,16 @@ export function C88Workspace() {
       </Section>
 
       <Section title="Reporting calendar and capture">
-        {canExecute('C88_INDICATOR.MANAGE_WORKFLOW') && <div className="grid gap-2 md:grid-cols-5"><CatalogueItemPicker versionId={activeVersionId} kind="ReportType" value={calendar.reportTypePublicId} onChange={value => setCalendar({ ...calendar, reportTypePublicId: value })} placeholder="Report type" /><input className={field} placeholder="Calendar code" value={calendar.code} onChange={e => setCalendar({ ...calendar, code: e.target.value })} /><input className={field} placeholder="Calendar name" value={calendar.name} onChange={e => setCalendar({ ...calendar, name: e.target.value })} /><Button disabled={busy || !effectiveConfigurationId || !reason} onClick={() => void run(() => createC88Calendar({ configurationPublicId: effectiveConfigurationId, ...calendar, reportingPeriodPublicId: null, isActive: true, reason, rowVersion: null }), 'Reporting calendar created.')}>Create calendar</Button></div>}
+        {canExecute('C88_INDICATOR.MANAGE_WORKFLOW') && <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          <CatalogueItemPicker versionId={activeVersionId} kind="ReportType" value={calendar.reportTypePublicId} onChange={value => setCalendar({ ...calendar, reportTypePublicId: value })} placeholder="Report type" />
+          <CalendarMasterPicker kind="reporting-period" label="Reporting period" value={calendar.reportingPeriodPublicId} municipalityFinancialYearId={yearId || undefined} onChange={(value, option) => setCalendar(current => ({ ...current, reportingPeriodPublicId: value, ...(option ? reportingPeriodDates(option as ReportingPeriodMasterDto) : {}) }))} required />
+          <label className="text-sm">Calendar code<input className={field} value={calendar.code} onChange={e => setCalendar({ ...calendar, code: e.target.value })} required /></label>
+          <label className="text-sm">Calendar name<input className={field} value={calendar.name} onChange={e => setCalendar({ ...calendar, name: e.target.value })} required /></label>
+          <label className="text-sm">Opens (UTC)<input aria-label="Calendar opens" className={field} type="datetime-local" value={calendar.opensAt} onChange={e => setCalendar({ ...calendar, opensAt: e.target.value })} required /></label>
+          <label className="text-sm">Closes (UTC)<input aria-label="Calendar closes" className={field} type="datetime-local" value={calendar.closesAt} onChange={e => setCalendar({ ...calendar, closesAt: e.target.value })} min={calendar.opensAt} required /></label>
+          <label className="text-sm">Due (UTC)<input aria-label="Calendar due" className={field} type="datetime-local" value={calendar.dueAt} onChange={e => setCalendar({ ...calendar, dueAt: e.target.value })} min={calendar.opensAt} required /></label>
+          <div className="flex items-end"><Button className="w-full" disabled={busy || !effectiveConfigurationId || !yearId || !calendar.reportTypePublicId || !calendar.reportingPeriodPublicId || !calendar.code.trim() || !calendar.name.trim() || !calendarWindowIsValid || !reason} onClick={() => void run(() => createC88Calendar({ configurationPublicId: effectiveConfigurationId, ...calendar, isActive: true, reason, rowVersion: null }), 'Reporting calendar created.')}>Create calendar</Button></div>
+        </div>}
         <div className="mt-3 flex items-end justify-between gap-2"><label className="text-sm">Search calendars<input aria-label="Search C88 calendars" className={field} value={calendarSearch} onChange={event => { setCalendarSearch(event.target.value); setCalendarPage(1); }} /></label><span className="text-xs text-secondary-500">{calendarTotalCount} calendars</span></div>
         <div className="mt-3 grid gap-2 md:grid-cols-3"><select className={field} value={calendarId} onChange={e => { setCalendarId(e.target.value); setCaptureQuestionPage(1); }}><option value="">Calendar</option>{calendarRows.map(item => <option key={item.publicId} value={item.publicId}>{item.code} · {item.name}</option>)}</select>{canEditDataElementValue && indicator?.dataElements.map(element => <input key={element.publicId} className={field} placeholder={`${element.code} · ${element.name}`} value={reportValues[element.publicId] ?? ''} onChange={e => setReportValues({ ...reportValues, [element.publicId]: e.target.value })} />)}{canEditComplianceResponse && captureQuestions.map(question => <input key={question.publicId} className={field} placeholder={question.prompt} value={responses[question.publicId] ?? ''} onChange={e => setResponses({ ...responses, [question.publicId]: e.target.value })} />)}{canCreate('C88_REPORT') && canEditWorkflowReason && canEditDataElementValue && canEditComplianceResponse && <Button disabled={busy || !reason || !calendarId || !indicatorId} onClick={() => void run(() => createC88ReportVersion({ configurationPublicId: effectiveConfigurationId, calendarPublicId: calendarId, indicatorPublicId: indicatorId, previousReportPublicId: selectedReport?.publicId ?? null, previousReportRowVersion: selectedReport?.rowVersion ?? null, missingDataExplanation: null, estimatedAvailability: null, dataElementValues: indicator?.dataElements.map(element => ({ dataElementPublicId: element.publicId, value: reportValues[element.publicId] || null, missingDataExplanation: null, estimatedAvailability: null })) ?? [], complianceResponses: Object.entries(responses).map(([questionPublicId, response]) => ({ questionPublicId, response: response || null, comment: null })), reason }), 'C88 report version created.')}>Save report version</Button>}</div>
         {captureQuestionTotalPages > 1 && <div className="mt-2 flex justify-end gap-2"><Button size="sm" variant="outline" disabled={captureQuestionPage <= 1} onClick={() => setCaptureQuestionPage(value => value - 1)}>Previous questions</Button><span className="self-center text-xs">Question page {captureQuestionPage}/{captureQuestionTotalPages}</span><Button size="sm" variant="outline" disabled={captureQuestionPage >= captureQuestionTotalPages} onClick={() => setCaptureQuestionPage(value => value + 1)}>Next questions</Button></div>}

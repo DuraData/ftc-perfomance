@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
   configureC88: vi.fn(), createC88Assignment: vi.fn(), createC88Calendar: vi.fn(), createC88CatalogueItem: vi.fn(),
   createC88CatalogueVersion: vi.fn(), createC88ComplianceQuestion: vi.fn(), createC88Indicator: vi.fn(),
   createC88Mapping: vi.fn(), createC88ReportVersion: vi.fn(), createC88Workflow: vi.fn(), finalSubmitC88Report: vi.fn(),
-  getC88AssignmentsPage: vi.fn(), getC88CalendarsPage: vi.fn(), getC88CatalogueItemsPage: vi.fn(), getC88CatalogueVersionsPage: vi.fn(), getC88ComplianceQuestionsPage: vi.fn(), getC88ConfigurationsPage: vi.fn(), getC88IndicatorsPage: vi.fn(), getC88MappingsPage: vi.fn(), getC88PlansPage: vi.fn(), getC88ReportsPage: vi.fn(), getC88WorkflowsPage: vi.fn(), getMunicipalEmployeesPage: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getOpmsTargetOptions: vi.fn(), getOpmsTarget: vi.fn(),
+  getC88AssignmentsPage: vi.fn(), getC88CalendarsPage: vi.fn(), getC88CatalogueItemsPage: vi.fn(), getC88CatalogueVersionsPage: vi.fn(), getC88ComplianceQuestionsPage: vi.fn(), getC88ConfigurationsPage: vi.fn(), getC88IndicatorsPage: vi.fn(), getC88MappingsPage: vi.fn(), getC88PlansPage: vi.fn(), getC88ReportsPage: vi.fn(), getC88WorkflowsPage: vi.fn(), getMunicipalEmployeesPage: vi.fn(), getMunicipalityFinancialYearMastersPage: vi.fn(), getReportingPeriodMastersPage: vi.fn(), getOpmsTargetOptions: vi.fn(), getOpmsTarget: vi.fn(),
   returnC88Report: vi.fn(), saveC88IndicatorPlan: vi.fn(), submitC88Report: vi.fn(), updateC88CatalogueVersion: vi.fn(), verifyC88Report: vi.fn(),
 }));
 
@@ -29,6 +29,7 @@ const catalogueVersion = { publicId: 'version-1', code: '2026.1', name: 'Treasur
 const indicator = { publicId: 'indicator-1', catalogueVersionPublicId: 'version-1', code: 'C88-1', name: 'Official indicator', definition: 'Definition', officialTechnicalIndicatorDescription: 'TID', valueType: 'Decimal', calculationOperator: 'None', requiresBaseline: true, requiresMediumTermTarget: true, requiresAnnualTarget: true, isActive: true, rowVersion: 'AQ==', dataElements: [{ publicId: 'element-1', code: 'VALUE', name: 'Value', valueType: 'Decimal', isRequired: true, sequence: 1, rowVersion: 'AQ==' }], applicability: [] };
 const calendar = { publicId: 'calendar-1', configurationPublicId: 'config-1', reportTypePublicId: 'report-type-1', code: 'Q1', name: 'Quarter 1', opensAt: '2026-07-01', closesAt: '2027-06-30', dueAt: '2027-07-01', isActive: true, rowVersion: 'AQ==' };
 const year = { publicId: 'year-1', financialYearPublicId: 'fy-1', code: '2026/27', name: '2026/27', isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', rowVersion: 'AQ==' };
+const reportingPeriod = { publicId: 'period-1', municipalityFinancialYearPublicId: 'year-1', code: 'Q1', name: 'Quarter 1', periodType: 2, sequence: 1, startDate: '2026-07-01', endDate: '2026-09-30', isActive: true, rowVersion: 'AQ==' };
 
 describe('Circular 88 workspace', () => {
   beforeEach(() => {
@@ -47,9 +48,11 @@ describe('Circular 88 workspace', () => {
     api.getC88WorkflowsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } });
     api.getC88ComplianceQuestionsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } });
     api.getMunicipalityFinancialYearMastersPage.mockResolvedValue({ success: true, data: { items: [year], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.getReportingPeriodMastersPage.mockResolvedValue({ success: true, data: { items: [reportingPeriod], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     api.getMunicipalEmployeesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.getOpmsTargetOptions.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.submitC88Report.mockResolvedValue({ success: true, data: 'report-1' });
+    api.createC88Calendar.mockResolvedValue({ success: true, data: 'calendar-2' });
   });
 
   it('keeps operational reporting visible while hiding catalogue administration', async () => {
@@ -76,6 +79,44 @@ describe('Circular 88 workspace', () => {
     fireEvent.change(screen.getByPlaceholderText('Workflow reason'), { target: { value: 'Ready for C88 verification' } });
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
     await waitFor(() => expect(api.submitC88Report).toHaveBeenCalledWith('report-1', 'Ag==', 'Ready for C88 verification'));
+  });
+
+  it('refreshes the selected report after a workflow action', async () => {
+    const submitted = { ...workspace.reports[0], state: 'Submitted', currentStageSequence: 2, rowVersion: 'Aw==', workflowActions: [{ publicId: 'action-2', fromStageSequence: 1, toStageSequence: 2, action: 'Submitted', reason: 'Ready for review', actorUserPublicId: 'actor-1', actorName: 'Capturer', occurredAt: '2026-08-02' }] };
+    let latestReports = workspace.reports;
+    api.getC88ReportsPage.mockImplementation(() => Promise.resolve({ success: true, data: { items: latestReports, page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } }));
+
+    render(<C88Workspace />);
+    fireEvent.click(await screen.findByRole('button', { name: /C88-1 · v1/ }));
+    fireEvent.change(screen.getByPlaceholderText('Workflow reason'), { target: { value: 'Ready for review' } });
+    latestReports = [submitted];
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    expect(await screen.findByRole('button', { name: 'Verify' })).toBeInTheDocument();
+    expect(screen.getByText(/Submitted · Ready for review · Capturer/)).toBeInTheDocument();
+  });
+
+  it('creates a reporting calendar with an explicit period and governed UTC window', async () => {
+    render(<C88Workspace />);
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Financial year' }), { target: { value: 'year-1' } });
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Report type' }), { target: { value: 'report-type-1' } });
+    fireEvent.change(await screen.findByRole('combobox', { name: /^Reporting period/ }), { target: { value: 'period-1' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Calendar code' }), { target: { value: 'Q1-2026' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Calendar name' }), { target: { value: 'Quarter 1 2026/27' } });
+    fireEvent.change(screen.getByPlaceholderText('Reason'), { target: { value: 'Approved reporting timetable' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create calendar' }));
+
+    await waitFor(() => expect(api.createC88Calendar).toHaveBeenCalledWith(expect.objectContaining({
+      configurationPublicId: 'config-1',
+      reportTypePublicId: 'report-type-1',
+      reportingPeriodPublicId: 'period-1',
+      code: 'Q1-2026',
+      name: 'Quarter 1 2026/27',
+      opensAt: '2026-07-01T00:00',
+      closesAt: '2026-09-30T23:59',
+      dueAt: '2026-10-01T23:59',
+      reason: 'Approved reporting timetable',
+    })));
   });
 
   it('does not render or edit protected C88 members when field permissions are denied', async () => {
