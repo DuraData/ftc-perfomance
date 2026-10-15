@@ -161,8 +161,10 @@ public class AuthController : ControllerBase
                 invalidToken ? null : reset.Errors.Select(error => error.Description).ToArray()));
         }
 
+        var mustChangePasswordBefore = user.MustChangePassword;
         user.MustChangePassword = false;
-        AddAuthenticationAudit(user, "PasswordResetCompleted", new { user.MustChangePassword }, "User completed a governed password reset.");
+        AddAuthenticationAudit(user, "PasswordResetCompleted", new { user.MustChangePassword },
+            "User completed a governed password reset.", new { MustChangePassword = mustChangePasswordBefore });
         var updated = await _userManager.UpdateAsync(user);
         if (!updated.Succeeded)
         {
@@ -304,8 +306,10 @@ public class AuthController : ControllerBase
             await transaction.RollbackAsync();
             return BadRequest(new ApiResponse<bool>(false, false, "Password could not be changed.", changed.Errors.Select(error => error.Description).ToArray()));
         }
+        var mustChangePasswordBefore = user.MustChangePassword;
         user.MustChangePassword = false;
-        AddAuthenticationAudit(user, "PasswordChange", new { user.MustChangePassword }, "User completed a governed password change.");
+        AddAuthenticationAudit(user, "PasswordChange", new { user.MustChangePassword },
+            "User completed a governed password change.", new { MustChangePassword = mustChangePasswordBefore });
         var updated = await _userManager.UpdateAsync(user);
         if (!updated.Succeeded)
         {
@@ -365,7 +369,8 @@ public class AuthController : ControllerBase
             return BadRequest(new ApiResponse<MfaEnableResponse>(false, null, "The authenticator code is invalid."));
         }
 
-        AddAuthenticationAudit(user, "MfaEnable", new { TwoFactorEnabled = true }, "User enabled authenticator MFA.");
+        AddAuthenticationAudit(user, "MfaEnable", new { TwoFactorEnabled = true },
+            "User enabled authenticator MFA.", new { user.TwoFactorEnabled });
         var enabled = await _userManager.SetTwoFactorEnabledAsync(user, true);
         if (!enabled.Succeeded) return BadRequest(new ApiResponse<MfaEnableResponse>(false, null, "MFA could not be enabled.", enabled.Errors.Select(error => error.Description).ToArray()));
         var recoveryCodes = (await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10))?.ToArray() ?? [];
@@ -389,7 +394,8 @@ public class AuthController : ControllerBase
             : await _userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, AuthenticationCodeNormalizer.Authenticator(request.Code));
         if (!secondFactorValid) return BadRequest(new ApiResponse<bool>(false, false, "The authentication code is invalid."));
 
-        AddAuthenticationAudit(user, "MfaDisable", new { TwoFactorEnabled = false }, "User disabled authenticator MFA.");
+        AddAuthenticationAudit(user, "MfaDisable", new { TwoFactorEnabled = false },
+            "User disabled authenticator MFA.", new { user.TwoFactorEnabled });
         var disabled = await _userManager.SetTwoFactorEnabledAsync(user, false);
         if (!disabled.Succeeded) return BadRequest(new ApiResponse<bool>(false, false, "MFA could not be disabled.", disabled.Errors.Select(error => error.Description).ToArray()));
         await _userManager.ResetAuthenticatorKeyAsync(user);
@@ -477,7 +483,12 @@ public class AuthController : ControllerBase
         return string.IsNullOrWhiteSpace(userId) ? null : await _userManager.FindByIdAsync(userId);
     }
 
-    private void AddAuthenticationAudit(ApplicationUser user, string action, object? value, string reason = "Authentication security event")
+    private void AddAuthenticationAudit(
+        ApplicationUser user,
+        string action,
+        object? value,
+        string reason = "Authentication security event",
+        object? oldValue = null)
     {
         _context.AuditTrails.Add(new AuditTrail
         {
@@ -485,6 +496,7 @@ public class AuthController : ControllerBase
             EntityName = "UserAuthentication",
             EntityId = user.Id,
             Action = action,
+            OldValue = oldValue == null ? null : JsonSerializer.Serialize(oldValue),
             NewValue = value == null ? null : JsonSerializer.Serialize(value),
             ChangedBy = user.Id,
             ChangedAt = DateTime.UtcNow,

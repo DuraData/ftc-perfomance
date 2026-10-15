@@ -153,6 +153,7 @@ public sealed class ApplicationUserRootHistoryTests
             EntityName = "UserAuthentication",
             EntityId = user.Id,
             Action = "PasswordChange",
+            OldValue = "{\"mustChangePassword\":true}",
             NewValue = "{\"mustChangePassword\":false}",
             ChangedBy = user.Id,
             ChangedAt = DateTime.UtcNow,
@@ -161,6 +162,63 @@ public sealed class ApplicationUserRootHistoryTests
 
         await context.SaveChangesAsync();
         (await context.Users.AsNoTracking().SingleAsync(item => item.Id == user.Id)).MustChangePassword.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Application_user_password_remediation_rejects_exact_audit_from_a_different_context_actor()
+    {
+        var municipality = Municipality();
+        var user = User("password-context-user", municipality);
+        await using var context = IdpTestFixture.CreateRelationalContext(
+            IdpTestFixture.Tenant(null, "different-authenticated-user", true));
+        context.AddRange(municipality, user);
+        user.MustChangePassword = true;
+        await context.SaveChangesAsync();
+
+        user.MustChangePassword = false;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = "UserAuthentication",
+            EntityId = user.Id,
+            Action = "PasswordChange",
+            OldValue = "{\"mustChangePassword\":true}",
+            NewValue = "{\"mustChangePassword\":false}",
+            ChangedBy = user.Id,
+            ChangedAt = DateTime.UtcNow,
+            Reason = "Exact state evidence attributed outside the authenticated context."
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Application-user password-remediation state may clear only beside its exact authentication audit*");
+    }
+
+    [Fact]
+    public async Task Application_user_password_remediation_rejects_future_dated_audit()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = Municipality();
+        var user = User("password-future-audit-user", municipality);
+        user.MustChangePassword = true;
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+
+        user.MustChangePassword = false;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = "UserAuthentication",
+            EntityId = user.Id,
+            Action = "PasswordResetCompleted",
+            OldValue = "{\"mustChangePassword\":true}",
+            NewValue = "{\"mustChangePassword\":false}",
+            ChangedBy = user.Id,
+            ChangedAt = DateTime.UtcNow.AddMinutes(10),
+            Reason = "Future-dated authentication evidence must not authorize a state change."
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Application-user password-remediation state may clear only beside its exact authentication audit*");
     }
 
     [Fact]
@@ -179,10 +237,67 @@ public sealed class ApplicationUserRootHistoryTests
             EntityName = "UserAuthentication",
             EntityId = user.Id,
             Action = "MfaEnable",
+            OldValue = "{\"twoFactorEnabled\":false}",
             NewValue = "{\"twoFactorEnabled\":false}",
             ChangedBy = user.Id,
             ChangedAt = DateTime.UtcNow,
             Reason = "Forged MFA state must not authorize a security-root rewrite."
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Application-user MFA state may change only beside its exact authentication audit*");
+    }
+
+    [Fact]
+    public async Task Application_user_mfa_state_accepts_exact_actor_bound_audit()
+    {
+        var municipality = Municipality();
+        var user = User("mfa-governed-user", municipality);
+        await using var context = IdpTestFixture.CreateRelationalContext(
+            IdpTestFixture.Tenant(null, user.Id, true));
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+
+        user.TwoFactorEnabled = true;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = "UserAuthentication",
+            EntityId = user.Id,
+            Action = "MfaEnable",
+            OldValue = "{\"twoFactorEnabled\":false}",
+            NewValue = "{\"twoFactorEnabled\":true}",
+            ChangedBy = user.Id,
+            ChangedAt = DateTime.UtcNow,
+            Reason = "User enabled authenticator MFA."
+        });
+
+        await context.SaveChangesAsync();
+        (await context.Users.AsNoTracking().SingleAsync(item => item.Id == user.Id)).TwoFactorEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Application_user_mfa_state_rejects_exact_audit_from_a_different_context_actor()
+    {
+        var municipality = Municipality();
+        var user = User("mfa-context-user", municipality);
+        await using var context = IdpTestFixture.CreateRelationalContext(
+            IdpTestFixture.Tenant(null, "different-authenticated-user", true));
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
+
+        user.TwoFactorEnabled = true;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = "UserAuthentication",
+            EntityId = user.Id,
+            Action = "MfaEnable",
+            OldValue = "{\"twoFactorEnabled\":false}",
+            NewValue = "{\"twoFactorEnabled\":true}",
+            ChangedBy = user.Id,
+            ChangedAt = DateTime.UtcNow,
+            Reason = "Exact state evidence attributed outside the authenticated context."
         });
 
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()

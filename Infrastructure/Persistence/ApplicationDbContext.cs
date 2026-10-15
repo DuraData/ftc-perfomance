@@ -3786,7 +3786,11 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     && candidate.Entity.EntityId == entry.Entity.Id
                     && candidate.Entity.Action is "PasswordChange" or "PasswordResetCompleted"
                     && candidate.Entity.ChangedBy == entry.Entity.Id
+                    && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+                    && candidate.Entity.ChangedAt != default
+                    && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
                     && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && ApplicationUserBooleanSnapshotMatches(candidate.Entity.OldValue, nameof(ApplicationUser.MustChangePassword), before)
                     && ApplicationUserBooleanSnapshotMatches(candidate.Entity.NewValue, nameof(ApplicationUser.MustChangePassword), after)).ToArray();
                 if (!before || after || audits.Length != 1)
                     throw new InvalidOperationException("Application-user password-remediation state may clear only beside its exact authentication audit.");
@@ -3794,6 +3798,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 
             if (changed.Contains(nameof(ApplicationUser.TwoFactorEnabled)))
             {
+                var before = entry.OriginalValues.GetValue<bool>(nameof(ApplicationUser.TwoFactorEnabled));
                 var after = entry.CurrentValues.GetValue<bool>(nameof(ApplicationUser.TwoFactorEnabled));
                 var action = after ? "MfaEnable" : "MfaDisable";
                 var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
@@ -3802,7 +3807,11 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     && candidate.Entity.EntityId == entry.Entity.Id
                     && candidate.Entity.Action == action
                     && candidate.Entity.ChangedBy == entry.Entity.Id
+                    && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+                    && candidate.Entity.ChangedAt != default
+                    && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
                     && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && ApplicationUserBooleanSnapshotMatches(candidate.Entity.OldValue, nameof(ApplicationUser.TwoFactorEnabled), before)
                     && ApplicationUserBooleanSnapshotMatches(candidate.Entity.NewValue, nameof(ApplicationUser.TwoFactorEnabled), after)).ToArray();
                 if (audits.Length != 1)
                     throw new InvalidOperationException("Application-user MFA state may change only beside its exact authentication audit.");
