@@ -2490,36 +2490,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         }
         RejectRewrites<StrategicRiskAssessment>("Strategic-risk assessment history is append-only.");
         RejectRewrites<StrategicRiskReview>("Strategic-risk review history is append-only.");
-        foreach (var entry in ChangeTracker.Entries<OpmsKpiStrategicRisk>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
-        {
-            if (entry.State == EntityState.Deleted)
-                throw new InvalidOperationException("Strategic-risk KPI relationship history cannot be hard deleted.");
-
-            var originalActive = entry.OriginalValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsActive));
-            var currentActive = entry.CurrentValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsActive));
-            var originalPrimary = entry.OriginalValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsPrimary));
-            var currentPrimary = entry.CurrentValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsPrimary));
-            if (originalActive && currentActive && originalPrimary && !currentPrimary)
-            {
-                EnsureOnlyProperties(entry,
-                    [nameof(OpmsKpiStrategicRisk.IsPrimary), nameof(OpmsKpiStrategicRisk.RowVersion)],
-                    "Strategic-risk KPI relationship identity and provenance are append-preserved.");
-                RequireGovernanceAudit(nameof(OpmsKpiStrategicRisk), entry.Entity.PublicId, entry.Entity.MunicipalityId, "DemotePrimary");
-                continue;
-            }
-
-            EnsureOnlyProperties(entry,
-                [nameof(OpmsKpiStrategicRisk.IsActive), nameof(OpmsKpiStrategicRisk.IsPrimary),
-                    nameof(OpmsKpiStrategicRisk.UnlinkedByUserId), nameof(OpmsKpiStrategicRisk.UnlinkedAt),
-                    nameof(OpmsKpiStrategicRisk.UnlinkReason), nameof(OpmsKpiStrategicRisk.RowVersion)],
-                "Strategic-risk KPI relationship identity and provenance are append-preserved.");
-            if (!originalActive || currentActive || currentPrimary
-                || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(OpmsKpiStrategicRisk.UnlinkedByUserId)))
-                || !entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsKpiStrategicRisk.UnlinkedAt)).HasValue
-                || string.IsNullOrWhiteSpace(entry.CurrentValues.GetValue<string?>(nameof(OpmsKpiStrategicRisk.UnlinkReason))))
-                throw new InvalidOperationException("A strategic-risk KPI relationship may only advance once to a complete inactive unlink state.");
-            RequireGovernanceAudit(nameof(OpmsKpiStrategicRisk), entry.Entity.PublicId, entry.Entity.MunicipalityId, "Unlink");
-        }
+        EnforceOpmsKpiStrategicRiskHistory();
         var strategicMasterEntries = ChangeTracker.Entries()
             .Where(entry => entry.Entity is StrategicPlanningMasterBase)
             .ToArray();
@@ -3866,6 +3837,128 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             if (audits.Length != 1)
                 throw new InvalidOperationException("StrategicRisk changes require one exact same-transaction reasoned before/after audit.");
         }
+    }
+
+    private void EnforceOpmsKpiStrategicRiskHistory()
+    {
+        if (ChangeTracker.Entries<OpmsKpiStrategicRisk>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Strategic-risk KPI relationship history cannot be hard deleted.");
+
+        var snapshotFields = new[]
+        {
+            nameof(OpmsKpiStrategicRisk.IsPrimary), nameof(OpmsKpiStrategicRisk.IsActive),
+            nameof(OpmsKpiStrategicRisk.LinkedAt), nameof(OpmsKpiStrategicRisk.LinkReason),
+            nameof(OpmsKpiStrategicRisk.UnlinkedAt), nameof(OpmsKpiStrategicRisk.UnlinkReason)
+        };
+        foreach (var entry in ChangeTracker.Entries<OpmsKpiStrategicRisk>().Where(entry => entry.State == EntityState.Modified))
+        {
+            var originalActive = entry.OriginalValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsActive));
+            var currentActive = entry.CurrentValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsActive));
+            var originalPrimary = entry.OriginalValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsPrimary));
+            var currentPrimary = entry.CurrentValues.GetValue<bool>(nameof(OpmsKpiStrategicRisk.IsPrimary));
+            var municipalityId = entry.OriginalValues.GetValue<long>(nameof(OpmsKpiStrategicRisk.MunicipalityId));
+            var targetId = entry.OriginalValues.GetValue<string>(nameof(OpmsKpiStrategicRisk.OpmsTargetId));
+            var riskId = entry.OriginalValues.GetValue<long>(nameof(OpmsKpiStrategicRisk.StrategicRiskId));
+            var targetPublicId = ResolveOpmsTargetPublicId(targetId);
+            var riskPublicId = ResolveStrategicRiskPublicId(riskId);
+            var linkedByPublicId = ResolveIdentityUserPublicId(
+                entry.OriginalValues.GetValue<string>(nameof(OpmsKpiStrategicRisk.LinkedByUserId)));
+            if (!targetPublicId.HasValue || !riskPublicId.HasValue || !linkedByPublicId.HasValue)
+                throw new InvalidOperationException("Strategic-risk KPI relationship governance references must resolve to stable public identities.");
+
+            if (originalActive && currentActive && originalPrimary && !currentPrimary)
+            {
+                EnsureOnlyProperties(entry,
+                    [nameof(OpmsKpiStrategicRisk.IsPrimary), nameof(OpmsKpiStrategicRisk.RowVersion)],
+                    "Strategic-risk KPI relationship identity and provenance are append-preserved.");
+                var replacements = ChangeTracker.Entries<OpmsKpiStrategicRisk>().Where(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.MunicipalityId == municipalityId
+                    && candidate.Entity.OpmsTargetId == targetId
+                    && candidate.Entity.IsActive && candidate.Entity.IsPrimary).ToArray();
+                if (replacements.Length != 1)
+                    throw new InvalidOperationException("A primary strategic-risk KPI relationship may be demoted only beside one replacement primary link.");
+                var replacement = replacements[0].Entity;
+                var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                    && candidate.Entity.EntityName == nameof(OpmsKpiStrategicRisk)
+                    && candidate.Entity.EntityId == entry.OriginalValues.GetValue<Guid>(nameof(OpmsKpiStrategicRisk.PublicId)).ToString()
+                    && candidate.Entity.Action == "DemotePrimary"
+                    && candidate.Entity.MunicipalityId == municipalityId
+                    && candidate.Entity.ChangedBy == replacement.LinkedByUserId
+                    && candidate.Entity.Reason == replacement.LinkReason
+                    && KpiRiskLinkSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields,
+                        targetPublicId.Value, riskPublicId.Value, linkedByPublicId.Value, null, null)
+                    && KpiRiskLinkSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields,
+                        targetPublicId.Value, riskPublicId.Value, linkedByPublicId.Value, null, replacement.PublicId)).ToArray();
+                if (audits.Length != 1)
+                    throw new InvalidOperationException("Strategic-risk KPI primary demotion requires one exact replacement-linked audit.");
+                continue;
+            }
+
+            EnsureOnlyProperties(entry,
+                [nameof(OpmsKpiStrategicRisk.IsActive), nameof(OpmsKpiStrategicRisk.IsPrimary),
+                    nameof(OpmsKpiStrategicRisk.UnlinkedByUserId), nameof(OpmsKpiStrategicRisk.UnlinkedAt),
+                    nameof(OpmsKpiStrategicRisk.UnlinkReason), nameof(OpmsKpiStrategicRisk.RowVersion)],
+                "Strategic-risk KPI relationship identity and provenance are append-preserved.");
+            var unlinkedBy = entry.CurrentValues.GetValue<string?>(nameof(OpmsKpiStrategicRisk.UnlinkedByUserId));
+            var unlinkedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(OpmsKpiStrategicRisk.UnlinkedAt));
+            var unlinkReason = entry.CurrentValues.GetValue<string?>(nameof(OpmsKpiStrategicRisk.UnlinkReason));
+            var unlinkedByPublicId = ResolveIdentityUserPublicId(unlinkedBy);
+            if (!originalActive || currentActive || currentPrimary
+                || entry.OriginalValues.GetValue<DateTime?>(nameof(OpmsKpiStrategicRisk.UnlinkedAt)).HasValue
+                || entry.OriginalValues.GetValue<string?>(nameof(OpmsKpiStrategicRisk.UnlinkedByUserId)) != null
+                || entry.OriginalValues.GetValue<string?>(nameof(OpmsKpiStrategicRisk.UnlinkReason)) != null
+                || string.IsNullOrWhiteSpace(unlinkedBy) || !unlinkedByPublicId.HasValue
+                || !unlinkedAt.HasValue
+                || unlinkedAt < entry.OriginalValues.GetValue<DateTime>(nameof(OpmsKpiStrategicRisk.LinkedAt))
+                || unlinkedAt > DateTime.UtcNow.AddMinutes(5)
+                || string.IsNullOrWhiteSpace(unlinkReason))
+                throw new InvalidOperationException("A strategic-risk KPI relationship may only advance once to a complete inactive unlink state.");
+
+            var unlinkAudits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == nameof(OpmsKpiStrategicRisk)
+                && candidate.Entity.EntityId == entry.OriginalValues.GetValue<Guid>(nameof(OpmsKpiStrategicRisk.PublicId)).ToString()
+                && candidate.Entity.Action == "Unlink"
+                && candidate.Entity.MunicipalityId == municipalityId
+                && candidate.Entity.ChangedBy == unlinkedBy
+                && candidate.Entity.Reason == unlinkReason
+                && KpiRiskLinkSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields,
+                    targetPublicId.Value, riskPublicId.Value, linkedByPublicId.Value, null, null)
+                && KpiRiskLinkSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields,
+                    targetPublicId.Value, riskPublicId.Value, linkedByPublicId.Value, unlinkedByPublicId, null)).ToArray();
+            if (unlinkAudits.Length != 1)
+                throw new InvalidOperationException("Strategic-risk KPI unlink requires one exact actor-bound before/after audit.");
+        }
+    }
+
+    private static bool KpiRiskLinkSnapshotMatches(string? json, PropertyValues values, IEnumerable<string> fields,
+        Guid targetPublicId, Guid riskPublicId, Guid linkedByPublicId, Guid? unlinkedByPublicId, Guid? replacedByPublicId) =>
+        RootSnapshotMatches(json, values, fields)
+        && NullableGuidSnapshotMatches(json, "TargetPublicId", targetPublicId)
+        && NullableGuidSnapshotMatches(json, "StrategicRiskPublicId", riskPublicId)
+        && NullableGuidSnapshotMatches(json, "LinkedByUserPublicId", linkedByPublicId)
+        && NullableGuidSnapshotMatches(json, "UnlinkedByUserPublicId", unlinkedByPublicId)
+        && NullableGuidSnapshotMatches(json, "ReplacedByPublicId", replacedByPublicId);
+
+    private Guid? ResolveOpmsTargetPublicId(string targetId)
+    {
+        var tracked = ChangeTracker.Entries<OpmsTarget>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == targetId)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? OpmsTargets.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == targetId)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private Guid? ResolveStrategicRiskPublicId(long riskId)
+    {
+        var tracked = ChangeTracker.Entries<StrategicRisk>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == riskId)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? StrategicRisks.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == riskId)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
     }
 
     private Guid? ResolveMunicipalityFinancialYearPublicId(long? municipalityFinancialYearId)

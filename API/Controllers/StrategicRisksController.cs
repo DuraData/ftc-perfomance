@@ -234,7 +234,10 @@ public sealed class StrategicRisksController(
         OpmsKpiStrategicRisk[] replacedPrimaryLinks = [];
         if (request.IsPrimary)
         {
-            var currentPrimary = await context.OpmsKpiStrategicRisks.Where(item => item.OpmsTargetId == target.Id && item.IsActive && item.IsPrimary).ToArrayAsync();
+            var currentPrimary = await context.OpmsKpiStrategicRisks
+                .Include(item => item.StrategicRisk)
+                .Include(item => item.LinkedByUser)
+                .Where(item => item.OpmsTargetId == target.Id && item.IsActive && item.IsPrimary).ToArrayAsync();
             replacedPrimaryLinks = currentPrimary;
             foreach (var item in currentPrimary) item.IsPrimary = false;
         }
@@ -250,10 +253,14 @@ public sealed class StrategicRisksController(
         context.OpmsKpiStrategicRisks.Add(entity);
         foreach (var replaced in replacedPrimaryLinks)
             workflow.QueueAuditTrail(nameof(OpmsKpiStrategicRisk), replaced.PublicId.ToString(), "DemotePrimary",
-                new { IsPrimary = true }, new { IsPrimary = false, ReplacedByPublicId = entity.PublicId },
+                LinkSnapshot(target.PublicId, replaced.StrategicRisk.PublicId, true, replaced.IsActive,
+                    replaced.LinkedByUser.PublicId, replaced.LinkedAt, replaced.LinkReason,
+                    replaced.UnlinkedAt, null, replaced.UnlinkReason, null),
+                LinkSnapshot(target.PublicId, replaced.StrategicRisk.PublicId, replaced, replaced.LinkedByUser.PublicId,
+                    replacedByPublicId: entity.PublicId),
                 session.User.Id, IpAddress(), entity.LinkReason);
         workflow.QueueAuditTrail(nameof(OpmsKpiStrategicRisk), entity.PublicId.ToString(), "Link", null,
-            new { TargetPublicId = target.PublicId, StrategicRiskPublicId = risk.PublicId, entity.IsPrimary, ReplacedPrimaryLinks = replacedPrimaryLinks.Select(item => item.PublicId).ToArray() },
+            LinkSnapshot(target.PublicId, risk.PublicId, entity, session.User.PublicId),
             session.User.Id, IpAddress(), entity.LinkReason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicRiskKpiLinkDto>("This strategic risk is already linked to the KPI.")); }
@@ -283,7 +290,11 @@ public sealed class StrategicRisksController(
         entity.UnlinkedByUserId = session.User!.Id;
         entity.UnlinkReason = request.Reason.Trim();
         workflow.QueueAuditTrail(nameof(OpmsKpiStrategicRisk), entity.PublicId.ToString(), "Unlink",
-            new { IsActive = true, WasPrimary = wasPrimary }, new { IsActive = false, entity.UnlinkedAt }, session.User.Id, IpAddress(), entity.UnlinkReason);
+            LinkSnapshot(entity.OpmsTarget.PublicId, entity.StrategicRisk.PublicId, wasPrimary, true,
+                entity.LinkedByUser.PublicId, entity.LinkedAt, entity.LinkReason, null, null, null, null),
+            LinkSnapshot(entity.OpmsTarget.PublicId, entity.StrategicRisk.PublicId, entity, entity.LinkedByUser.PublicId,
+                unlinkedByUserPublicId: session.User.PublicId),
+            session.User.Id, IpAddress(), entity.UnlinkReason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicRiskKpiLinkDto>("The strategic-risk KPI link changed before this update. Reload and retry.")); }
         return Ok(new ApiResponse<StrategicRiskKpiLinkDto>(true, ToLinkDto(entity, await GetMemberAccessAsync(session.User!))));
@@ -298,7 +309,32 @@ public sealed class StrategicRisksController(
     private IQueryable<OpmsKpiStrategicRisk> LinkQuery() => context.OpmsKpiStrategicRisks
         .Include(item => item.StrategicRisk)
         .Include(item => item.OpmsTarget).ThenInclude(item => item.Department)
-        .Include(item => item.OpmsTarget).ThenInclude(item => item.Unit);
+        .Include(item => item.OpmsTarget).ThenInclude(item => item.Unit)
+        .Include(item => item.LinkedByUser)
+        .Include(item => item.UnlinkedByUser);
+
+    private static object LinkSnapshot(Guid targetPublicId, Guid strategicRiskPublicId,
+        OpmsKpiStrategicRisk link, Guid linkedByUserPublicId, Guid? unlinkedByUserPublicId = null,
+        Guid? replacedByPublicId = null) => LinkSnapshot(targetPublicId, strategicRiskPublicId,
+            link.IsPrimary, link.IsActive, linkedByUserPublicId, link.LinkedAt, link.LinkReason,
+            link.UnlinkedAt, unlinkedByUserPublicId, link.UnlinkReason, replacedByPublicId);
+
+    private static object LinkSnapshot(Guid targetPublicId, Guid strategicRiskPublicId,
+        bool isPrimary, bool isActive, Guid linkedByUserPublicId, DateTime linkedAt, string linkReason,
+        DateTime? unlinkedAt, Guid? unlinkedByUserPublicId, string? unlinkReason, Guid? replacedByPublicId) => new
+        {
+            TargetPublicId = targetPublicId,
+            StrategicRiskPublicId = strategicRiskPublicId,
+            IsPrimary = isPrimary,
+            IsActive = isActive,
+            LinkedByUserPublicId = linkedByUserPublicId,
+            LinkedAt = linkedAt,
+            LinkReason = linkReason,
+            UnlinkedAt = unlinkedAt,
+            UnlinkedByUserPublicId = unlinkedByUserPublicId,
+            UnlinkReason = unlinkReason,
+            ReplacedByPublicId = replacedByPublicId
+        };
 
     private async Task<(ApplicationUser? User, ActionResult? Error)> SessionAsync<T>(string permission)
     {

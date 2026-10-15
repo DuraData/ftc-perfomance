@@ -104,6 +104,69 @@ public sealed class StrategicRiskTests
     }
 
     [Fact]
+    public async Task Kpi_link_history_rejects_identity_rewrites_and_forged_lifecycle_audits()
+    {
+        const long municipalityId = 9114;
+        var user = IdpTestFixture.CreateUser("risk-link-root-governor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+        var controller = Controller(context, user, municipalityId);
+        var riskOne = Data(await controller.Create(Request("LINK-ROOT-1", "Governed linked risk", seed.Year.PublicId)));
+        var riskTwo = Data(await controller.Create(Request("LINK-ROOT-2", "Replacement linked risk", seed.Year.PublicId)));
+        var linked = Data(await controller.LinkKpi(new LinkStrategicRiskRequest(
+            riskOne.PublicId, seed.Target.PublicId, true, "Approved primary risk alignment")));
+
+        context.ChangeTracker.Clear();
+        var directLink = await context.OpmsKpiStrategicRisks.SingleAsync(item => item.PublicId == linked.PublicId);
+        directLink.PublicId = Guid.NewGuid();
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*identity and provenance are append-preserved*");
+
+        context.ChangeTracker.Clear();
+        directLink = await context.OpmsKpiStrategicRisks.SingleAsync(item => item.PublicId == linked.PublicId);
+        var replacementRisk = await context.StrategicRisks.SingleAsync(item => item.PublicId == riskTwo.PublicId);
+        var replacement = new OpmsKpiStrategicRisk
+        {
+            MunicipalityId = municipalityId,
+            OpmsTargetId = seed.Target.Id,
+            StrategicRiskId = replacementRisk.Id,
+            IsPrimary = true,
+            LinkedByUserId = user.Id,
+            LinkReason = "Approved replacement primary risk"
+        };
+        context.OpmsKpiStrategicRisks.Add(replacement);
+        var demotionBefore = LinkAuditSnapshot(seed.Target.PublicId, riskOne.PublicId, directLink, user.PublicId);
+        directLink.IsPrimary = false;
+        var forgedReplacementPublicId = Guid.NewGuid();
+        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id))
+            .QueueAuditTrail(nameof(OpmsKpiStrategicRisk), directLink.PublicId.ToString(), "DemotePrimary", demotionBefore,
+                LinkAuditSnapshot(seed.Target.PublicId, riskOne.PublicId, directLink, user.PublicId,
+                    replacedByPublicId: forgedReplacementPublicId),
+                user.Id, null, replacement.LinkReason);
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact replacement-linked audit*");
+        forgedReplacementPublicId.Should().NotBe(replacement.PublicId);
+
+        context.ChangeTracker.Clear();
+        directLink = await context.OpmsKpiStrategicRisks.SingleAsync(item => item.PublicId == linked.PublicId);
+        var unlinkBefore = LinkAuditSnapshot(seed.Target.PublicId, riskOne.PublicId, directLink, user.PublicId);
+        directLink.IsActive = false;
+        directLink.IsPrimary = false;
+        directLink.UnlinkedAt = DateTime.UtcNow;
+        directLink.UnlinkedByUserId = user.Id;
+        directLink.UnlinkReason = "Approved relationship closure";
+        var forgedUnlinkActorPublicId = Guid.NewGuid();
+        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id))
+            .QueueAuditTrail(nameof(OpmsKpiStrategicRisk), directLink.PublicId.ToString(), "Unlink", unlinkBefore,
+                LinkAuditSnapshot(seed.Target.PublicId, riskOne.PublicId, directLink, user.PublicId,
+                    unlinkedByUserPublicId: forgedUnlinkActorPublicId),
+                user.Id, null, directLink.UnlinkReason);
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact actor-bound before/after audit*");
+        forgedUnlinkActorPublicId.Should().NotBe(user.PublicId);
+    }
+
+    [Fact]
     public async Task Risk_master_rejects_identity_rewrites_and_forged_public_scope_audits()
     {
         const long municipalityId = 9113;
@@ -520,6 +583,23 @@ public sealed class StrategicRiskTests
 
     private static SaveStrategicRiskRequest Request(string reference, string title, Guid yearPublicId) =>
         new(reference, title, null, yearPublicId, yearPublicId, true, "Approved risk administration", null);
+
+    private static object LinkAuditSnapshot(Guid targetPublicId, Guid strategicRiskPublicId,
+        OpmsKpiStrategicRisk link, Guid linkedByUserPublicId, Guid? unlinkedByUserPublicId = null,
+        Guid? replacedByPublicId = null) => new
+        {
+            TargetPublicId = targetPublicId,
+            StrategicRiskPublicId = strategicRiskPublicId,
+            link.IsPrimary,
+            link.IsActive,
+            LinkedByUserPublicId = linkedByUserPublicId,
+            link.LinkedAt,
+            link.LinkReason,
+            link.UnlinkedAt,
+            UnlinkedByUserPublicId = unlinkedByUserPublicId,
+            link.UnlinkReason,
+            ReplacedByPublicId = replacedByPublicId
+        };
 
     private static StrategicRisksController Controller(
         ApplicationDbContext context,
