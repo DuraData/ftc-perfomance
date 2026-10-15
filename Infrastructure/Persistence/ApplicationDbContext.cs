@@ -2919,9 +2919,73 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         if (ChangeTracker.Entries<C88WorkflowStage>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Circular 88 workflow-stage versions are append-only.");
         foreach (var entry in ChangeTracker.Entries<C88MunicipalityConfiguration>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit("C88", entry.Entity.PublicId, entry.Entity.MunicipalityId, "Configure");
+        {
+            var snapshotFields = new[]
+            {
+                nameof(C88MunicipalityConfiguration.IsEnabled), nameof(C88MunicipalityConfiguration.EffectiveFrom),
+                nameof(C88MunicipalityConfiguration.EffectiveTo)
+            };
+            EnsureOnlyProperties(entry,
+                [nameof(C88MunicipalityConfiguration.C88CatalogueVersionId), .. snapshotFields, nameof(C88MunicipalityConfiguration.RowVersion)],
+                "Circular 88 configuration identity, municipality, financial year and creation evidence are immutable.");
+            var financialYearPublicId = ResolveMunicipalityFinancialYearPublicId(
+                entry.OriginalValues.GetValue<long>(nameof(C88MunicipalityConfiguration.MunicipalityFinancialYearId)));
+            var originalCatalogueVersionPublicId = ResolveC88CatalogueVersionPublicId(
+                entry.OriginalValues.GetValue<long>(nameof(C88MunicipalityConfiguration.C88CatalogueVersionId)));
+            var currentCatalogueVersionPublicId = ResolveC88CatalogueVersionPublicId(
+                entry.CurrentValues.GetValue<long>(nameof(C88MunicipalityConfiguration.C88CatalogueVersionId)));
+            if (!financialYearPublicId.HasValue || !originalCatalogueVersionPublicId.HasValue || !currentCatalogueVersionPublicId.HasValue)
+                throw new InvalidOperationException("Circular 88 configuration governance references must resolve to stable public identities.");
+            var publicId = entry.OriginalValues.GetValue<Guid>(nameof(C88MunicipalityConfiguration.PublicId));
+            var municipalityId = entry.OriginalValues.GetValue<long>(nameof(C88MunicipalityConfiguration.MunicipalityId));
+            var actor = _tenantContext?.UserId;
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == "C88"
+                && candidate.Entity.EntityId == publicId.ToString()
+                && candidate.Entity.Action == "Configure"
+                && candidate.Entity.MunicipalityId == municipalityId
+                && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
+                && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
+                && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "FinancialYearPublicId", financialYearPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.NewValue, "FinancialYearPublicId", financialYearPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "CatalogueVersionPublicId", originalCatalogueVersionPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.NewValue, "CatalogueVersionPublicId", currentCatalogueVersionPublicId)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException("Circular 88 configuration changes require one exact actor-bound same-transaction before/after audit.");
+        }
         foreach (var entry in ChangeTracker.Entries<C88IndicatorPlan>().Where(entry => entry.State == EntityState.Modified))
-            RequireGovernanceAudit("C88", entry.Entity.PublicId, entry.Entity.MunicipalityId, "SavePlan");
+        {
+            var snapshotFields = new[]
+            {
+                nameof(C88IndicatorPlan.BaselineValue), nameof(C88IndicatorPlan.MediumTermTarget),
+                nameof(C88IndicatorPlan.AnnualTarget), nameof(C88IndicatorPlan.MissingDataExplanation),
+                nameof(C88IndicatorPlan.EstimatedAvailability)
+            };
+            EnsureOnlyProperties(entry, [.. snapshotFields, nameof(C88IndicatorPlan.RowVersion)],
+                "Circular 88 indicator-plan identity, ownership, indicator and creation evidence are immutable.");
+            var indicatorPublicId = ResolveC88IndicatorPublicId(
+                entry.OriginalValues.GetValue<long>(nameof(C88IndicatorPlan.C88IndicatorId)));
+            if (!indicatorPublicId.HasValue)
+                throw new InvalidOperationException("Circular 88 indicator-plan governance references must resolve to stable public identities.");
+            var publicId = entry.OriginalValues.GetValue<Guid>(nameof(C88IndicatorPlan.PublicId));
+            var municipalityId = entry.OriginalValues.GetValue<long>(nameof(C88IndicatorPlan.MunicipalityId));
+            var actor = _tenantContext?.UserId;
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
+                && candidate.Entity.EntityName == "C88"
+                && candidate.Entity.EntityId == publicId.ToString()
+                && candidate.Entity.Action == "SavePlan"
+                && candidate.Entity.MunicipalityId == municipalityId
+                && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
+                && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
+                && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "IndicatorPublicId", indicatorPublicId)
+                && NullableGuidSnapshotMatches(candidate.Entity.NewValue, "IndicatorPublicId", indicatorPublicId)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException("Circular 88 indicator-plan changes require one exact actor-bound same-transaction before/after audit.");
+        }
         if (ChangeTracker.Entries<C88ReportingCalendar>().Any(entry => entry.State == EntityState.Modified)
             || ChangeTracker.Entries<C88Assignment>().Any(entry => entry.State == EntityState.Modified)
             || ChangeTracker.Entries<C88OpmsMapping>().Any(entry => entry.State == EntityState.Modified))
@@ -4145,6 +4209,28 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
         return tracked ?? MunicipalityFinancialYears.IgnoreQueryFilters().AsNoTracking()
             .Where(candidate => candidate.Id == municipalityFinancialYearId.Value)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private Guid? ResolveC88CatalogueVersionPublicId(long catalogueVersionId)
+    {
+        var tracked = ChangeTracker.Entries<C88CatalogueVersion>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == catalogueVersionId)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? C88CatalogueVersions.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == catalogueVersionId)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private Guid? ResolveC88IndicatorPublicId(long indicatorId)
+    {
+        var tracked = ChangeTracker.Entries<C88Indicator>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == indicatorId)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? C88Indicators.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == indicatorId)
             .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
     }
 

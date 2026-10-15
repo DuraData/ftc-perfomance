@@ -609,7 +609,8 @@ public sealed class C88Controller : ControllerBase
         var year = await context.MunicipalityFinancialYears.SingleOrDefaultAsync(item => item.PublicId == request.MunicipalityFinancialYearPublicId);
         var version = await context.C88CatalogueVersions.SingleOrDefaultAsync(item => item.PublicId == request.CatalogueVersionPublicId && item.IsPublished && item.IsActive);
         if (year == null || version == null) return BadRequest(Fail<Guid>("The municipality financial year and a published active catalogue edition are required."));
-        var entity = await context.C88MunicipalityConfigurations.SingleOrDefaultAsync(item => item.MunicipalityFinancialYearId == year.Id);
+        var entity = await context.C88MunicipalityConfigurations.Include(item => item.CatalogueVersion)
+            .SingleOrDefaultAsync(item => item.MunicipalityFinancialYearId == year.Id);
         object? before = null;
         if (entity == null)
         {
@@ -621,7 +622,14 @@ public sealed class C88Controller : ControllerBase
         {
             if (!TryVersion(request.RowVersion, out var rowVersion)) return BadRequest(Fail<Guid>("A valid RowVersion is required."));
             context.Entry(entity).Property(item => item.RowVersion).OriginalValue = rowVersion;
-            before = new { entity.C88CatalogueVersionId, entity.IsEnabled, entity.EffectiveFrom, entity.EffectiveTo };
+            before = new
+            {
+                FinancialYearPublicId = year.PublicId,
+                CatalogueVersionPublicId = entity.CatalogueVersion.PublicId,
+                entity.IsEnabled,
+                entity.EffectiveFrom,
+                entity.EffectiveTo
+            };
         }
         entity.C88CatalogueVersionId = version.Id; entity.IsEnabled = request.IsEnabled; entity.EffectiveFrom = Utc(request.EffectiveFrom); entity.EffectiveTo = NullableUtc(request.EffectiveTo);
         Audit(entity.PublicId, "Configure", before, new { FinancialYearPublicId = year.PublicId, CatalogueVersionPublicId = version.PublicId, entity.IsEnabled, entity.EffectiveFrom, entity.EffectiveTo, Reason = reason }, session.User!.Id, reason);
@@ -656,11 +664,19 @@ public sealed class C88Controller : ControllerBase
         {
             if (!TryVersion(request.RowVersion, out var rowVersion)) return BadRequest(Fail<Guid>("A valid RowVersion is required."));
             context.Entry(entity).Property(item => item.RowVersion).OriginalValue = rowVersion;
-            before = new { entity.BaselineValue, entity.MediumTermTarget, entity.AnnualTarget, entity.MissingDataExplanation, entity.EstimatedAvailability };
+            before = new
+            {
+                IndicatorPublicId = pair.Indicator!.PublicId,
+                entity.BaselineValue,
+                entity.MediumTermTarget,
+                entity.AnnualTarget,
+                entity.MissingDataExplanation,
+                entity.EstimatedAvailability
+            };
         }
         entity.BaselineValue = Clean(request.BaselineValue, 1024); entity.MediumTermTarget = Clean(request.MediumTermTarget, 1024);
         entity.AnnualTarget = Clean(request.AnnualTarget, 1024); entity.MissingDataExplanation = requestedMissingExplanation; entity.EstimatedAvailability = NullableUtc(request.EstimatedAvailability);
-        Audit(entity.PublicId, "SavePlan", before, new { pair.Indicator!.PublicId, entity.BaselineValue, entity.MediumTermTarget, entity.AnnualTarget, entity.MissingDataExplanation, entity.EstimatedAvailability, Reason = reason }, session.User!.Id, reason);
+        Audit(entity.PublicId, "SavePlan", before, new { IndicatorPublicId = pair.Indicator!.PublicId, entity.BaselineValue, entity.MediumTermTarget, entity.AnnualTarget, entity.MissingDataExplanation, entity.EstimatedAvailability, Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The plan changed before this update. Reload and retry.");
     }
 

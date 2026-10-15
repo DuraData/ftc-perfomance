@@ -137,7 +137,7 @@ public class C88ControllerTests
     [Fact]
     public async Task Direct_C88_rewrites_and_hard_deletes_are_rejected_at_the_persistence_boundary()
     {
-        await using var context = IdpTestFixture.CreateRelationalContext();
+        await using var context = IdpTestFixture.CreateRelationalContext(new FixedTenantContext(9301, false, "c88-user"));
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
         var module = await CreateCatalogueAsync(context, controller, seed);
@@ -157,12 +157,93 @@ public class C88ControllerTests
         context.ChangeTracker.Clear();
         (await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == module.Configuration.PublicId)).IsEnabled = false;
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        var forgedAuditor = IdpTestFixture.CreateUser("c88-forged-auditor");
+        forgedAuditor.MunicipalityId = seed.Municipality.Id;
+        context.Users.Add(forgedAuditor);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var configuration = await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == module.Configuration.PublicId);
+        var originalEnabled = configuration.IsEnabled;
+        configuration.IsEnabled = !originalEnabled;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = seed.Municipality.Id,
+            EntityName = "C88",
+            EntityId = configuration.PublicId.ToString(),
+            Action = "Configure",
+            ChangedBy = forgedAuditor.Id,
+            Reason = "Forged configuration actor",
+            OldValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                FinancialYearPublicId = seed.Year.PublicId,
+                CatalogueVersionPublicId = module.Version.PublicId,
+                IsEnabled = originalEnabled,
+                configuration.EffectiveFrom,
+                configuration.EffectiveTo
+            }),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                FinancialYearPublicId = seed.Year.PublicId,
+                CatalogueVersionPublicId = module.Version.PublicId,
+                configuration.IsEnabled,
+                configuration.EffectiveFrom,
+                configuration.EffectiveTo
+            })
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        (await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == module.Configuration.PublicId)).PublicId = Guid.NewGuid();
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*configuration identity*");
 
         context.ChangeTracker.Clear();
         (await context.C88IndicatorPlans.SingleAsync(item => item.PublicId == planId)).AnnualTarget = "999";
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*same-transaction reasoned before/after audit evidence*");
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        var plan = await context.C88IndicatorPlans.SingleAsync(item => item.PublicId == planId);
+        var originalAnnualTarget = plan.AnnualTarget;
+        plan.AnnualTarget = "998";
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = seed.Municipality.Id,
+            EntityName = "C88",
+            EntityId = plan.PublicId.ToString(),
+            Action = "SavePlan",
+            ChangedBy = seed.User.Id,
+            Reason = "Forged indicator reference",
+            OldValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                IndicatorPublicId = Guid.NewGuid(),
+                plan.BaselineValue,
+                plan.MediumTermTarget,
+                AnnualTarget = originalAnnualTarget,
+                plan.MissingDataExplanation,
+                plan.EstimatedAvailability
+            }),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                IndicatorPublicId = Guid.NewGuid(),
+                plan.BaselineValue,
+                plan.MediumTermTarget,
+                plan.AnnualTarget,
+                plan.MissingDataExplanation,
+                plan.EstimatedAvailability
+            })
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        (await context.C88IndicatorPlans.SingleAsync(item => item.PublicId == planId)).PublicId = Guid.NewGuid();
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*indicator-plan identity*");
 
         context.ChangeTracker.Clear();
         (await context.C88ReportingCalendars.SingleAsync(item => item.PublicId == calendarId)).Name = "Rewritten";
@@ -666,7 +747,7 @@ public class C88ControllerTests
                 var allowed = permissionRule?.Invoke(permission) ?? true;
                 return new AccessDecisionResult(allowed, allowed ? "Allowed" : "Denied", [], [], []);
             });
-        var tenant = new FixedTenantContext(municipalityId, false);
+        var tenant = new FixedTenantContext(municipalityId, false, user.Id);
         return new C88Controller(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
             audit ?? new WorkflowGovernanceService(context, tenantContext: tenant), tenant)
         {
@@ -683,5 +764,5 @@ public class C88ControllerTests
     ];
     private sealed record Seed(ApplicationUser User, Municipality Municipality, MunicipalityFinancialYear Year, MunicipalEmployee Employee, OpmsTarget Target);
     private sealed record Module(C88CatalogueVersion Version, C88MunicipalityConfiguration Configuration, C88Indicator Indicator, C88DataElement Numerator, C88DataElement Denominator, C88CatalogueItem ReportType, C88ComplianceQuestion Question);
-    private sealed class FixedTenantContext(long? municipalityId, bool isSystem) : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => isSystem; public string? UserId => "c88-test"; }
+    private sealed class FixedTenantContext(long? municipalityId, bool isSystem, string userId = "c88-test") : ITenantContext { public long? MunicipalityId => municipalityId; public bool IsSystem => isSystem; public string? UserId => userId; }
 }
