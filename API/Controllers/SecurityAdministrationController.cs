@@ -859,8 +859,18 @@ public sealed class SecurityAdministrationController : ControllerBase
         var now = DateTime.UtcNow;
         var current = await _context.RolePermissions
             .Where(item => item.RoleId == role.Id && item.IsActive && !item.EffectiveTo.HasValue)
+            .Include(item => item.Permission)
             .ToListAsync();
-        var oldValue = current.Select(item => new { item.PublicId, item.PermissionId, item.IsAllowed, Scope = item.ScopeType == null ? null : item.ScopeType.ToString(), item.EffectiveFrom }).ToArray();
+        var oldValue = current.Select(item => new
+            {
+                PermissionCode = item.Permission.Code,
+                State = item.IsAllowed ? "ALLOW" : "DENY",
+                ScopeType = item.ScopeType == null ? null : item.ScopeType.ToString()
+            })
+            .OrderBy(item => item.PermissionCode, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.State, StringComparer.Ordinal)
+            .ThenBy(item => item.ScopeType, StringComparer.Ordinal)
+            .ToArray();
         foreach (var row in current)
         {
             row.IsActive = false;
@@ -881,6 +891,16 @@ public sealed class SecurityAdministrationController : ControllerBase
             });
         }
         role.UpdatedAt = now;
+        var newValue = request.Permissions.Select(item => new
+            {
+                PermissionCode = definitions[item.PermissionCode].Code,
+                State = item.State.ToUpperInvariant(),
+                ScopeType = string.IsNullOrWhiteSpace(item.ScopeType) ? null : Enum.Parse<ScopeType>(item.ScopeType, true).ToString()
+            })
+            .OrderBy(item => item.PermissionCode, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.State, StringComparer.Ordinal)
+            .ThenBy(item => item.ScopeType, StringComparer.Ordinal)
+            .ToArray();
         _context.AuditTrails.Add(new AuditTrail
         {
             MunicipalityId = role.MunicipalityId,
@@ -888,7 +908,7 @@ public sealed class SecurityAdministrationController : ControllerBase
             EntityId = role.PublicId.ToString(),
             Action = "ReplacePermissions",
             OldValue = JsonSerializer.Serialize(oldValue),
-            NewValue = JsonSerializer.Serialize(request.Permissions),
+            NewValue = JsonSerializer.Serialize(newValue),
             ChangedBy = actor.Id,
             ChangedAt = now,
             Reason = reason,

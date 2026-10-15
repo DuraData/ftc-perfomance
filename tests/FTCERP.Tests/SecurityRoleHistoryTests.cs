@@ -147,6 +147,52 @@ public sealed class SecurityRoleHistoryTests
         exception.Message.Should().Contain("cannot be hard deleted");
     }
 
+    [Fact]
+    public async Task Permission_replacement_rejects_an_audit_that_does_not_match_the_version_rows()
+    {
+        var actor = IdpTestFixture.CreateUser("role-permission-history-actor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(null, actor.Id, true));
+        var role = NewRole("permission-history-role", "PERMISSION_HISTORY");
+        var permission = new Permission
+        {
+            Code = "OPMS_KPI.READ", Module = "OPMS", Feature = "KPI", Action = "Read",
+            Kind = SecurityPermissionKind.Resource, ResourceCode = "OPMS_KPI"
+        };
+        context.AddRange(actor, role, permission);
+        await context.SaveChangesAsync();
+        var existing = new RolePermission
+        {
+            RoleId = role.Id, PermissionId = permission.Id, IsAllowed = true, ScopeType = ScopeType.DepartmentScope,
+            IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1)
+        };
+        context.RolePermissions.Add(existing);
+        await context.SaveChangesAsync();
+
+        var changedAt = DateTime.UtcNow;
+        existing.IsActive = false;
+        existing.EffectiveTo = changedAt;
+        context.RolePermissions.Add(new RolePermission
+        {
+            RoleId = role.Id, PermissionId = permission.Id, IsAllowed = false,
+            ScopeType = ScopeType.DepartmentScope, IsActive = true, EffectiveFrom = changedAt
+        });
+        role.UpdatedAt = changedAt;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            EntityName = "SecurityRolePermissions",
+            EntityId = role.PublicId.ToString(),
+            Action = "ReplacePermissions",
+            OldValue = "[]",
+            NewValue = "[]",
+            ChangedBy = actor.Id,
+            ChangedAt = changedAt,
+            Reason = "Attempt permission audit mismatch"
+        });
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        exception.Message.Should().Contain("one exact actor-bound");
+    }
+
     private static ApplicationRole NewRole(string id, string code) => new()
     {
         Id = id,

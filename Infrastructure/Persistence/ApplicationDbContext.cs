@@ -3234,6 +3234,30 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 continue;
             }
 
+            var oldPermissions = ChangeTracker.Entries<RolePermission>()
+                .Where(candidate => candidate.State == EntityState.Modified
+                    && candidate.OriginalValues.GetValue<string>(nameof(RolePermission.RoleId)) == entry.Entity.Id
+                    && candidate.OriginalValues.GetValue<bool>(nameof(RolePermission.IsActive)))
+                .Select(candidate => BuildRolePermissionAuditItem(
+                    candidate.OriginalValues.GetValue<int>(nameof(RolePermission.PermissionId)),
+                    candidate.OriginalValues.GetValue<bool>(nameof(RolePermission.IsAllowed)),
+                    candidate.OriginalValues.GetValue<ScopeType?>(nameof(RolePermission.ScopeType))))
+                .OrderBy(item => item["PermissionCode"]?.ToString(), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item["State"]?.ToString(), StringComparer.Ordinal)
+                .ThenBy(item => item["ScopeType"]?.ToString(), StringComparer.Ordinal)
+                .ToArray();
+            var newPermissions = ChangeTracker.Entries<RolePermission>()
+                .Where(candidate => candidate.State == EntityState.Added && candidate.Entity.RoleId == entry.Entity.Id)
+                .Select(candidate => BuildRolePermissionAuditItem(candidate.Entity.PermissionId,
+                    candidate.Entity.IsAllowed, candidate.Entity.ScopeType))
+                .OrderBy(item => item["PermissionCode"]?.ToString(), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item["State"]?.ToString(), StringComparer.Ordinal)
+                .ThenBy(item => item["ScopeType"]?.ToString(), StringComparer.Ordinal)
+                .ToArray();
+            if (oldPermissions.Any(item => item["PermissionCode"] == null)
+                || newPermissions.Any(item => item["PermissionCode"] == null))
+                throw new InvalidOperationException("Dynamic role permission audit evidence requires registered permission codes.");
+
             var permissionAudits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
                 && candidate.Entity.EntityName == "SecurityRolePermissions"
                 && candidate.Entity.EntityId == entry.Entity.PublicId.ToString()
@@ -3242,11 +3266,29 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
                 && candidate.Entity.ChangedAt == updatedAt.Value
                 && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
-                && candidate.Entity.OldValue != null
-                && candidate.Entity.NewValue != null).ToArray();
+                && ExactJsonMatches(candidate.Entity.OldValue, oldPermissions)
+                && ExactJsonMatches(candidate.Entity.NewValue, newPermissions)).ToArray();
             if (permissionAudits.Length != 1)
                 throw new InvalidOperationException("Dynamic role permission changes require one exact actor-bound same-transaction audit.");
         }
+    }
+
+    private Dictionary<string, object?> BuildRolePermissionAuditItem(int permissionId, bool isAllowed, ScopeType? scopeType) => new(StringComparer.Ordinal)
+    {
+        ["PermissionCode"] = ResolvePermissionCode(permissionId),
+        ["State"] = isAllowed ? "ALLOW" : "DENY",
+        ["ScopeType"] = scopeType?.ToString()
+    };
+
+    private string? ResolvePermissionCode(int permissionId)
+    {
+        var tracked = ChangeTracker.Entries<Permission>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == permissionId)
+            .Select(candidate => candidate.Entity.Code).SingleOrDefault();
+        return tracked ?? Permissions.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == permissionId)
+            .Select(candidate => candidate.Code).SingleOrDefault();
     }
 
     private void EnforceSecurityRegistryHistory()
@@ -5095,6 +5137,21 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 if (!System.Text.Json.JsonElement.DeepEquals(actual, expectedValue)) return false;
             }
             return true;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool ExactJsonMatches(string? json, object expected)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            var expectedElement = System.Text.Json.JsonSerializer.SerializeToElement(expected, expected.GetType());
+            return System.Text.Json.JsonElement.DeepEquals(document.RootElement, expectedElement);
         }
         catch (System.Text.Json.JsonException)
         {
