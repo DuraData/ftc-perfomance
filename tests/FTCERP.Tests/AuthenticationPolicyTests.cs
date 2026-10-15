@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Auth;
 using FTCERP.Host.Infrastructure.Persistence;
@@ -16,20 +17,45 @@ public sealed class AuthenticationPolicyTests
         await using var context = NewContext();
         var municipality = new Municipality { Code = "POL", Name = "Policy Municipality" };
         var user = User("policy-admin", municipality);
+        context.AddRange(municipality, user);
+        await context.SaveChangesAsync();
         var configuration = new AuthenticationConfiguration
         {
-            Municipality = municipality, Mode = AuthenticationMode.Local, DisplayName = "Local",
-            CreatedByUser = user, EffectiveFrom = DateTime.UtcNow.AddMinutes(-5)
+            MunicipalityId = municipality.Id, Municipality = municipality, Mode = AuthenticationMode.Local, DisplayName = "Local",
+            CreatedByUserId = user.Id, CreatedByUser = user, EffectiveFrom = DateTime.UtcNow.AddMinutes(-5)
         };
         configuration.Policy = new AuthenticationPolicy
         {
-            Municipality = municipality, AuthenticationConfiguration = configuration, ModifiedByUser = user,
+            MunicipalityId = municipality.Id, Municipality = municipality, AuthenticationConfiguration = configuration,
+            ModifiedByUserId = user.Id, ModifiedByUser = user,
             MinimumPasswordLength = 18, MaximumFailedAttempts = 3, LockoutMinutes = 45,
             RequireMfaForAllLocalUsers = true, RequireMfaForPrivilegedLocalUsers = false,
             RequireFirstLoginPasswordChange = false, SessionIdleTimeoutMinutes = 12,
             SessionAbsoluteTimeoutHours = 8, MaximumConcurrentSessions = 2
         };
-        context.AddRange(municipality, user, configuration);
+        var snapshot = new AuthenticationConfigurationAuditSnapshot(
+            configuration.PublicId, configuration.ConfigurationFamilyPublicId, null, configuration.VersionNumber,
+            configuration.IsCurrent, configuration.Mode, configuration.ProviderRegistrationCode,
+            configuration.DisplayName, configuration.IsActive, configuration.EffectiveFrom, configuration.EffectiveTo,
+            user.PublicId, configuration.CreatedAt,
+            new AuthenticationPolicyAuditSnapshot(
+                configuration.Policy.PublicId, configuration.Policy.MinimumPasswordLength,
+                configuration.Policy.MaximumFailedAttempts, configuration.Policy.LockoutMinutes,
+                configuration.Policy.RequireMfaForPrivilegedLocalUsers, configuration.Policy.RequireMfaForAllLocalUsers,
+                configuration.Policy.RequireFirstLoginPasswordChange, configuration.Policy.SessionIdleTimeoutMinutes,
+                configuration.Policy.SessionAbsoluteTimeoutHours, configuration.Policy.MaximumConcurrentSessions,
+                user.PublicId, configuration.Policy.ModifiedAt));
+        context.AddRange(configuration, new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = nameof(AuthenticationConfiguration),
+            EntityId = configuration.PublicId.ToString(),
+            Action = "AuthenticationConfigurationCreated",
+            NewValue = JsonSerializer.Serialize(snapshot),
+            ChangedBy = user.Id,
+            ChangedAt = configuration.CreatedAt,
+            Reason = "Controlled authentication-policy test fixture creation."
+        });
         await context.SaveChangesAsync();
         var resolver = Resolver(context, requiredLength: 14);
 

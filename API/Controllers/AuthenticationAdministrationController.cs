@@ -77,6 +77,10 @@ public sealed class AuthenticationAdministrationController(
         if (!TryTenant(out var municipalityId, out var failure)) return failure!;
         var actor = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(actor)) return Unauthorized();
+        var actorPublicId = await context.Users.IgnoreQueryFilters().AsNoTracking()
+            .Where(item => item.Id == actor && (item.MunicipalityId == municipalityId || item.MunicipalityId == null))
+            .Select(item => (Guid?)item.PublicId).SingleOrDefaultAsync(cancellationToken);
+        if (!actorPublicId.HasValue) return Unauthorized();
         if (!ValidReason(request.Reason)) return BadRequest(Fail<AuthenticationConfigurationDto>("A governance reason between 5 and 500 characters is required."));
         if (!TryValidateProvider(request.Mode, request.ProviderRegistrationCode, out var providerCode, out var providerError))
             return BadRequest(Fail<AuthenticationConfigurationDto>(providerError!));
@@ -87,6 +91,7 @@ public sealed class AuthenticationAdministrationController(
         var municipality = await context.Municipalities.SingleAsync(item => item.Id == municipalityId, cancellationToken);
         var previous = await context.AuthenticationConfigurations.Include(item => item.Policy)
             .SingleOrDefaultAsync(item => item.MunicipalityId == municipalityId && item.IsCurrent, cancellationToken);
+        var previousSnapshot = previous == null ? null : await ToAuditSnapshotAsync(previous, cancellationToken);
         var created = previous == null;
         AuthenticationConfiguration entity;
         if (previous == null)
@@ -129,6 +134,7 @@ public sealed class AuthenticationAdministrationController(
                 VersionNumber = previous.VersionNumber + 1,
                 IsCurrent = true,
                 PreviousVersionId = previous.Id,
+                PreviousVersion = previous,
                 CreatedByUserId = actor,
                 CreatedAt = now
             };
@@ -144,8 +150,22 @@ public sealed class AuthenticationAdministrationController(
         entity.Policy = new AuthenticationPolicy { MunicipalityId = municipalityId, ModifiedByUserId = actor };
         ApplyPolicy(entity.Policy, request.Policy, actor);
         context.AuthenticationConfigurations.Add(entity);
-        AddAudit(municipalityId, actor, "AuthenticationConfiguration", created ? "AuthenticationConfigurationCreated" : "AuthenticationConfigurationVersionCreated", entity.PublicId.ToString(), request.Reason,
-            new { entity.ConfigurationFamilyPublicId, entity.VersionNumber, PreviousVersionPublicId = previous?.PublicId, request.Mode, ProviderRegistrationCode = providerCode, request.IsActive, request.EffectiveFrom, request.EffectiveTo });
+        var successorSnapshot = ToAuditSnapshot(entity, actorPublicId.Value, actorPublicId.Value, previous?.PublicId);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId,
+            EntityName = "AuthenticationConfiguration",
+            EntityId = entity.PublicId.ToString(),
+            Action = created ? "AuthenticationConfigurationCreated" : "AuthenticationConfigurationVersionCreated",
+            OldValue = previousSnapshot == null ? null : JsonSerializer.Serialize(previousSnapshot),
+            NewValue = JsonSerializer.Serialize(successorSnapshot),
+            ChangedBy = actor,
+            ChangedAt = entity.CreatedAt,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            CorrelationId = HttpContext.TraceIdentifier,
+            Reason = request.Reason.Trim(),
+            UserAgent = Request.Headers.UserAgent.ToString()
+        });
         try
         {
             await context.SaveChangesAsync(cancellationToken);
@@ -406,6 +426,61 @@ public sealed class AuthenticationAdministrationController(
         entity.RequireMfaForAllLocalUsers = value.RequireMfaForAllLocalUsers; entity.RequireFirstLoginPasswordChange = value.RequireFirstLoginPasswordChange;
         entity.SessionIdleTimeoutMinutes = value.SessionIdleTimeoutMinutes; entity.SessionAbsoluteTimeoutHours = value.SessionAbsoluteTimeoutHours;
         entity.MaximumConcurrentSessions = value.MaximumConcurrentSessions; entity.ModifiedByUserId = actor; entity.ModifiedAt = DateTime.UtcNow;
+    }
+
+    private async Task<AuthenticationConfigurationAuditSnapshot> ToAuditSnapshotAsync(
+        AuthenticationConfiguration configuration, CancellationToken cancellationToken)
+    {
+        if (configuration.Policy == null)
+            throw new InvalidOperationException("Authentication configuration audit snapshots require a policy.");
+        var userIds = new[] { configuration.CreatedByUserId, configuration.Policy.ModifiedByUserId }
+            .Distinct(StringComparer.Ordinal).ToArray();
+        var publicIds = await context.Users.IgnoreQueryFilters().AsNoTracking()
+            .Where(item => userIds.Contains(item.Id))
+            .ToDictionaryAsync(item => item.Id, item => item.PublicId, cancellationToken);
+        if (!publicIds.TryGetValue(configuration.CreatedByUserId, out var creatorPublicId)
+            || !publicIds.TryGetValue(configuration.Policy.ModifiedByUserId, out var policyActorPublicId))
+            throw new InvalidOperationException("Authentication configuration audit identities must resolve to stable public identities.");
+        var previousVersionPublicId = configuration.PreviousVersionId.HasValue
+            ? await context.AuthenticationConfigurations.IgnoreQueryFilters().AsNoTracking()
+                .Where(item => item.Id == configuration.PreviousVersionId.Value)
+                .Select(item => (Guid?)item.PublicId).SingleOrDefaultAsync(cancellationToken)
+            : null;
+        return ToAuditSnapshot(configuration, creatorPublicId, policyActorPublicId, previousVersionPublicId);
+    }
+
+    private static AuthenticationConfigurationAuditSnapshot ToAuditSnapshot(AuthenticationConfiguration configuration,
+        Guid creatorPublicId, Guid policyActorPublicId, Guid? previousVersionPublicId)
+    {
+        var policy = configuration.Policy
+            ?? throw new InvalidOperationException("Authentication configuration audit snapshots require a policy.");
+        return new AuthenticationConfigurationAuditSnapshot(
+            configuration.PublicId,
+            configuration.ConfigurationFamilyPublicId,
+            previousVersionPublicId,
+            configuration.VersionNumber,
+            configuration.IsCurrent,
+            configuration.Mode,
+            configuration.ProviderRegistrationCode,
+            configuration.DisplayName,
+            configuration.IsActive,
+            configuration.EffectiveFrom,
+            configuration.EffectiveTo,
+            creatorPublicId,
+            configuration.CreatedAt,
+            new AuthenticationPolicyAuditSnapshot(
+                policy.PublicId,
+                policy.MinimumPasswordLength,
+                policy.MaximumFailedAttempts,
+                policy.LockoutMinutes,
+                policy.RequireMfaForPrivilegedLocalUsers,
+                policy.RequireMfaForAllLocalUsers,
+                policy.RequireFirstLoginPasswordChange,
+                policy.SessionIdleTimeoutMinutes,
+                policy.SessionAbsoluteTimeoutHours,
+                policy.MaximumConcurrentSessions,
+                policyActorPublicId,
+                policy.ModifiedAt));
     }
 
     private void AddAudit(long municipalityId, string actor, string entityName, string action, string entityId, string reason, object? value) => context.AuditTrails.Add(new AuditTrail

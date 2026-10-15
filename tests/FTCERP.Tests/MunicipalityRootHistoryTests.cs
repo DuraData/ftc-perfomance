@@ -63,6 +63,12 @@ public sealed class MunicipalityRootHistoryTests
             EffectiveFrom = DateTime.UtcNow,
             CreatedByUserId = actor.Id
         };
+        configuration.Policy = new AuthenticationPolicy
+        {
+            MunicipalityId = municipality.Id,
+            AuthenticationConfiguration = configuration,
+            ModifiedByUserId = actor.Id
+        };
         context.AuthenticationConfigurations.Add(configuration);
         context.AuditTrails.Add(new AuditTrail
         {

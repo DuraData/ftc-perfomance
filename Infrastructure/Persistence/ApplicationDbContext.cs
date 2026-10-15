@@ -2388,6 +2388,55 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             if (row.VersionNumber > 1 && !ChangeTracker.Entries<AuthenticationConfiguration>().Any(candidate =>
                     candidate.State == EntityState.Modified && candidate.Entity.Id == row.PreviousVersionId))
                 throw new InvalidOperationException("An authentication configuration successor must close its tracked predecessor in the same unit of work.");
+
+            var policy = row.Policy ?? ChangeTracker.Entries<AuthenticationPolicy>()
+                .Where(candidate => candidate.State == EntityState.Added
+                    && ReferenceEquals(candidate.Entity.AuthenticationConfiguration, row))
+                .Select(candidate => candidate.Entity).SingleOrDefault();
+            if (policy == null)
+                throw new InvalidOperationException("Authentication configuration versions require one immutable policy snapshot.");
+            var creatorPublicId = ResolveIdentityUserPublicId(row.CreatedByUserId);
+            var policyActorPublicId = ResolveIdentityUserPublicId(policy.ModifiedByUserId);
+            if (!creatorPublicId.HasValue || !policyActorPublicId.HasValue)
+                throw new InvalidOperationException("Authentication configuration audit identities must resolve to stable public identities.");
+
+            EntityEntry<AuthenticationConfiguration>? predecessor = null;
+            AuthenticationConfigurationAuditSnapshot? predecessorSnapshot = null;
+            if (row.PreviousVersionId.HasValue)
+            {
+                predecessor = ChangeTracker.Entries<AuthenticationConfiguration>().SingleOrDefault(candidate =>
+                    candidate.State == EntityState.Modified && candidate.Entity.Id == row.PreviousVersionId.Value);
+                if (predecessor == null)
+                    throw new InvalidOperationException("An authentication configuration successor must close its tracked predecessor in the same unit of work.");
+                var predecessorPolicy = ResolveAuthenticationPolicy(predecessor.Entity.Id);
+                if (predecessorPolicy == null)
+                    throw new InvalidOperationException("Authentication configuration predecessors require an immutable policy snapshot.");
+                predecessorSnapshot = BuildAuthenticationConfigurationAuditSnapshot(
+                    predecessor,
+                    predecessorPolicy,
+                    originalValues: true);
+            }
+
+            var successorSnapshot = BuildAuthenticationConfigurationAuditSnapshot(row, policy);
+            var action = row.VersionNumber == 1
+                ? "AuthenticationConfigurationCreated"
+                : "AuthenticationConfigurationVersionCreated";
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate =>
+                candidate.State == EntityState.Added
+                && candidate.Entity.MunicipalityId == row.MunicipalityId
+                && candidate.Entity.EntityName == nameof(AuthenticationConfiguration)
+                && candidate.Entity.EntityId == row.PublicId.ToString()
+                && candidate.Entity.Action == action
+                && candidate.Entity.ChangedBy == row.CreatedByUserId
+                && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+                && candidate.Entity.ChangedAt == row.CreatedAt
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && (predecessorSnapshot == null
+                    ? candidate.Entity.OldValue == null
+                    : ExactJsonMatches(candidate.Entity.OldValue, predecessorSnapshot))
+                && ExactJsonMatches(candidate.Entity.NewValue, successorSnapshot)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException("Authentication configuration versions require one exact actor-bound same-transaction before/after audit.");
         }
         foreach (var entry in ChangeTracker.Entries<AuthenticationConfiguration>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {
@@ -4001,6 +4050,92 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .Where(candidate => candidate.Id == identityUserId)
             .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
     }
+
+    private AuthenticationPolicy? ResolveAuthenticationPolicy(long configurationId)
+    {
+        var tracked = ChangeTracker.Entries<AuthenticationPolicy>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.AuthenticationConfigurationId == configurationId)
+            .Select(candidate => candidate.Entity).SingleOrDefault();
+        return tracked ?? AuthenticationPolicies.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefault(candidate => candidate.AuthenticationConfigurationId == configurationId);
+    }
+
+    private Guid? ResolveAuthenticationConfigurationPublicId(long? configurationId)
+    {
+        if (!configurationId.HasValue) return null;
+        var tracked = ChangeTracker.Entries<AuthenticationConfiguration>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == configurationId.Value)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? AuthenticationConfigurations.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == configurationId.Value)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private AuthenticationConfigurationAuditSnapshot BuildAuthenticationConfigurationAuditSnapshot(
+        AuthenticationConfiguration configuration, AuthenticationPolicy policy)
+    {
+        var creatorPublicId = ResolveIdentityUserPublicId(configuration.CreatedByUserId);
+        var policyActorPublicId = ResolveIdentityUserPublicId(policy.ModifiedByUserId);
+        if (!creatorPublicId.HasValue || !policyActorPublicId.HasValue)
+            throw new InvalidOperationException("Authentication configuration audit identities must resolve to stable public identities.");
+        return new AuthenticationConfigurationAuditSnapshot(
+            configuration.PublicId,
+            configuration.ConfigurationFamilyPublicId,
+            ResolveAuthenticationConfigurationPublicId(configuration.PreviousVersionId),
+            configuration.VersionNumber,
+            configuration.IsCurrent,
+            configuration.Mode,
+            configuration.ProviderRegistrationCode,
+            configuration.DisplayName,
+            configuration.IsActive,
+            configuration.EffectiveFrom,
+            configuration.EffectiveTo,
+            creatorPublicId.Value,
+            configuration.CreatedAt,
+            BuildAuthenticationPolicyAuditSnapshot(policy, policyActorPublicId.Value));
+    }
+
+    private AuthenticationConfigurationAuditSnapshot BuildAuthenticationConfigurationAuditSnapshot(
+        EntityEntry<AuthenticationConfiguration> entry, AuthenticationPolicy policy, bool originalValues)
+    {
+        var values = originalValues ? entry.OriginalValues : entry.CurrentValues;
+        var creatorPublicId = ResolveIdentityUserPublicId(values.GetValue<string>(nameof(AuthenticationConfiguration.CreatedByUserId)));
+        var policyActorPublicId = ResolveIdentityUserPublicId(policy.ModifiedByUserId);
+        if (!creatorPublicId.HasValue || !policyActorPublicId.HasValue)
+            throw new InvalidOperationException("Authentication configuration audit identities must resolve to stable public identities.");
+        return new AuthenticationConfigurationAuditSnapshot(
+            values.GetValue<Guid>(nameof(AuthenticationConfiguration.PublicId)),
+            values.GetValue<Guid>(nameof(AuthenticationConfiguration.ConfigurationFamilyPublicId)),
+            ResolveAuthenticationConfigurationPublicId(values.GetValue<long?>(nameof(AuthenticationConfiguration.PreviousVersionId))),
+            values.GetValue<int>(nameof(AuthenticationConfiguration.VersionNumber)),
+            values.GetValue<bool>(nameof(AuthenticationConfiguration.IsCurrent)),
+            values.GetValue<AuthenticationMode>(nameof(AuthenticationConfiguration.Mode)),
+            values.GetValue<string?>(nameof(AuthenticationConfiguration.ProviderRegistrationCode)),
+            values.GetValue<string>(nameof(AuthenticationConfiguration.DisplayName)),
+            values.GetValue<bool>(nameof(AuthenticationConfiguration.IsActive)),
+            values.GetValue<DateTime>(nameof(AuthenticationConfiguration.EffectiveFrom)),
+            values.GetValue<DateTime?>(nameof(AuthenticationConfiguration.EffectiveTo)),
+            creatorPublicId.Value,
+            values.GetValue<DateTime>(nameof(AuthenticationConfiguration.CreatedAt)),
+            BuildAuthenticationPolicyAuditSnapshot(policy, policyActorPublicId.Value));
+    }
+
+    private static AuthenticationPolicyAuditSnapshot BuildAuthenticationPolicyAuditSnapshot(
+        AuthenticationPolicy policy, Guid actorPublicId) => new(
+            policy.PublicId,
+            policy.MinimumPasswordLength,
+            policy.MaximumFailedAttempts,
+            policy.LockoutMinutes,
+            policy.RequireMfaForPrivilegedLocalUsers,
+            policy.RequireMfaForAllLocalUsers,
+            policy.RequireFirstLoginPasswordChange,
+            policy.SessionIdleTimeoutMinutes,
+            policy.SessionAbsoluteTimeoutHours,
+            policy.MaximumConcurrentSessions,
+            actorPublicId,
+            policy.ModifiedAt);
 
     private bool GovernanceActorMatches(string? auditActor, string? contextActor)
     {

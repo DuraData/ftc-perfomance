@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using FTCERP.Host.API.Controllers;
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
@@ -37,15 +38,7 @@ public sealed class EnterpriseAuthenticationTests
         account.NormalizedUserName = account.NormalizedEmail;
         context.AddRange(municipality, account);
         await context.SaveChangesAsync();
-        context.AuthenticationConfigurations.Add(new AuthenticationConfiguration
-        {
-            MunicipalityId = municipality.Id,
-            Mode = AuthenticationMode.Hybrid,
-            ProviderRegistrationCode = "ENTRA",
-            DisplayName = "Work account",
-            CreatedByUserId = account.Id,
-            EffectiveFrom = DateTime.UtcNow.AddMinutes(-1)
-        });
+        AddGovernedConfiguration(context, municipality, account, AuthenticationMode.Hybrid, "ENTRA", "Work account");
         await context.SaveChangesAsync();
         var controller = DiscoveryController(context);
 
@@ -267,6 +260,87 @@ public sealed class EnterpriseAuthenticationTests
     }
 
     [Fact]
+    public async Task Authentication_configuration_successor_rejects_forged_audit_snapshots_when_mode_is_unchanged()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Code = "AUTH-FORGED", Name = "Forged Authentication Audit" };
+        var actor = User("authentication-forged-admin", municipality);
+        context.AddRange(municipality, actor);
+        await context.SaveChangesAsync();
+
+        var controller = new AuthenticationAdministrationController(context, new TenantContext(municipality.Id),
+            new EnterpriseProviderRegistry([Provider()]), Mock.Of<IAccessControlService>())
+        {
+            ControllerContext = new ControllerContext { HttpContext = Http(actor.Id) }
+        };
+        var initialResult = await controller.Save(new SaveAuthenticationConfigurationRequest(
+            AuthenticationMode.Local, null, "Municipal sign-in", true, DateTime.UtcNow.AddDays(-2), null,
+            new AuthenticationPolicyRequest(12, 5, 15, true, false, true, 30, 24, 5, null),
+            "Initial approved authentication policy", null), default);
+        Assert.IsType<OkObjectResult>(initialResult.Result);
+
+        context.ChangeTracker.Clear();
+        var predecessor = await context.AuthenticationConfigurations.Include(item => item.Policy)
+            .SingleAsync(item => item.MunicipalityId == municipality.Id && item.IsCurrent);
+        var changedAt = DateTime.UtcNow;
+        var successorEffectiveFrom = predecessor.EffectiveFrom.AddDays(1);
+        predecessor.IsCurrent = false;
+        predecessor.EffectiveTo = successorEffectiveFrom.AddTicks(-1);
+        predecessor.ModifiedByUserId = actor.Id;
+        predecessor.ModifiedAt = changedAt;
+        var successor = new AuthenticationConfiguration
+        {
+            MunicipalityId = municipality.Id,
+            ConfigurationFamilyPublicId = predecessor.ConfigurationFamilyPublicId,
+            VersionNumber = predecessor.VersionNumber + 1,
+            IsCurrent = true,
+            PreviousVersionId = predecessor.Id,
+            Mode = predecessor.Mode,
+            DisplayName = "Forged stronger policy",
+            IsActive = true,
+            EffectiveFrom = successorEffectiveFrom,
+            CreatedByUserId = actor.Id,
+            CreatedAt = changedAt
+        };
+        successor.Policy = new AuthenticationPolicy
+        {
+            MunicipalityId = municipality.Id,
+            AuthenticationConfiguration = successor,
+            MinimumPasswordLength = 16,
+            MaximumFailedAttempts = 4,
+            LockoutMinutes = 30,
+            RequireMfaForPrivilegedLocalUsers = true,
+            RequireMfaForAllLocalUsers = true,
+            RequireFirstLoginPasswordChange = true,
+            SessionIdleTimeoutMinutes = 20,
+            SessionAbsoluteTimeoutHours = 12,
+            MaximumConcurrentSessions = 3,
+            ModifiedByUserId = actor.Id,
+            ModifiedAt = changedAt
+        };
+        context.AuthenticationConfigurations.Add(successor);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = nameof(AuthenticationConfiguration),
+            EntityId = successor.PublicId.ToString(),
+            Action = "AuthenticationConfigurationVersionCreated",
+            OldValue = "{}",
+            NewValue = "{}",
+            ChangedBy = actor.Id,
+            ChangedAt = changedAt,
+            Reason = "A correctly labelled but false audit must not authorize this successor."
+        });
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Authentication configuration versions require one exact actor-bound same-transaction before/after audit*");
+    }
+
+    [Fact]
     public async Task Authentication_administration_changes_municipality_mode_only_with_exact_version_and_audit()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -480,13 +554,69 @@ public sealed class EnterpriseAuthenticationTests
         var municipality = new Municipality { Code = "M1", Name = "Municipality", AuthenticationMode = AuthenticationMode.MicrosoftEntraId };
         var user = User("user", municipality);
         context.AddRange(municipality, user); await context.SaveChangesAsync();
-        context.AuthenticationConfigurations.Add(new AuthenticationConfiguration
-        {
-            MunicipalityId = municipality.Id, Mode = AuthenticationMode.MicrosoftEntraId, ProviderRegistrationCode = "ENTRA",
-            DisplayName = "Work account", CreatedByUserId = user.Id, EffectiveFrom = DateTime.UtcNow.AddMinutes(-1)
-        });
+        AddGovernedConfiguration(context, municipality, user, AuthenticationMode.MicrosoftEntraId, "ENTRA", "Work account");
         await context.SaveChangesAsync();
         return (municipality, user);
+    }
+
+    private static AuthenticationConfiguration AddGovernedConfiguration(ApplicationDbContext context,
+        Municipality municipality, ApplicationUser actor, AuthenticationMode mode, string? providerCode, string displayName)
+    {
+        var configuration = new AuthenticationConfiguration
+        {
+            MunicipalityId = municipality.Id,
+            Mode = mode,
+            ProviderRegistrationCode = providerCode,
+            DisplayName = displayName,
+            CreatedByUserId = actor.Id,
+            EffectiveFrom = DateTime.UtcNow.AddMinutes(-1)
+        };
+        configuration.Policy = new AuthenticationPolicy
+        {
+            MunicipalityId = municipality.Id,
+            AuthenticationConfiguration = configuration,
+            ModifiedByUserId = actor.Id
+        };
+        var snapshot = new AuthenticationConfigurationAuditSnapshot(
+            configuration.PublicId,
+            configuration.ConfigurationFamilyPublicId,
+            null,
+            configuration.VersionNumber,
+            configuration.IsCurrent,
+            configuration.Mode,
+            configuration.ProviderRegistrationCode,
+            configuration.DisplayName,
+            configuration.IsActive,
+            configuration.EffectiveFrom,
+            configuration.EffectiveTo,
+            actor.PublicId,
+            configuration.CreatedAt,
+            new AuthenticationPolicyAuditSnapshot(
+                configuration.Policy.PublicId,
+                configuration.Policy.MinimumPasswordLength,
+                configuration.Policy.MaximumFailedAttempts,
+                configuration.Policy.LockoutMinutes,
+                configuration.Policy.RequireMfaForPrivilegedLocalUsers,
+                configuration.Policy.RequireMfaForAllLocalUsers,
+                configuration.Policy.RequireFirstLoginPasswordChange,
+                configuration.Policy.SessionIdleTimeoutMinutes,
+                configuration.Policy.SessionAbsoluteTimeoutHours,
+                configuration.Policy.MaximumConcurrentSessions,
+                actor.PublicId,
+                configuration.Policy.ModifiedAt));
+        context.AuthenticationConfigurations.Add(configuration);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id,
+            EntityName = nameof(AuthenticationConfiguration),
+            EntityId = configuration.PublicId.ToString(),
+            Action = "AuthenticationConfigurationCreated",
+            NewValue = JsonSerializer.Serialize(snapshot),
+            ChangedBy = actor.Id,
+            ChangedAt = configuration.CreatedAt,
+            Reason = "Controlled authentication test fixture creation."
+        });
+        return configuration;
     }
 
     private static ApplicationUser User(string id, Municipality municipality) => new()

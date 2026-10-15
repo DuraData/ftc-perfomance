@@ -53,6 +53,36 @@ public sealed class AuthenticationPolicy
     public ApplicationUser ModifiedByUser { get; set; } = null!;
 }
 
+public sealed record AuthenticationPolicyAuditSnapshot(
+    Guid PublicId,
+    int MinimumPasswordLength,
+    int MaximumFailedAttempts,
+    int LockoutMinutes,
+    bool RequireMfaForPrivilegedLocalUsers,
+    bool RequireMfaForAllLocalUsers,
+    bool RequireFirstLoginPasswordChange,
+    int SessionIdleTimeoutMinutes,
+    int SessionAbsoluteTimeoutHours,
+    int MaximumConcurrentSessions,
+    Guid ModifiedByUserPublicId,
+    DateTime ModifiedAt);
+
+public sealed record AuthenticationConfigurationAuditSnapshot(
+    Guid PublicId,
+    Guid ConfigurationFamilyPublicId,
+    Guid? PreviousVersionPublicId,
+    int VersionNumber,
+    bool IsCurrent,
+    AuthenticationMode Mode,
+    string? ProviderRegistrationCode,
+    string DisplayName,
+    bool IsActive,
+    DateTime EffectiveFrom,
+    DateTime? EffectiveTo,
+    Guid CreatedByUserPublicId,
+    DateTime CreatedAt,
+    AuthenticationPolicyAuditSnapshot Policy);
+
 public sealed class UserAuthenticator
 {
     public long Id { get; set; }
