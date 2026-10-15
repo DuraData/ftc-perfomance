@@ -582,12 +582,22 @@ public sealed class RegisterPaginationTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var actor = IdpTestFixture.CreateUser("notification-operations-reader");
         context.Users.Add(actor);
-        context.BusinessEventOutbox.AddRange(
-            NotificationEvent("Notification.Zeta", "record-z", 10, new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc)),
-            NotificationEvent("Notification.Alpha", "record-a", 1, new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc)),
-            NotificationEvent("Notification.Beta", "record-b", 2, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)),
-            NotificationEvent("Integration.Unrelated", "record-x", 10, new DateTime(2026, 1, 4, 0, 0, 0, DateTimeKind.Utc)));
+        var zeta = NotificationEvent("Notification.Zeta", "record-z", 0, new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc));
+        var alpha = NotificationEvent("Notification.Alpha", "record-a", 0, new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc));
+        var beta = NotificationEvent("Notification.Beta", "record-b", 0, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var unrelated = NotificationEvent("Integration.Unrelated", "record-x", 0, new DateTime(2026, 1, 4, 0, 0, 0, DateTimeKind.Utc));
+        context.BusinessEventOutbox.AddRange(zeta, alpha, beta, unrelated);
         await context.SaveChangesAsync();
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            foreach (var item in new[] { zeta, unrelated }.Concat(attempt <= 2 ? [beta] : []).Concat(attempt == 1 ? [alpha] : []))
+            {
+                item.AttemptCount++;
+                item.LastError = $"Retry {item.AttemptCount}";
+                item.AvailableAt = item.AvailableAt.AddSeconds(1);
+            }
+            await context.SaveChangesAsync();
+        }
         var tenant = new Mock<ITenantContext>();
         tenant.SetupGet(value => value.MunicipalityId).Returns(7);
         var access = new Mock<IAccessControlService>();
@@ -639,16 +649,23 @@ public sealed class RegisterPaginationTests
         var recipient = IdpTestFixture.CreateUser("protected-recipient");
         actor.Municipality = municipality;
         recipient.Municipality = municipality;
-        var row = NotificationEvent("Notification.MemberSecurity", "protected-record", 2, DateTime.UtcNow);
+        var row = NotificationEvent("Notification.MemberSecurity", "protected-record", 0, DateTime.UtcNow);
         row.Municipality = municipality;
-        row.LastError = "protected-queue-error";
+        context.AddRange(municipality, actor, recipient, row);
+        await context.SaveChangesAsync();
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            row.AttemptCount++;
+            row.LastError = "protected-queue-error";
+            row.AvailableAt = row.AvailableAt.AddSeconds(1);
+            await context.SaveChangesAsync();
+        }
         row.DeliveryAttempts.Add(new NotificationDeliveryAttempt
         {
             RecipientUserId = recipient.Id, Channel = "EMAIL", Status = "Failed", IdempotencyKey = "protected-delivery-key",
             Provider = "MailProvider", ProviderReference = "protected-provider-reference", Error = "protected-delivery-error",
             ResponseDetail = "protected-response-detail", AttemptCount = 2
         });
-        context.AddRange(municipality, actor, recipient, row);
         await context.SaveChangesAsync();
 
         var allowedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

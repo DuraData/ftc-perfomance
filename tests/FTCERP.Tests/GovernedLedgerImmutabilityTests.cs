@@ -161,6 +161,67 @@ public sealed class GovernedLedgerImmutabilityTests
             .WithMessage("*immutable*");
     }
 
+    public static TheoryData<BusinessEventOutbox> InvalidOutboxCreationRows => new()
+    {
+        new BusinessEventOutbox
+        {
+            EventType = "Notification.InvalidPayload", AggregateType = "Test", AggregateId = "invalid-payload",
+            Payload = "not-json"
+        },
+        new BusinessEventOutbox
+        {
+            EventType = "Notification.Future", AggregateType = "Test", AggregateId = "future-event", Payload = "{}",
+            OccurredAt = DateTime.UtcNow.AddHours(1), AvailableAt = DateTime.UtcNow.AddHours(1)
+        },
+        new BusinessEventOutbox
+        {
+            EventType = "Notification.FabricatedDelivery", AggregateType = "Test", AggregateId = "fabricated-delivery", Payload = "{}",
+            AttemptCount = 1, ProcessedAt = DateTime.UtcNow, LastError = "Fabricated terminal state"
+        }
+    };
+
+    [Theory]
+    [MemberData(nameof(InvalidOutboxCreationRows))]
+    public async Task Business_event_outbox_creation_rejects_invalid_identity_payload_time_and_delivery_state(BusinessEventOutbox row)
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        context.BusinessEventOutbox.Add(row);
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Business-event outbox creation requires complete immutable event evidence and a clean delivery state*");
+    }
+
+    [Fact]
+    public async Task Business_event_delivery_cannot_skip_attempts_or_rewrite_terminal_state()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var row = new BusinessEventOutbox
+        {
+            EventType = "Notification.Lifecycle", AggregateType = "Test", AggregateId = "delivery-lifecycle", Payload = "{}"
+        };
+        context.BusinessEventOutbox.Add(row);
+        await context.SaveChangesAsync();
+
+        row.AttemptCount = 2;
+        row.LastError = "Skipped the first delivery attempt";
+        row.AvailableAt = row.AvailableAt.AddMinutes(1);
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Business-event delivery state may advance by one attempt*");
+
+        context.ChangeTracker.Clear();
+        row = await context.BusinessEventOutbox.SingleAsync();
+        row.AttemptCount = 1;
+        row.ProcessedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+        row.AvailableAt = row.AvailableAt.AddMinutes(1);
+
+        await FluentActions.Invoking(() => context.SaveChangesAsync())
+            .Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("Business-event delivery state may advance by one attempt*");
+    }
+
     public static TheoryData<object> NotificationDeletionCases => new()
     {
         new BusinessEventOutbox { Id = 83 },

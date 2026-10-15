@@ -2917,6 +2917,23 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("Authentication event history is append-only.");
         if (ChangeTracker.Entries<LoginAuditLog>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Login audit history is append-only.");
+        foreach (var entry in ChangeTracker.Entries<BusinessEventOutbox>().Where(entry => entry.State == EntityState.Added))
+        {
+            var row = entry.Entity;
+            if (row.PublicId == Guid.Empty
+                || string.IsNullOrWhiteSpace(row.EventType)
+                || string.IsNullOrWhiteSpace(row.AggregateType)
+                || string.IsNullOrWhiteSpace(row.AggregateId)
+                || !IsJsonObject(row.Payload)
+                || row.OccurredAt == default
+                || row.OccurredAt > DateTime.UtcNow.AddMinutes(5)
+                || row.AvailableAt == default
+                || row.AvailableAt < row.OccurredAt
+                || row.ProcessedAt.HasValue
+                || row.AttemptCount != 0
+                || row.LastError != null)
+                throw new InvalidOperationException("Business-event outbox creation requires complete immutable event evidence and a clean delivery state.");
+        }
         foreach (var entry in ChangeTracker.Entries<BusinessEventOutbox>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {
             if (entry.State == EntityState.Deleted)
@@ -2926,6 +2943,30 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                     nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.AttemptCount), nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.LastError),
                     nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.RowVersion)],
                 "Business-event identity and payload are immutable; only delivery lifecycle state may change.");
+            var changed = entry.Properties.Where(property => property.IsModified
+                    && property.Metadata.Name != nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.RowVersion))
+                .Select(property => property.Metadata.Name).ToHashSet(StringComparer.Ordinal);
+            if (changed.Count == 0) continue;
+            var originalProcessedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.ProcessedAt));
+            var currentProcessedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.ProcessedAt));
+            var originalAttemptCount = entry.OriginalValues.GetValue<int>(nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.AttemptCount));
+            var currentAttemptCount = entry.CurrentValues.GetValue<int>(nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.AttemptCount));
+            var occurredAt = entry.OriginalValues.GetValue<DateTime>(nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.OccurredAt));
+            var availableAt = entry.CurrentValues.GetValue<DateTime>(nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.AvailableAt));
+            var lastError = entry.CurrentValues.GetValue<string?>(nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.LastError));
+            var availabilityOnly = changed.SetEquals([nameof(FTCERP.Host.Domain.Entities.BusinessEventOutbox.AvailableAt)]);
+            var completed = currentProcessedAt.HasValue
+                && currentProcessedAt >= occurredAt
+                && currentProcessedAt <= DateTime.UtcNow.AddMinutes(5)
+                && lastError == null;
+            var retrying = !currentProcessedAt.HasValue
+                && !string.IsNullOrWhiteSpace(lastError)
+                && availableAt >= occurredAt;
+            if (originalProcessedAt.HasValue
+                || availableAt < occurredAt
+                || availabilityOnly && currentAttemptCount != originalAttemptCount
+                || !availabilityOnly && (currentAttemptCount != originalAttemptCount + 1 || !completed && !retrying))
+                throw new InvalidOperationException("Business-event delivery state may advance by one attempt, one valid completion or retry, or an availability-only reschedule.");
         }
         foreach (var entry in ChangeTracker.Entries<NotificationDeliveryAttempt>().Where(entry => entry.State is EntityState.Modified or EntityState.Deleted))
         {
@@ -3273,6 +3314,20 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || row.Success && (string.IsNullOrWhiteSpace(row.UserId) || row.FailureReason != null)
                 || !row.Success && string.IsNullOrWhiteSpace(row.FailureReason))
                 throw new InvalidOperationException("Login audit records require complete, chronologically valid success or failure evidence.");
+        }
+    }
+
+    private static bool IsJsonObject(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(value);
+            return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
         }
     }
 

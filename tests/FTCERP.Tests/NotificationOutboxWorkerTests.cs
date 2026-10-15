@@ -70,7 +70,7 @@ public sealed class NotificationOutboxWorkerTests
             var context = retryScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var row = await context.BusinessEventOutbox.IgnoreQueryFilters().SingleAsync();
             row.ProcessedAt.Should().BeNull();
-            row.AvailableAt = DateTime.UtcNow.AddSeconds(-1);
+            row.AvailableAt = row.OccurredAt;
             await context.SaveChangesAsync();
         }
         (await worker.ProcessBatch(CancellationToken.None)).Should().Be(1);
