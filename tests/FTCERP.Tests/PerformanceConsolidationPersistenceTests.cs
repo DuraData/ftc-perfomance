@@ -61,16 +61,16 @@ public sealed class PerformanceConsolidationPersistenceTests
         visible.ModifiedByUserId = "consolidation-admin";
         visible.ModifiedAt = DateTime.UtcNow;
         new WorkflowGovernanceService(tenant, tenantContext: new TenantContext(municipalityId, "consolidation-admin"))
-            .QueueAuditTrail(nameof(MunicipalityConsolidationPolicy), visible.PublicId.ToString(), "Edit", visibleBefore,
-                PolicySnapshot(visible, calculationTypePublicId), "consolidation-admin", null, "Enable annual derivation");
+            .QueueAuditTrailAt(nameof(MunicipalityConsolidationPolicy), visible.PublicId.ToString(), "Edit", visibleBefore,
+                PolicySnapshot(visible, calculationTypePublicId), "consolidation-admin", null, "Enable annual derivation", visible.ModifiedAt!.Value);
         await tenant.SaveChangesAsync();
         var staleBefore = PolicySnapshot(stalePolicy, calculationTypePublicId);
         stalePolicy.AllowDerivedTargetOverride = false;
         stalePolicy.ModifiedByUserId = "consolidation-admin";
         stalePolicy.ModifiedAt = DateTime.UtcNow;
         new WorkflowGovernanceService(stale, tenantContext: new TenantContext(municipalityId, "consolidation-admin"))
-            .QueueAuditTrail(nameof(MunicipalityConsolidationPolicy), stalePolicy.PublicId.ToString(), "Edit", staleBefore,
-                PolicySnapshot(stalePolicy, calculationTypePublicId), "consolidation-admin", null, "Concurrent policy correction");
+            .QueueAuditTrailAt(nameof(MunicipalityConsolidationPolicy), stalePolicy.PublicId.ToString(), "Edit", staleBefore,
+                PolicySnapshot(stalePolicy, calculationTypePublicId), "consolidation-admin", null, "Concurrent policy correction", stalePolicy.ModifiedAt!.Value);
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveChangesAsync());
 
         await using var duplicate = new ApplicationDbContext(options, new TenantContext(municipalityId, "consolidation-admin"));
@@ -228,6 +228,41 @@ public sealed class PerformanceConsolidationPersistenceTests
         (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
             .WithMessage("*one exact same-transaction reasoned before/after audit*");
         forgedCalculationTypePublicId.Should().NotBe(definition.PublicId);
+    }
+
+    [Fact]
+    public async Task MunicipalityConsolidationPolicy_RejectsExactAuditAndMetadataFromADifferentActor()
+    {
+        const long municipalityId = 6513;
+        var actor = IdpTestFixture.CreateUser("consolidation-context-actor");
+        var forgedActor = IdpTestFixture.CreateUser("consolidation-forged-actor");
+        actor.MunicipalityId = municipalityId;
+        forgedActor.MunicipalityId = municipalityId;
+        await using var context = IdpTestFixture.CreateRelationalContext(new TenantContext(municipalityId, actor.Id));
+        var municipality = new Municipality { Id = municipalityId, Code = "CON-ACTOR", Name = "Consolidation Actor Governance" };
+        var definition = await context.PerformanceCalculationTypes.SingleAsync(item => item.Code == "AVERAGE");
+        var policy = new MunicipalityConsolidationPolicy
+        {
+            MunicipalityId = municipalityId,
+            CalculationTypeId = definition.Id,
+            ConsolidationRule = PerformanceCalculationType.Average,
+            MissingValuePolicy = ConsolidationMissingValuePolicy.Ignore,
+            CreatedByUserId = actor.Id
+        };
+        context.AddRange(municipality, actor, forgedActor, policy);
+        await context.SaveChangesAsync();
+
+        var before = PolicySnapshot(policy, definition.PublicId);
+        policy.DeriveAnnualTarget = true;
+        policy.ModifiedByUserId = forgedActor.Id;
+        policy.ModifiedAt = DateTime.UtcNow;
+        new WorkflowGovernanceService(context, tenantContext: new TenantContext(municipalityId, actor.Id))
+            .QueueAuditTrailAt(nameof(MunicipalityConsolidationPolicy), policy.PublicId.ToString(), "Edit", before,
+                PolicySnapshot(policy, definition.PublicId), forgedActor.Id, null,
+                "Exact snapshots cannot authorize another actor", policy.ModifiedAt!.Value);
+
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*complete update actor and timestamp evidence*");
     }
 
     private static object PolicySnapshot(MunicipalityConsolidationPolicy policy, Guid calculationTypePublicId) => new

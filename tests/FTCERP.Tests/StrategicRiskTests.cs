@@ -218,6 +218,48 @@ public sealed class StrategicRiskTests
     }
 
     [Fact]
+    public async Task Risk_master_rejects_exact_audit_and_update_metadata_from_a_different_actor()
+    {
+        const long municipalityId = 9115;
+        var actor = IdpTestFixture.CreateUser("risk-context-actor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, actor.Id));
+        var seed = await SeedAsync(context, municipalityId, actor);
+        var forgedActor = IdpTestFixture.CreateUser("risk-forged-actor");
+        forgedActor.MunicipalityId = municipalityId;
+        context.Users.Add(forgedActor);
+        await context.SaveChangesAsync();
+        var created = Data(await Controller(context, actor, municipalityId).Create(Request("ACTOR", "Actor-bound risk", seed.Year.PublicId)));
+
+        context.ChangeTracker.Clear();
+        var risk = await context.StrategicRisks.SingleAsync(item => item.PublicId == created.PublicId);
+        var before = new
+        {
+            risk.RiskReference, risk.RiskTitle, risk.RiskDescription,
+            OwnerUserPublicId = (Guid?)null,
+            EffectiveFromMunicipalityFinancialYearPublicId = seed.Year.PublicId,
+            EffectiveToMunicipalityFinancialYearPublicId = (Guid?)null,
+            risk.IsActive
+        };
+        risk.RiskTitle = "Actor-forged risk update";
+        risk.UpdatedByUserId = forgedActor.Id;
+        risk.UpdatedAt = DateTime.UtcNow;
+        var after = new
+        {
+            risk.RiskReference, risk.RiskTitle, risk.RiskDescription,
+            OwnerUserPublicId = (Guid?)null,
+            EffectiveFromMunicipalityFinancialYearPublicId = seed.Year.PublicId,
+            EffectiveToMunicipalityFinancialYearPublicId = (Guid?)null,
+            risk.IsActive
+        };
+        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, actor.Id))
+            .QueueAuditTrailAt(nameof(StrategicRisk), risk.PublicId.ToString(), "Update", before, after,
+                forgedActor.Id, null, "Exact snapshots cannot authorize another actor", risk.UpdatedAt!.Value);
+
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*complete update actor and timestamp evidence*");
+    }
+
+    [Fact]
     public async Task Kpi_links_support_multiple_risks_one_primary_soft_unlink_and_relink()
     {
         const long municipalityId = 9102;
@@ -521,6 +563,47 @@ public sealed class StrategicRiskTests
         (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
             .WithMessage("*one exact same-transaction reasoned before/after audit*");
         forgedOwnerPublicId.Should().NotBe(user.PublicId);
+    }
+
+    [Fact]
+    public async Task Risk_treatment_rejects_exact_audit_and_update_metadata_from_a_different_actor()
+    {
+        const long municipalityId = 9116;
+        var actor = IdpTestFixture.CreateUser("treatment-context-actor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, actor.Id));
+        var seed = await SeedAsync(context, municipalityId, actor);
+        var forgedActor = IdpTestFixture.CreateUser("treatment-forged-actor");
+        forgedActor.MunicipalityId = municipalityId;
+        context.Users.Add(forgedActor);
+        await context.SaveChangesAsync();
+        var risk = Data(await Controller(context, actor, municipalityId).Create(Request("TREAT-ACTOR", "Treatment actor risk", seed.Year.PublicId)));
+        var treatment = Data(await OperationsController(context, actor, municipalityId).CreateTreatment(
+            new SaveStrategicRiskTreatmentRequest(risk.PublicId, "Actor-bound treatment", "Original treatment",
+                actor.PublicId, DateTime.UtcNow.AddDays(10), "OPEN", 0, "Approved treatment creation", null)));
+
+        context.ChangeTracker.Clear();
+        var entity = await context.StrategicRiskTreatments.SingleAsync(item => item.PublicId == treatment.PublicId);
+        var before = new
+        {
+            entity.Title, entity.Description, OwnerUserPublicId = actor.PublicId,
+            entity.DueAt, entity.Status, entity.ProgressPercent
+        };
+        entity.Description = "Actor-forged treatment update";
+        entity.Status = "IN_PROGRESS";
+        entity.ProgressPercent = 10;
+        entity.UpdatedByUserId = forgedActor.Id;
+        entity.UpdatedAt = DateTime.UtcNow;
+        var after = new
+        {
+            entity.Title, entity.Description, OwnerUserPublicId = actor.PublicId,
+            entity.DueAt, entity.Status, entity.ProgressPercent
+        };
+        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, actor.Id))
+            .QueueAuditTrailAt(nameof(StrategicRiskTreatment), entity.PublicId.ToString(), "Update", before, after,
+                forgedActor.Id, null, "Exact snapshots cannot authorize another actor", entity.UpdatedAt!.Value);
+
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*complete update actor and timestamp evidence*");
     }
 
     [Fact]

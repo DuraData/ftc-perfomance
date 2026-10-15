@@ -9,6 +9,7 @@ namespace FTCERP.Host.Infrastructure.Security;
 public interface IWorkflowGovernanceService
 {
     void QueueAuditTrail(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress, string? reason = null);
+    void QueueAuditTrailAt(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress, string? reason, DateTime changedAt);
     void QueueNotification(string userId, NotificationType type, string title, string message, string? entityName, string? entityId);
     void QueueWorkflowNotifications(IEnumerable<string> userIds, NotificationType type, string title, string message, string? entityName, string? entityId);
     Task WriteAuditTrailAsync(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress, string? reason = null);
@@ -36,6 +37,9 @@ public class WorkflowGovernanceService : IWorkflowGovernanceService
     }
 
     public void QueueAuditTrail(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress, string? reason = null)
+        => QueueAuditTrailAt(entityName, entityId, action, oldValue, newValue, changedBy, ipAddress, reason, DateTime.UtcNow);
+
+    public void QueueAuditTrailAt(string entityName, string entityId, string action, object? oldValue, object? newValue, string changedBy, string? ipAddress, string? reason, DateTime changedAt)
     {
         var http = _httpContextAccessor?.HttpContext;
         _context.AuditTrails.Add(new AuditTrail
@@ -47,7 +51,7 @@ public class WorkflowGovernanceService : IWorkflowGovernanceService
             OldValue = Serialize(oldValue),
             NewValue = Serialize(newValue),
             ChangedBy = changedBy,
-            ChangedAt = DateTime.UtcNow,
+            ChangedAt = changedAt,
             IpAddress = ipAddress ?? http?.Connection.RemoteIpAddress?.ToString(),
             CorrelationId = http?.TraceIdentifier ?? Activity.Current?.TraceId.ToString(),
             Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(),

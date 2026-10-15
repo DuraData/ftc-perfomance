@@ -82,10 +82,10 @@ public sealed class PerformanceConsolidationController(
         entity.AllowDerivedTargetOverride = request.AllowDerivedTargetOverride;
         entity.DeriveAnnualTarget = request.DeriveAnnualTarget;
         entity.IsActive = request.IsActive;
-        workflowGovernance.QueueAuditTrail(
+        workflowGovernance.QueueAuditTrailAt(
             nameof(MunicipalityConsolidationPolicy), entity.PublicId.ToString(), before == null ? "Create" : "Edit",
             before, PolicySnapshot(definition, entity), authorization.User!.Id,
-            PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim());
+            PerformanceApiSupport.GetIpAddress(HttpContext), request.Reason.Trim(), now);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<ConsolidationPolicyDto>("The consolidation policy changed since it was loaded. Refresh and try again.")); }
         catch (DbUpdateException) { return Conflict(Fail<ConsolidationPolicyDto>("The consolidation policy conflicts with another current policy.")); }

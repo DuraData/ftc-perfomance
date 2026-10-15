@@ -222,9 +222,9 @@ public sealed class StrategicRiskOperationsController(
         entity.Title = validated.Title; entity.Description = validated.Description; entity.OwnerUserId = owner.Id;
         entity.DueAt = request.DueAt.ToUniversalTime(); entity.Status = validated.Status; entity.ProgressPercent = request.ProgressPercent;
         entity.UpdatedByUserId = session.User!.Id; entity.UpdatedAt = DateTime.UtcNow;
-        workflow.QueueAuditTrail(nameof(StrategicRiskTreatment), entity.PublicId.ToString(), "Update", before,
+        workflow.QueueAuditTrailAt(nameof(StrategicRiskTreatment), entity.PublicId.ToString(), "Update", before,
             new { entity.Title, entity.Description, OwnerUserPublicId = owner.PublicId, entity.DueAt, entity.Status, entity.ProgressPercent },
-            session.User.Id, IpAddress(), validated.Reason);
+            session.User.Id, IpAddress(), validated.Reason, entity.UpdatedAt.Value);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicRiskTreatmentDto>("The risk treatment changed before this update. Reload and retry.")); }
         entity.OwnerUser = owner;

@@ -4219,8 +4219,14 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             var publicId = entry.OriginalValues.GetValue<Guid>(nameof(StrategicRisk.PublicId));
             var municipalityId = entry.OriginalValues.GetValue<long>(nameof(StrategicRisk.MunicipalityId));
             var changedBy = entry.CurrentValues.GetValue<string?>(nameof(StrategicRisk.UpdatedByUserId));
+            var updatedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(StrategicRisk.UpdatedAt));
+            var originalUpdatedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(StrategicRisk.UpdatedAt));
             if (string.IsNullOrWhiteSpace(changedBy)
-                || !entry.CurrentValues.GetValue<DateTime?>(nameof(StrategicRisk.UpdatedAt)).HasValue)
+                || !GovernanceActorMatches(changedBy, _tenantContext?.UserId)
+                || !entry.Property(nameof(StrategicRisk.UpdatedAt)).IsModified
+                || !updatedAt.HasValue
+                || originalUpdatedAt.HasValue && updatedAt <= originalUpdatedAt
+                || updatedAt > DateTime.UtcNow.AddMinutes(5))
                 throw new InvalidOperationException("Strategic-risk changes require complete update actor and timestamp evidence.");
 
             var originalOwnerPublicId = ResolveIdentityUserPublicId(entry.OriginalValues.GetValue<string?>(nameof(StrategicRisk.OwnerUserId)));
@@ -4239,6 +4245,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.Action == "Update"
                 && candidate.Entity.MunicipalityId == municipalityId
                 && candidate.Entity.ChangedBy == changedBy
+                && candidate.Entity.ChangedAt == updatedAt.Value
                 && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
                 && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
                 && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
@@ -4645,8 +4652,14 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 throw new InvalidOperationException("A completed strategic-risk treatment must record 100 percent progress.");
 
             var changedBy = entry.CurrentValues.GetValue<string?>(nameof(StrategicRiskTreatment.UpdatedByUserId));
+            var updatedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(StrategicRiskTreatment.UpdatedAt));
+            var originalUpdatedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(StrategicRiskTreatment.UpdatedAt));
             if (string.IsNullOrWhiteSpace(changedBy)
-                || !entry.CurrentValues.GetValue<DateTime?>(nameof(StrategicRiskTreatment.UpdatedAt)).HasValue)
+                || !GovernanceActorMatches(changedBy, _tenantContext?.UserId)
+                || !entry.Property(nameof(StrategicRiskTreatment.UpdatedAt)).IsModified
+                || !updatedAt.HasValue
+                || originalUpdatedAt.HasValue && updatedAt <= originalUpdatedAt
+                || updatedAt > DateTime.UtcNow.AddMinutes(5))
                 throw new InvalidOperationException("Strategic-risk treatment changes require complete update actor and timestamp evidence.");
 
             var publicId = entry.OriginalValues.GetValue<Guid>(nameof(StrategicRiskTreatment.PublicId));
@@ -4661,6 +4674,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.Action == "Update"
                 && candidate.Entity.MunicipalityId == municipalityId
                 && candidate.Entity.ChangedBy == changedBy
+                && candidate.Entity.ChangedAt == updatedAt.Value
                 && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
                 && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
                 && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
@@ -4692,8 +4706,14 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 "Municipality consolidation-policy identity, calculation type, municipality ownership and creation evidence are immutable.");
 
             var changedBy = entry.CurrentValues.GetValue<string?>(nameof(MunicipalityConsolidationPolicy.ModifiedByUserId));
+            var modifiedAt = entry.CurrentValues.GetValue<DateTime?>(nameof(MunicipalityConsolidationPolicy.ModifiedAt));
+            var originalModifiedAt = entry.OriginalValues.GetValue<DateTime?>(nameof(MunicipalityConsolidationPolicy.ModifiedAt));
             if (string.IsNullOrWhiteSpace(changedBy)
-                || !entry.CurrentValues.GetValue<DateTime?>(nameof(MunicipalityConsolidationPolicy.ModifiedAt)).HasValue)
+                || !GovernanceActorMatches(changedBy, _tenantContext?.UserId)
+                || !entry.Property(nameof(MunicipalityConsolidationPolicy.ModifiedAt)).IsModified
+                || !modifiedAt.HasValue
+                || originalModifiedAt.HasValue && modifiedAt <= originalModifiedAt
+                || modifiedAt > DateTime.UtcNow.AddMinutes(5))
                 throw new InvalidOperationException("Municipality consolidation-policy changes require complete update actor and timestamp evidence.");
 
             var publicId = entry.OriginalValues.GetValue<Guid>(nameof(MunicipalityConsolidationPolicy.PublicId));
@@ -4706,6 +4726,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.Action == "Edit"
                 && candidate.Entity.MunicipalityId == municipalityId
                 && candidate.Entity.ChangedBy == changedBy
+                && candidate.Entity.ChangedAt == modifiedAt.Value
                 && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
                 && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
                 && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)

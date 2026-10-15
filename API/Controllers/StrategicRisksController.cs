@@ -164,9 +164,9 @@ public sealed class StrategicRisksController(
         entity.IsActive = request.IsActive;
         entity.UpdatedAt = DateTime.UtcNow;
         entity.UpdatedByUserId = session.User!.Id;
-        workflow.QueueAuditTrail(nameof(StrategicRisk), entity.PublicId.ToString(), "Update", before,
+        workflow.QueueAuditTrailAt(nameof(StrategicRisk), entity.PublicId.ToString(), "Update", before,
             new { entity.RiskReference, entity.RiskTitle, entity.RiskDescription, OwnerUserPublicId = request.OwnerUserPublicId ?? previousOwnerPublicId, request.EffectiveFromMunicipalityFinancialYearPublicId, request.EffectiveToMunicipalityFinancialYearPublicId, entity.IsActive },
-            session.User.Id, IpAddress(), normalized.Reason);
+            session.User.Id, IpAddress(), normalized.Reason, entity.UpdatedAt.Value);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicRiskDto>("The strategic risk changed before this update. Reload and retry.")); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists.")); }
