@@ -74,6 +74,7 @@ public sealed class LegacyTenantOwnershipReconciliationController(
 
         context.Entry(loaded.Entity).Property("RowVersion").OriginalValue = expectedVersion;
         context.Entry(loaded.Entity).Property("MunicipalityId").CurrentValue = selectedMunicipalityId;
+        var reconciledAt = DateTime.UtcNow;
         var reconciliation = new LegacyTenantOwnershipReconciliation
         {
             MunicipalityId = selectedMunicipalityId,
@@ -81,7 +82,7 @@ public sealed class LegacyTenantOwnershipReconciliationController(
             EntityPublicId = request.EntityPublicId,
             SourceEvidence = analysis.SourceEvidence,
             ReconciledByUserId = actor.Id,
-            ReconciledAt = DateTime.UtcNow,
+            ReconciledAt = reconciledAt,
             Reason = reason,
             CorrelationId = Bounded(HttpContext.TraceIdentifier, 100)
         };
@@ -89,14 +90,14 @@ public sealed class LegacyTenantOwnershipReconciliationController(
         await using var transaction = await context.Database.BeginTransactionAsync();
         using var reconciliationScope = context.BeginTenantOwnershipReconciliation();
         context.LegacyTenantOwnershipReconciliations.Add(reconciliation);
-        governance.QueueAuditTrail(request.EntityType.ToString(), request.EntityPublicId.ToString(), "Update",
+        governance.QueueAuditTrailAt(request.EntityType.ToString(), request.EntityPublicId.ToString(), "Update",
             new { request.EntityPublicId, MunicipalityPublicId = (Guid?)null },
             new { request.EntityPublicId, MunicipalityPublicId = selectedMunicipalityPublicId },
-            actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
-        governance.QueueAuditTrail(nameof(LegacyTenantOwnershipReconciliation), reconciliation.PublicId.ToString(), "Reconcile",
+            actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason, reconciledAt);
+        governance.QueueAuditTrailAt(nameof(LegacyTenantOwnershipReconciliation), reconciliation.PublicId.ToString(), "Reconcile",
             new { EntityType = request.EntityType.ToString(), request.EntityPublicId, MunicipalityPublicId = (Guid?)null },
             new { EntityType = request.EntityType.ToString(), request.EntityPublicId, MunicipalityPublicId = selectedMunicipalityPublicId, Evidence = analysis.SourceEvidence },
-            actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
+            actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason, reconciledAt);
         try
         {
             await context.SaveChangesAsync();

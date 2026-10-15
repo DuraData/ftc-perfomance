@@ -4802,6 +4802,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             && candidate.Entity.MunicipalityId == currentMunicipalityId
             && !string.IsNullOrWhiteSpace(candidate.Entity.SourceEvidence)
             && !string.IsNullOrWhiteSpace(candidate.Entity.ReconciledByUserId)
+            && candidate.Entity.ReconciledAt != default
+            && candidate.Entity.ReconciledAt <= DateTime.UtcNow.AddMinutes(5)
             && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
             && !string.IsNullOrWhiteSpace(candidate.Entity.CorrelationId)).ToArray();
         var municipalityPublicId = ResolveMunicipalityPublicId(currentMunicipalityId.Value);
@@ -4814,7 +4816,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext.UserId)
             && candidate.Entity.ChangedBy == reconciliations[0].Entity.ReconciledByUserId
             && candidate.Entity.Reason == reconciliations[0].Entity.Reason
-            && candidate.Entity.ChangedAt >= reconciliations[0].Entity.ReconciledAt
+            && candidate.Entity.ChangedAt == reconciliations[0].Entity.ReconciledAt
             && ExactJsonMatches(candidate.Entity.OldValue,
                 new { EntityPublicId = publicId, MunicipalityPublicId = (Guid?)null })
             && ExactJsonMatches(candidate.Entity.NewValue,
@@ -4828,7 +4830,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext.UserId)
             && candidate.Entity.ChangedBy == reconciliations[0].Entity.ReconciledByUserId
             && candidate.Entity.Reason == reconciliations[0].Entity.Reason
-            && candidate.Entity.ChangedAt >= reconciliations[0].Entity.ReconciledAt
+            && candidate.Entity.ChangedAt == reconciliations[0].Entity.ReconciledAt
             && ExactJsonMatches(candidate.Entity.OldValue, new
             {
                 reconciliations[0].Entity.EntityType,
