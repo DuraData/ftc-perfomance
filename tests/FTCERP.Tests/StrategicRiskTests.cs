@@ -167,6 +167,64 @@ public sealed class StrategicRiskTests
     }
 
     [Fact]
+    public async Task Kpi_link_lifecycle_rejects_exact_evidence_from_a_different_actor()
+    {
+        const long municipalityId = 9117;
+        var actor = IdpTestFixture.CreateUser("risk-link-context-actor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, actor.Id));
+        var seed = await SeedAsync(context, municipalityId, actor);
+        var forgedActor = IdpTestFixture.CreateUser("risk-link-forged-actor");
+        forgedActor.MunicipalityId = municipalityId;
+        context.Users.Add(forgedActor);
+        await context.SaveChangesAsync();
+        var controller = Controller(context, actor, municipalityId);
+        var firstRisk = Data(await controller.Create(Request("LINK-ACTOR-1", "Actor-bound primary risk", seed.Year.PublicId)));
+        var secondRisk = Data(await controller.Create(Request("LINK-ACTOR-2", "Actor-forged replacement risk", seed.Year.PublicId)));
+        var linked = Data(await controller.LinkKpi(new LinkStrategicRiskRequest(
+            firstRisk.PublicId, seed.Target.PublicId, true, "Approved primary risk alignment")));
+
+        context.ChangeTracker.Clear();
+        var directLink = await context.OpmsKpiStrategicRisks.SingleAsync(item => item.PublicId == linked.PublicId);
+        var replacementRisk = await context.StrategicRisks.SingleAsync(item => item.PublicId == secondRisk.PublicId);
+        var replacement = new OpmsKpiStrategicRisk
+        {
+            MunicipalityId = municipalityId,
+            OpmsTargetId = seed.Target.Id,
+            StrategicRiskId = replacementRisk.Id,
+            IsPrimary = true,
+            LinkedByUserId = forgedActor.Id,
+            LinkedAt = DateTime.UtcNow,
+            LinkReason = "Exact replacement evidence under another actor"
+        };
+        context.OpmsKpiStrategicRisks.Add(replacement);
+        var demotionBefore = LinkAuditSnapshot(seed.Target.PublicId, firstRisk.PublicId, directLink, actor.PublicId);
+        directLink.IsPrimary = false;
+        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, actor.Id))
+            .QueueAuditTrailAt(nameof(OpmsKpiStrategicRisk), directLink.PublicId.ToString(), "DemotePrimary", demotionBefore,
+                LinkAuditSnapshot(seed.Target.PublicId, firstRisk.PublicId, directLink, actor.PublicId,
+                    replacedByPublicId: replacement.PublicId),
+                forgedActor.Id, null, replacement.LinkReason, replacement.LinkedAt);
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*authenticated actor and timestamp evidence*");
+
+        context.ChangeTracker.Clear();
+        directLink = await context.OpmsKpiStrategicRisks.SingleAsync(item => item.PublicId == linked.PublicId);
+        var unlinkBefore = LinkAuditSnapshot(seed.Target.PublicId, firstRisk.PublicId, directLink, actor.PublicId);
+        directLink.IsActive = false;
+        directLink.IsPrimary = false;
+        directLink.UnlinkedByUserId = forgedActor.Id;
+        directLink.UnlinkedAt = DateTime.UtcNow;
+        directLink.UnlinkReason = "Exact unlink evidence under another actor";
+        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, actor.Id))
+            .QueueAuditTrailAt(nameof(OpmsKpiStrategicRisk), directLink.PublicId.ToString(), "Unlink", unlinkBefore,
+                LinkAuditSnapshot(seed.Target.PublicId, firstRisk.PublicId, directLink, actor.PublicId,
+                    unlinkedByUserPublicId: forgedActor.PublicId),
+                forgedActor.Id, null, directLink.UnlinkReason, directLink.UnlinkedAt.Value);
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*complete inactive unlink state*");
+    }
+
+    [Fact]
     public async Task Risk_master_rejects_identity_rewrites_and_forged_public_scope_audits()
     {
         const long municipalityId = 9113;

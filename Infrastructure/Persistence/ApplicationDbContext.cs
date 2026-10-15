@@ -4299,12 +4299,17 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 if (replacements.Length != 1)
                     throw new InvalidOperationException("A primary strategic-risk KPI relationship may be demoted only beside one replacement primary link.");
                 var replacement = replacements[0].Entity;
+                if (!GovernanceActorMatches(replacement.LinkedByUserId, _tenantContext?.UserId)
+                    || replacement.LinkedAt == default
+                    || replacement.LinkedAt > DateTime.UtcNow.AddMinutes(5))
+                    throw new InvalidOperationException("Strategic-risk KPI primary replacement requires authenticated actor and timestamp evidence.");
                 var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate => candidate.State == EntityState.Added
                     && candidate.Entity.EntityName == nameof(OpmsKpiStrategicRisk)
                     && candidate.Entity.EntityId == entry.OriginalValues.GetValue<Guid>(nameof(OpmsKpiStrategicRisk.PublicId)).ToString()
                     && candidate.Entity.Action == "DemotePrimary"
                     && candidate.Entity.MunicipalityId == municipalityId
                     && candidate.Entity.ChangedBy == replacement.LinkedByUserId
+                    && candidate.Entity.ChangedAt == replacement.LinkedAt
                     && candidate.Entity.Reason == replacement.LinkReason
                     && KpiRiskLinkSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields,
                         targetPublicId.Value, riskPublicId.Value, linkedByPublicId.Value, null, null)
@@ -4329,6 +4334,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || entry.OriginalValues.GetValue<string?>(nameof(OpmsKpiStrategicRisk.UnlinkedByUserId)) != null
                 || entry.OriginalValues.GetValue<string?>(nameof(OpmsKpiStrategicRisk.UnlinkReason)) != null
                 || string.IsNullOrWhiteSpace(unlinkedBy) || !unlinkedByPublicId.HasValue
+                || !GovernanceActorMatches(unlinkedBy, _tenantContext?.UserId)
                 || !unlinkedAt.HasValue
                 || unlinkedAt < entry.OriginalValues.GetValue<DateTime>(nameof(OpmsKpiStrategicRisk.LinkedAt))
                 || unlinkedAt > DateTime.UtcNow.AddMinutes(5)
@@ -4341,6 +4347,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.Action == "Unlink"
                 && candidate.Entity.MunicipalityId == municipalityId
                 && candidate.Entity.ChangedBy == unlinkedBy
+                && candidate.Entity.ChangedAt == unlinkedAt.Value
                 && candidate.Entity.Reason == unlinkReason
                 && KpiRiskLinkSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields,
                     targetPublicId.Value, riskPublicId.Value, linkedByPublicId.Value, null, null)

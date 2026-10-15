@@ -248,20 +248,21 @@ public sealed class StrategicRisksController(
             StrategicRiskId = risk.Id,
             IsPrimary = request.IsPrimary,
             LinkedByUserId = session.User!.Id,
+            LinkedAt = DateTime.UtcNow,
             LinkReason = request.Reason.Trim()
         };
         context.OpmsKpiStrategicRisks.Add(entity);
         foreach (var replaced in replacedPrimaryLinks)
-            workflow.QueueAuditTrail(nameof(OpmsKpiStrategicRisk), replaced.PublicId.ToString(), "DemotePrimary",
+            workflow.QueueAuditTrailAt(nameof(OpmsKpiStrategicRisk), replaced.PublicId.ToString(), "DemotePrimary",
                 LinkSnapshot(target.PublicId, replaced.StrategicRisk.PublicId, true, replaced.IsActive,
                     replaced.LinkedByUser.PublicId, replaced.LinkedAt, replaced.LinkReason,
                     replaced.UnlinkedAt, null, replaced.UnlinkReason, null),
                 LinkSnapshot(target.PublicId, replaced.StrategicRisk.PublicId, replaced, replaced.LinkedByUser.PublicId,
                     replacedByPublicId: entity.PublicId),
-                session.User.Id, IpAddress(), entity.LinkReason);
-        workflow.QueueAuditTrail(nameof(OpmsKpiStrategicRisk), entity.PublicId.ToString(), "Link", null,
+                session.User.Id, IpAddress(), entity.LinkReason, entity.LinkedAt);
+        workflow.QueueAuditTrailAt(nameof(OpmsKpiStrategicRisk), entity.PublicId.ToString(), "Link", null,
             LinkSnapshot(target.PublicId, risk.PublicId, entity, session.User.PublicId),
-            session.User.Id, IpAddress(), entity.LinkReason);
+            session.User.Id, IpAddress(), entity.LinkReason, entity.LinkedAt);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicRiskKpiLinkDto>("This strategic risk is already linked to the KPI.")); }
         entity = await LinkQuery().SingleAsync(item => item.Id == entity.Id);
@@ -289,12 +290,12 @@ public sealed class StrategicRisksController(
         entity.UnlinkedAt = DateTime.UtcNow;
         entity.UnlinkedByUserId = session.User!.Id;
         entity.UnlinkReason = request.Reason.Trim();
-        workflow.QueueAuditTrail(nameof(OpmsKpiStrategicRisk), entity.PublicId.ToString(), "Unlink",
+        workflow.QueueAuditTrailAt(nameof(OpmsKpiStrategicRisk), entity.PublicId.ToString(), "Unlink",
             LinkSnapshot(entity.OpmsTarget.PublicId, entity.StrategicRisk.PublicId, wasPrimary, true,
                 entity.LinkedByUser.PublicId, entity.LinkedAt, entity.LinkReason, null, null, null, null),
             LinkSnapshot(entity.OpmsTarget.PublicId, entity.StrategicRisk.PublicId, entity, entity.LinkedByUser.PublicId,
                 unlinkedByUserPublicId: session.User.PublicId),
-            session.User.Id, IpAddress(), entity.UnlinkReason);
+            session.User.Id, IpAddress(), entity.UnlinkReason, entity.UnlinkedAt.Value);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicRiskKpiLinkDto>("The strategic-risk KPI link changed before this update. Reload and retry.")); }
         return Ok(new ApiResponse<StrategicRiskKpiLinkDto>(true, ToLinkDto(entity, await GetMemberAccessAsync(session.User!))));
