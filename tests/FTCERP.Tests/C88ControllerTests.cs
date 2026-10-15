@@ -17,6 +17,11 @@ public class C88ControllerTests
         module.Indicator.Applicability.Should().ContainSingle();
         module.Configuration.MunicipalityFinancialYearId.Should().Be(seed.Year.Id);
 
+        var prematurePublication = await controller.CreateCatalogueVersion(new("PREMATURE", "Premature edition",
+            DateTime.UtcNow.Date, seed.Year.EffectiveFrom, null, true, true,
+            "Attempt incomplete publication", null));
+        prematurePublication.Result.Should().BeOfType<BadRequestObjectResult>();
+
         var immutable = await controller.CreateCatalogueItem(new SaveC88CatalogueItemRequest(module.Version.PublicId,
             C88CatalogueItemKind.Sector, "LATE", "Late item", null, null, 99, true, "Attempt late edit", null));
         immutable.Result.Should().BeOfType<ConflictObjectResult>();
@@ -28,8 +33,7 @@ public class C88ControllerTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
-        var workflowAudit = new Mock<IWorkflowGovernanceService>();
-        var controller = Controller(context, seed.User, seed.Municipality.Id, workflowAudit.Object);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
         var module = await CreateCatalogueAsync(context, controller, seed);
 
         var planId = Payload(await controller.SavePlan(new SaveC88IndicatorPlanRequest(module.Configuration.PublicId,
@@ -81,7 +85,8 @@ public class C88ControllerTests
         var value = await context.C88DataElementValues.FirstAsync();
         value.Value = "999";
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>().WithMessage("*append-only*");
-        workflowAudit.Verify(service => service.QueueAuditTrail("C88", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object?>(), It.IsAny<object>(), seed.User.Id, It.IsAny<string?>(), It.Is<string?>(reason => !string.IsNullOrWhiteSpace(reason))), Times.AtLeast(10));
+        (await context.AuditTrails.CountAsync(item => item.EntityName == "C88" && item.ChangedBy == seed.User.Id
+            && item.Reason != null)).Should().BeGreaterThanOrEqualTo(10);
     }
 
     [Fact]
@@ -437,6 +442,137 @@ public class C88ControllerTests
     }
 
     [Fact]
+    public async Task Direct_C88_catalogue_and_configuration_creations_require_exact_governance_evidence()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext(new FixedTenantContext(9301, false, "c88-user"));
+        var seed = await SeedAsync(context);
+        var controller = Controller(context, seed.User, seed.Municipality.Id);
+        var published = await CreateCatalogueAsync(context, controller, seed);
+
+        context.ChangeTracker.Clear();
+        var unauditedVersion = new C88CatalogueVersion
+        {
+            MunicipalityId = seed.Municipality.Id, Code = "DIRECT-EDITION", Name = "Direct edition",
+            EditionDate = DateTime.UtcNow.Date, EffectiveFrom = seed.Year.EffectiveFrom,
+            CreatedAt = DateTime.UtcNow, CreatedByUserId = seed.User.Id
+        };
+        context.C88CatalogueVersions.Add(unauditedVersion);
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*catalogue-version creation requires*exact same-time reasoned audit*");
+
+        context.ChangeTracker.Clear();
+        var forgedVersion = new C88CatalogueVersion
+        {
+            MunicipalityId = seed.Municipality.Id, Code = "FORGED-EDITION", Name = "Forged edition",
+            EditionDate = DateTime.UtcNow.Date, EffectiveFrom = seed.Year.EffectiveFrom,
+            CreatedAt = DateTime.UtcNow, CreatedByUserId = seed.User.Id
+        };
+        context.C88CatalogueVersions.Add(forgedVersion);
+        AddCreationAudit(context, seed.Municipality.Id, forgedVersion.PublicId, "CreateCatalogueVersion",
+            seed.User.Id, "Forge edition evidence", forgedVersion.CreatedAt,
+            CatalogueVersionSnapshot(forgedVersion, "Forge edition evidence") with { Name = "Different edition" });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*catalogue-version creation requires*exact same-time reasoned audit*");
+
+        context.ChangeTracker.Clear();
+        var draftId = Payload(await controller.CreateCatalogueVersion(new("DIRECT-DRAFT", "Direct draft",
+            DateTime.UtcNow.Date, seed.Year.EffectiveFrom, null, false, true, "Create direct-test draft", null)));
+        async Task<C88CatalogueItem> CreateItem(C88CatalogueItemKind kind, string code)
+        {
+            var id = Payload(await controller.CreateCatalogueItem(new(draftId, kind, code, $"{code} name",
+                null, null, 1, true, "Create direct-test item", null)));
+            return await context.C88CatalogueItems.SingleAsync(item => item.PublicId == id);
+        }
+        var sector = await CreateItem(C88CatalogueItemKind.Sector, "DIRECT-SECTOR");
+        var outcome = await CreateItem(C88CatalogueItemKind.Outcome, "DIRECT-OUTCOME");
+        var type = await CreateItem(C88CatalogueItemKind.IndicatorType, "DIRECT-TYPE");
+        var category = await CreateItem(C88CatalogueItemKind.MunicipalCategory, "DIRECT-CATEGORY");
+        var tier = await CreateItem(C88CatalogueItemKind.ReadinessTier, "DIRECT-TIER");
+        var reportType = await CreateItem(C88CatalogueItemKind.ReportType, "DIRECT-REPORT");
+        var responseType = await CreateItem(C88CatalogueItemKind.ResponseType, "DIRECT-RESPONSE");
+        var draft = await context.C88CatalogueVersions.SingleAsync(item => item.PublicId == draftId);
+
+        draft.Name = "Unaudited draft rewrite";
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*draft catalogue changes and publication require*exact actor-bound before/after audit*");
+
+        context.ChangeTracker.Clear();
+        draft = await context.C88CatalogueVersions.SingleAsync(item => item.PublicId == draftId);
+        context.C88CatalogueItems.Add(new C88CatalogueItem
+        {
+            MunicipalityId = seed.Municipality.Id, CatalogueVersion = draft,
+            Kind = C88CatalogueItemKind.Sector, Code = "UNAUDITED-ITEM", Name = "Unaudited item",
+            DisplayOrder = 2
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*catalogue-item creation requires*exact actor-bound reasoned audit*");
+
+        context.ChangeTracker.Clear();
+        draft = await context.C88CatalogueVersions.SingleAsync(item => item.PublicId == draftId);
+        sector = await context.C88CatalogueItems.SingleAsync(item => item.PublicId == sector.PublicId);
+        outcome = await context.C88CatalogueItems.SingleAsync(item => item.PublicId == outcome.PublicId);
+        type = await context.C88CatalogueItems.SingleAsync(item => item.PublicId == type.PublicId);
+        category = await context.C88CatalogueItems.SingleAsync(item => item.PublicId == category.PublicId);
+        tier = await context.C88CatalogueItems.SingleAsync(item => item.PublicId == tier.PublicId);
+        var indicator = new C88Indicator
+        {
+            MunicipalityId = seed.Municipality.Id, CatalogueVersion = draft, SectorItem = sector,
+            OutcomeItem = outcome, IndicatorTypeItem = type, Code = "UNAUDITED-INDICATOR",
+            Name = "Unaudited indicator", Definition = "Definition", OfficialTechnicalIndicatorDescription = "TID",
+            ValueType = C88ValueType.Decimal, CalculationOperator = C88ControlledCalculationOperator.None
+        };
+        indicator.DataElements.Add(new C88DataElement
+        {
+            MunicipalityId = seed.Municipality.Id, Code = "VALUE", Name = "Value",
+            ValueType = C88ValueType.Decimal, IsRequired = true, Sequence = 1
+        });
+        indicator.Applicability.Add(new C88IndicatorApplicability
+        {
+            MunicipalityId = seed.Municipality.Id, MunicipalCategoryItem = category,
+            ReadinessTierItem = tier, IsApplicable = true
+        });
+        context.C88Indicators.Add(indicator);
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*indicator creation requires*exact actor-bound reasoned audit*");
+
+        context.ChangeTracker.Clear();
+        draft = await context.C88CatalogueVersions.SingleAsync(item => item.PublicId == draftId);
+        reportType = await context.C88CatalogueItems.SingleAsync(item => item.PublicId == reportType.PublicId);
+        responseType = await context.C88CatalogueItems.SingleAsync(item => item.PublicId == responseType.PublicId);
+        context.C88ComplianceQuestions.Add(new C88ComplianceQuestion
+        {
+            MunicipalityId = seed.Municipality.Id, CatalogueVersion = draft, ReportTypeItem = reportType,
+            ResponseTypeItem = responseType, Code = "UNAUDITED-QUESTION", Prompt = "Unaudited question?",
+            IsRequired = true, Sequence = 2
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*compliance-question creation requires*exact actor-bound reasoned audit*");
+
+        context.ChangeTracker.Clear();
+        var financialYear = new FinancialYear
+        {
+            Code = "2028/29", Name = "2028/29", StartDate = new DateTime(2028, 7, 1),
+            EndDate = new DateTime(2029, 6, 30)
+        };
+        var municipalityYear = new MunicipalityFinancialYear
+        {
+            MunicipalityId = seed.Municipality.Id, FinancialYear = financialYear, IsActive = true,
+            EffectiveFrom = financialYear.StartDate
+        };
+        context.AddRange(financialYear, municipalityYear);
+        await context.SaveChangesAsync();
+        context.C88MunicipalityConfigurations.Add(new C88MunicipalityConfiguration
+        {
+            MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id,
+            C88CatalogueVersionId = published.Version.Id, IsEnabled = true,
+            EffectiveFrom = financialYear.StartDate, CreatedAt = DateTime.UtcNow,
+            CreatedByUserId = seed.User.Id
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*configuration creation requires*exact same-time reasoned audit*");
+    }
+
+    [Fact]
     public async Task OpmsMappingIsAlignmentOnly_AndDisabledC88NeverBlocksCoreOpms()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -463,14 +599,20 @@ public class C88ControllerTests
     {
         var database = Guid.NewGuid().ToString();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(database).Options;
-        await using (var system = new ApplicationDbContext(options, new FixedTenantContext(null, true)))
+        await using (var system = new ApplicationDbContext(options, new FixedTenantContext(null, true, "c88-system")))
         {
             var user = IdpTestFixture.CreateUser("c88-system");
             var a = new Municipality { Id = 9401, Code = "A", Name = "A" };
             var b = new Municipality { Id = 9402, Code = "B", Name = "B" };
-            system.AddRange(user, a, b,
-                new C88CatalogueVersion { MunicipalityId = a.Id, Code = "A-2026", Name = "A", EditionDate = DateTime.UtcNow, EffectiveFrom = DateTime.UtcNow, CreatedByUserId = user.Id },
-                new C88CatalogueVersion { MunicipalityId = b.Id, Code = "B-2026", Name = "B", EditionDate = DateTime.UtcNow, EffectiveFrom = DateTime.UtcNow, CreatedByUserId = user.Id });
+            user.MunicipalityId = null;
+            var now = DateTime.UtcNow;
+            var versionA = new C88CatalogueVersion { MunicipalityId = a.Id, Code = "A-2026", Name = "A", EditionDate = now, EffectiveFrom = now, CreatedAt = now, CreatedByUserId = user.Id };
+            var versionB = new C88CatalogueVersion { MunicipalityId = b.Id, Code = "B-2026", Name = "B", EditionDate = now, EffectiveFrom = now, CreatedAt = now, CreatedByUserId = user.Id };
+            system.AddRange(user, a, b, versionA, versionB);
+            AddCreationAudit(system, a.Id, versionA.PublicId, "CreateCatalogueVersion", user.Id,
+                "Create tenant A catalogue", now, CatalogueVersionSnapshot(versionA, "Create tenant A catalogue"));
+            AddCreationAudit(system, b.Id, versionB.PublicId, "CreateCatalogueVersion", user.Id,
+                "Create tenant B catalogue", now, CatalogueVersionSnapshot(versionB, "Create tenant B catalogue"));
             await system.SaveChangesAsync();
         }
         await using var tenantA = new ApplicationDbContext(options, new FixedTenantContext(9401, false));
@@ -650,21 +792,17 @@ public class C88ControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
-        var module = await CreateCatalogueAsync(context, controller, seed);
+        var module = await CreateCatalogueAsync(context, controller, seed, extraIndicatorCount: 11,
+            extraIndicatorCodePrefix: "PLAN", extraIndicatorNamePrefix: "Paged plan");
         var createdAt = new DateTime(2035, 2, 1, 0, 0, 0, DateTimeKind.Utc);
-        for (var index = 0; index < 11; index++)
+        var indicators = await context.C88Indicators.Where(item => item.Code.StartsWith("PLAN-"))
+            .OrderBy(item => item.Code).ToArrayAsync();
+        for (var index = 0; index < indicators.Length; index++)
         {
-            var indicator = new C88Indicator
-            {
-                MunicipalityId = seed.Municipality.Id, C88CatalogueVersionId = module.Version.Id, CatalogueVersion = module.Version,
-                Code = $"PLAN-{index:00}", Name = $"Paged plan {index:00}", Definition = "Definition",
-                OfficialTechnicalIndicatorDescription = "Official TID", ValueType = C88ValueType.Decimal,
-                CalculationOperator = C88ControlledCalculationOperator.None, IsActive = true
-            };
-            context.AddRange(indicator, new C88IndicatorPlan
+            context.Add(new C88IndicatorPlan
             {
                 MunicipalityId = seed.Municipality.Id, C88MunicipalityConfigurationId = module.Configuration.Id, Configuration = module.Configuration,
-                Indicator = indicator, BaselineValue = $"baseline {index:00}", AnnualTarget = $"annual {index:00}",
+                C88IndicatorId = indicators[index].Id, Indicator = indicators[index], BaselineValue = $"baseline {index:00}", AnnualTarget = $"annual {index:00}",
                 CreatedAt = createdAt.AddMinutes(index), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User
             });
         }
@@ -729,16 +867,7 @@ public class C88ControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
-        var module = await CreateCatalogueAsync(context, controller, seed);
-        var responseType = await context.C88CatalogueItems.SingleAsync(item => item.C88CatalogueVersionId == module.Version.Id && item.Kind == C88CatalogueItemKind.ResponseType);
-        for (var index = 0; index < 11; index++)
-            context.C88ComplianceQuestions.Add(new C88ComplianceQuestion
-            {
-                MunicipalityId = seed.Municipality.Id, C88CatalogueVersionId = module.Version.Id, CatalogueVersion = module.Version,
-                ReportTypeItemId = module.ReportType.Id, ReportTypeItem = module.ReportType, ResponseTypeItemId = responseType.Id, ResponseTypeItem = responseType,
-                Code = $"PAGE-{index:00}", Prompt = $"Paged prompt {index:00}", IsRequired = index % 2 == 0, Sequence = 100 + index, IsActive = true
-            });
-        await context.SaveChangesAsync();
+        var module = await CreateCatalogueAsync(context, controller, seed, extraQuestionCount: 11);
 
         var page = Payload(await controller.GetComplianceQuestionsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Paged prompt", SortBy = "sequence", SortDirection = "asc" }, module.Version.PublicId, module.ReportType.PublicId, true));
         page.TotalCount.Should().Be(11);
@@ -757,24 +886,8 @@ public class C88ControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
-        var module = await CreateCatalogueAsync(context, controller, seed);
-        for (var index = 0; index < 11; index++)
-        {
-            var indicator = new C88Indicator
-            {
-                MunicipalityId = seed.Municipality.Id, C88CatalogueVersionId = module.Version.Id, CatalogueVersion = module.Version,
-                Code = $"PAGE-{index:00}", Name = $"Paged indicator {index:00}", Definition = $"Paged definition {index:00}",
-                OfficialTechnicalIndicatorDescription = "Official TID", ValueType = index % 2 == 0 ? C88ValueType.Decimal : C88ValueType.Integer,
-                CalculationOperator = C88ControlledCalculationOperator.None, IsActive = true
-            };
-            indicator.DataElements.Add(new C88DataElement
-            {
-                MunicipalityId = seed.Municipality.Id, Code = $"VALUE-{index:00}", Name = "Value", ValueType = indicator.ValueType,
-                IsRequired = true, Sequence = 1
-            });
-            context.C88Indicators.Add(indicator);
-        }
-        await context.SaveChangesAsync();
+        var module = await CreateCatalogueAsync(context, controller, seed, extraIndicatorCount: 11,
+            alternateIndicatorTypes: true);
 
         var page = Payload(await controller.GetIndicatorsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Paged indicator", SortBy = "code", SortDirection = "asc" }, module.Version.PublicId, active: true));
         page.TotalCount.Should().Be(11);
@@ -794,7 +907,17 @@ public class C88ControllerTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context);
         var controller = Controller(context, seed.User, seed.Municipality.Id);
-        var createdAt = new DateTime(2035, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+        var module = await CreateCatalogueAsync(context, controller, seed);
+        var createdAt = DateTime.UtcNow.AddMinutes(-30);
+        var itemDraft = new C88CatalogueVersion
+        {
+            MunicipalityId = seed.Municipality.Id, Code = "ITEM-DRAFT", Name = "Item paging draft",
+            EditionDate = createdAt.Date, EffectiveFrom = createdAt.Date, IsPublished = false,
+            IsActive = true, CreatedAt = createdAt.AddMinutes(-1), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User
+        };
+        context.C88CatalogueVersions.Add(itemDraft);
+        AddCreationAudit(context, seed.Municipality.Id, itemDraft.PublicId, "CreateCatalogueVersion", seed.User.Id,
+            "Create item paging draft", itemDraft.CreatedAt, CatalogueVersionSnapshot(itemDraft, "Create item paging draft"));
         for (var index = 0; index < 11; index++)
         {
             var year = 2040 + index;
@@ -811,27 +934,40 @@ public class C88ControllerTests
             var version = new C88CatalogueVersion
             {
                 MunicipalityId = seed.Municipality.Id, Code = $"EDITION-{index:00}", Name = $"Paged edition {index:00}",
-                EditionDate = createdAt.AddDays(index), EffectiveFrom = municipalityYear.EffectiveFrom, IsPublished = index % 2 == 0,
+                EditionDate = createdAt.AddDays(index), EffectiveFrom = municipalityYear.EffectiveFrom, IsPublished = false,
                 IsActive = true, CreatedAt = createdAt.AddMinutes(index), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User
             };
-            context.AddRange(financialYear, municipalityYear, version, new C88MunicipalityConfiguration
+            var configuration = new C88MunicipalityConfiguration
             {
-                MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYear = municipalityYear, CatalogueVersion = version,
+                MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYear = municipalityYear,
+                C88CatalogueVersionId = module.Version.Id, CatalogueVersion = module.Version,
                 IsEnabled = index % 2 == 0, EffectiveFrom = municipalityYear.EffectiveFrom,
                 CreatedAt = createdAt.AddMinutes(index), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User
-            });
-            context.Add(new C88CatalogueItem
+            };
+            var item = new C88CatalogueItem
             {
-                MunicipalityId = seed.Municipality.Id, Municipality = seed.Municipality, CatalogueVersion = version,
+                MunicipalityId = seed.Municipality.Id, Municipality = seed.Municipality, CatalogueVersion = itemDraft,
                 Kind = C88CatalogueItemKind.ReportType, Code = $"REPORT-{index:00}", Name = $"Paged report type {index:00}",
                 Description = $"Searchable item {index:00}", DisplayOrder = index, IsActive = index % 2 == 0
-            });
+            };
+            context.AddRange(financialYear, municipalityYear, version, configuration, item);
+            AddCreationAudit(context, seed.Municipality.Id, version.PublicId, "CreateCatalogueVersion", seed.User.Id,
+                "Create paged edition", version.CreatedAt, CatalogueVersionSnapshot(version, "Create paged edition"));
+            AddCreationAudit(context, seed.Municipality.Id, configuration.PublicId, "Configure", seed.User.Id,
+                "Create paged configuration", configuration.CreatedAt,
+                new C88ConfigurationCreationAuditSnapshot(municipalityYear.PublicId, module.Version.PublicId,
+                    configuration.IsEnabled, configuration.EffectiveFrom, configuration.EffectiveTo,
+                    seed.User.Id, "Create paged configuration"));
+            AddCreationAudit(context, seed.Municipality.Id, item.PublicId, "CreateCatalogueItem", seed.User.Id,
+                "Create paged report type", version.CreatedAt,
+                new C88CatalogueItemCreationAuditSnapshot(itemDraft.PublicId, null, item.Kind, item.Code,
+                    item.Name, item.Description, item.DisplayOrder, item.IsActive, "Create paged report type"));
         }
         await context.SaveChangesAsync();
 
-        var configurations = Payload(await controller.GetConfigurationsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Paged edition", SortBy = "catalogueVersion", SortDirection = "asc" }));
-        configurations.TotalCount.Should().Be(11);
-        configurations.Items.Select(item => item.CatalogueVersionCode).Should().Equal("EDITION-03", "EDITION-04", "EDITION-05");
+        var configurations = Payload(await controller.GetConfigurationsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Treasury C88", SortBy = "catalogueVersion", SortDirection = "asc" }));
+        configurations.TotalCount.Should().Be(12);
+        configurations.Items.Should().HaveCount(3).And.OnlyContain(item => item.CatalogueVersionCode == "2026.1");
         Payload(await controller.GetConfigurationsPage(new PagedQueryRequest { PageSize = 1 }, configurationPublicId: configurations.Items[0].PublicId)).Items
             .Should().ContainSingle().Which.PublicId.Should().Be(configurations.Items[0].PublicId);
         var versions = Payload(await controller.GetCatalogueVersionsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "Paged edition", SortBy = "code", SortDirection = "asc" }));
@@ -842,9 +978,9 @@ public class C88ControllerTests
         items.Items.Select(item => item.Code).Should().Equal("REPORT-03", "REPORT-04", "REPORT-05");
         Payload(await controller.GetCatalogueItemsPage(new PagedQueryRequest { PageSize = 1 }, catalogueItemPublicId: items.Items[0].PublicId)).Items
             .Should().ContainSingle().Which.PublicId.Should().Be(items.Items[0].PublicId);
-        Payload(await controller.GetCatalogueItemsPage(new PagedQueryRequest { PageSize = 10 }, kind: C88CatalogueItemKind.ReportType, active: true)).TotalCount.Should().Be(6);
-        Payload(await controller.GetConfigurationsPage(new PagedQueryRequest { PageSize = 10 }, enabled: true)).TotalCount.Should().Be(6);
-        Payload(await controller.GetCatalogueVersionsPage(new PagedQueryRequest { PageSize = 10 }, published: true, active: true)).TotalCount.Should().Be(6);
+        Payload(await controller.GetCatalogueItemsPage(new PagedQueryRequest { PageSize = 10 }, kind: C88CatalogueItemKind.ReportType, active: true)).TotalCount.Should().Be(7);
+        Payload(await controller.GetConfigurationsPage(new PagedQueryRequest { PageSize = 10 }, enabled: true)).TotalCount.Should().Be(7);
+        Payload(await controller.GetCatalogueVersionsPage(new PagedQueryRequest { PageSize = 20 }, published: true, active: true)).TotalCount.Should().Be(1);
         (await controller.GetConfigurationsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GetCatalogueVersionsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GetCatalogueItemsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
@@ -855,7 +991,10 @@ public class C88ControllerTests
         (await denied.GetCatalogueItemsPage(new PagedQueryRequest())).Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
     }
 
-    private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed)
+    private static async Task<Module> CreateCatalogueAsync(ApplicationDbContext context, C88Controller controller, Seed seed,
+        int extraIndicatorCount = 0, string extraIndicatorCodePrefix = "PAGE",
+        string extraIndicatorNamePrefix = "Paged indicator", bool alternateIndicatorTypes = false,
+        int extraQuestionCount = 0)
     {
         var versionId = Payload(await controller.CreateCatalogueVersion(new("2026.1", "Treasury C88 2026", DateTime.UtcNow.Date,
             seed.Year.EffectiveFrom, null, false, true, "Create edition", null)));
@@ -879,6 +1018,20 @@ public class C88ControllerTests
         var indicator = await context.C88Indicators.Include(item => item.DataElements).Include(item => item.Applicability).SingleAsync(item => item.PublicId == indicatorId);
         var questionId = Payload(await controller.CreateComplianceQuestion(new(versionId, reportType.PublicId, responseType.PublicId,
             "Q1", "Was the source verified?", true, 1, true, "Create compliance question")));
+        for (var index = 0; index < extraIndicatorCount; index++)
+        {
+            var valueType = alternateIndicatorTypes && index % 2 != 0 ? C88ValueType.Integer : C88ValueType.Decimal;
+            Payload(await controller.CreateIndicator(new(versionId, $"{extraIndicatorCodePrefix}-{index:00}",
+                $"{extraIndicatorNamePrefix} {index:00}", $"Paged definition {index:00}", "Official TID",
+                sector.PublicId, outcome.PublicId, type.PublicId, valueType, C88ControlledCalculationOperator.None,
+                null, false, false, false, true,
+                [new($"VALUE-{index:00}", "Value", null, valueType, true, 1)],
+                [new(category.PublicId, tier.PublicId, true, "Applicable")], "Create paged indicator")));
+        }
+        for (var index = 0; index < extraQuestionCount; index++)
+            Payload(await controller.CreateComplianceQuestion(new(versionId, reportType.PublicId, responseType.PublicId,
+                $"PAGE-{index:00}", $"Paged prompt {index:00}", index % 2 == 0, 100 + index, true,
+                "Create paged compliance question")));
         var version = await context.C88CatalogueVersions.SingleAsync(item => item.PublicId == versionId);
         Payload(await controller.UpdateCatalogueVersion(versionId, new(version.Code, version.Name, version.EditionDate, version.EffectiveFrom,
             version.EffectiveTo, true, true, "Publish controlled edition", Convert.ToBase64String(version.RowVersion)))).Should().Be(versionId);
@@ -902,6 +1055,25 @@ public class C88ControllerTests
         await context.SaveChangesAsync();
         return new(user, municipality, year, employee, target);
     }
+
+    private static C88CatalogueVersionCreationAuditSnapshot CatalogueVersionSnapshot(
+        C88CatalogueVersion version, string reason) => new(version.Code, version.Name, version.EditionDate,
+            version.EffectiveFrom, version.EffectiveTo, version.IsPublished, version.IsActive,
+            version.CreatedByUserId, reason);
+
+    private static void AddCreationAudit(ApplicationDbContext context, long municipalityId, Guid publicId,
+        string action, string actorId, string reason, DateTime changedAt, object snapshot) =>
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId,
+            EntityName = "C88",
+            EntityId = publicId.ToString(),
+            Action = action,
+            ChangedBy = actorId,
+            ChangedAt = changedAt,
+            Reason = reason,
+            NewValue = System.Text.Json.JsonSerializer.Serialize(snapshot)
+        });
 
     private static C88Controller Controller(ApplicationDbContext context, ApplicationUser user, long municipalityId, IWorkflowGovernanceService? audit = null, Func<string, bool>? permissionRule = null)
     {

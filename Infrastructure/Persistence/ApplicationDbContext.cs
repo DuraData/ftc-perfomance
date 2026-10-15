@@ -2377,6 +2377,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceStrategicDocumentTypeHistory();
         EnforceStrategicDocumentCreationAndLifecycle();
         EnforceTidCreationAndLifecycle();
+        EnforceC88CatalogueCreationIntegrity();
         EnforceStrategicRiskHistory();
         EnforceStrategicRiskTreatmentHistory();
         EnforceStrategicRiskCreation();

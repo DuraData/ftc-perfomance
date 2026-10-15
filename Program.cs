@@ -20,12 +20,14 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllers(options => options.Filters.Add<ApiFailureProblemDetailsFilter>());
+builder.Services.AddControllers(options => options.Filters.Add<ApiFailureProblemDetailsFilter>())
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options => options.InvalidModelStateResponseFactory = ApiProblemDetails.InvalidModelStateResponse);
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = problem => ApiProblemDetails.ApplyDefaults(problem.ProblemDetails, problem.HttpContext));
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();

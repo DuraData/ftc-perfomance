@@ -179,6 +179,93 @@ public class C88ComplianceQuestion
     public C88CatalogueItem ResponseTypeItem { get; set; } = null!;
 }
 
+public sealed record C88CatalogueVersionCreationAuditSnapshot(
+    string Code,
+    string Name,
+    DateTime EditionDate,
+    DateTime EffectiveFrom,
+    DateTime? EffectiveTo,
+    bool IsPublished,
+    bool IsActive,
+    string CreatedByUserId,
+    string Reason);
+
+public sealed record C88CatalogueVersionStateAuditSnapshot(
+    string Code,
+    string Name,
+    DateTime EditionDate,
+    DateTime EffectiveFrom,
+    DateTime? EffectiveTo,
+    bool IsPublished,
+    bool IsActive);
+
+public sealed record C88CatalogueItemCreationAuditSnapshot(
+    Guid CatalogueVersionPublicId,
+    Guid? ParentPublicId,
+    C88CatalogueItemKind Kind,
+    string Code,
+    string Name,
+    string? Description,
+    int DisplayOrder,
+    bool IsActive,
+    string Reason);
+
+public sealed record C88DataElementCreationAuditSnapshot(
+    Guid PublicId,
+    string Code,
+    string Name,
+    string? Description,
+    C88ValueType ValueType,
+    bool IsRequired,
+    int Sequence);
+
+public sealed record C88IndicatorApplicabilityCreationAuditSnapshot(
+    Guid PublicId,
+    Guid MunicipalCategoryPublicId,
+    Guid? ReadinessTierPublicId,
+    bool IsApplicable,
+    string? Notes);
+
+public sealed record C88IndicatorCreationAuditSnapshot(
+    Guid CatalogueVersionPublicId,
+    string Code,
+    string Name,
+    string Definition,
+    string OfficialTechnicalIndicatorDescription,
+    Guid? SectorPublicId,
+    Guid? OutcomePublicId,
+    Guid? IndicatorTypePublicId,
+    C88ValueType ValueType,
+    C88ControlledCalculationOperator CalculationOperator,
+    string? OfficialFormulaText,
+    bool RequiresBaseline,
+    bool RequiresMediumTermTarget,
+    bool RequiresAnnualTarget,
+    bool IsActive,
+    IReadOnlyList<C88DataElementCreationAuditSnapshot> DataElements,
+    IReadOnlyList<C88IndicatorApplicabilityCreationAuditSnapshot> Applicability,
+    string Reason);
+
+public sealed record C88ComplianceQuestionCreationAuditSnapshot(
+    Guid CatalogueVersionPublicId,
+    Guid ReportTypePublicId,
+    Guid ResponseTypePublicId,
+    string Code,
+    string Prompt,
+    bool IsRequired,
+    int Sequence,
+    bool IsActive,
+    string Reason);
+
+public sealed record C88ConfigurationCreationAuditSnapshot(
+    Guid FinancialYearPublicId,
+    Guid CatalogueVersionPublicId,
+    bool IsEnabled,
+    DateTime EffectiveFrom,
+    DateTime? EffectiveTo,
+    string CreatedByUserId,
+    string Reason);
+
 public class C88IndicatorPlan
 {
     public long Id { get; set; }

@@ -465,15 +465,19 @@ public sealed class C88Controller : ControllerBase
         var session = await SessionAsync<Guid>("C88_INDICATOR.MANAGE_CATALOGUE");
         if (session.Error != null) return session.Error;
         if (!ValidateCatalogueVersion(request, out var code, out var name, out var reason, out var error)) return BadRequest(Fail<Guid>(error!));
+        if (request.IsPublished) return BadRequest(Fail<Guid>("Create the catalogue edition as a draft, add its controlled content, and publish it through the versioned update operation."));
         if (await context.C88CatalogueVersions.AnyAsync(item => item.Code == code)) return Conflict(Fail<Guid>("A Circular 88 catalogue version with this code already exists."));
+        var now = DateTime.UtcNow;
         var entity = new C88CatalogueVersion
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value, Code = code, Name = name, EditionDate = Utc(request.EditionDate),
             EffectiveFrom = Utc(request.EffectiveFrom), EffectiveTo = NullableUtc(request.EffectiveTo), IsPublished = request.IsPublished,
-            IsActive = request.IsActive, CreatedByUserId = session.User!.Id
+            IsActive = request.IsActive, CreatedAt = now, CreatedByUserId = session.User!.Id
         };
         context.C88CatalogueVersions.Add(entity);
-        Audit(entity.PublicId, "CreateCatalogueVersion", null, new { entity.Code, entity.Name, entity.EditionDate, entity.IsPublished, Reason = reason }, session.User.Id, reason);
+        AuditAt(entity.PublicId, "CreateCatalogueVersion", null, new C88CatalogueVersionCreationAuditSnapshot(
+            entity.Code, entity.Name, entity.EditionDate, entity.EffectiveFrom, entity.EffectiveTo,
+            entity.IsPublished, entity.IsActive, entity.CreatedByUserId, reason), session.User.Id, reason, now);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<Guid>("The catalogue version conflicts with an existing record.")); }
         return OkId(entity.PublicId);
@@ -498,10 +502,10 @@ public sealed class C88Controller : ControllerBase
             if (!complete) return Conflict(Fail<Guid>("A published C88 edition requires every catalogue classification, at least one indicator with data elements/applicability, and at least one compliance question."));
         }
         context.Entry(entity).Property(item => item.RowVersion).OriginalValue = rowVersion;
-        var before = new { entity.Code, entity.Name, entity.EditionDate, entity.EffectiveFrom, entity.EffectiveTo, entity.IsPublished, entity.IsActive };
+        var before = CatalogueVersionState(entity);
         entity.Code = code; entity.Name = name; entity.EditionDate = Utc(request.EditionDate); entity.EffectiveFrom = Utc(request.EffectiveFrom);
         entity.EffectiveTo = NullableUtc(request.EffectiveTo); entity.IsPublished = request.IsPublished; entity.IsActive = request.IsActive;
-        Audit(entity.PublicId, "UpdateCatalogueVersion", before, new { entity.Code, entity.Name, entity.EditionDate, entity.EffectiveFrom, entity.EffectiveTo, entity.IsPublished, entity.IsActive, Reason = reason }, session.User!.Id, reason);
+        Audit(entity.PublicId, "UpdateCatalogueVersion", before, CatalogueVersionState(entity), session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The catalogue version changed before this update. Reload and retry.");
     }
 
@@ -524,10 +528,13 @@ public sealed class C88Controller : ControllerBase
         var entity = new C88CatalogueItem
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value, C88CatalogueVersionId = version.Id, ParentItemId = parent?.Id,
-            Kind = request.Kind, Code = code, Name = name, Description = Clean(request.Description, 4000), DisplayOrder = request.DisplayOrder, IsActive = request.IsActive
+            CatalogueVersion = version, ParentItem = parent, Kind = request.Kind, Code = code, Name = name,
+            Description = Clean(request.Description, 4000), DisplayOrder = request.DisplayOrder, IsActive = request.IsActive
         };
         context.C88CatalogueItems.Add(entity);
-        Audit(entity.PublicId, "CreateCatalogueItem", null, new { version.PublicId, entity.Kind, entity.Code, entity.Name, ParentPublicId = parent?.PublicId, Reason = reason }, session.User!.Id, reason);
+        Audit(entity.PublicId, "CreateCatalogueItem", null, new C88CatalogueItemCreationAuditSnapshot(
+            version.PublicId, parent?.PublicId, entity.Kind, entity.Code, entity.Name, entity.Description,
+            entity.DisplayOrder, entity.IsActive, reason), session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The catalogue item conflicts with an existing code.");
     }
 
@@ -574,10 +581,14 @@ public sealed class C88Controller : ControllerBase
             OfficialFormulaText = Clean(request.OfficialFormulaText, 4000), RequiresBaseline = request.RequiresBaseline,
             RequiresMediumTermTarget = request.RequiresMediumTermTarget, RequiresAnnualTarget = request.RequiresAnnualTarget, IsActive = request.IsActive
         };
+        entity.CatalogueVersion = version;
+        entity.SectorItem = linked.Sector;
+        entity.OutcomeItem = linked.Outcome;
+        entity.IndicatorTypeItem = linked.Type;
         foreach (var item in normalizedElements) entity.DataElements.Add(new C88DataElement { MunicipalityId = entity.MunicipalityId, Code = item.Code, Name = item.Name, Description = item.Description, ValueType = item.ValueType, IsRequired = item.IsRequired, Sequence = item.Sequence });
-        foreach (var item in applicability) entity.Applicability.Add(new C88IndicatorApplicability { MunicipalityId = entity.MunicipalityId, MunicipalCategoryItemId = item.Category.Id, ReadinessTierItemId = item.Tier?.Id, IsApplicable = item.Input.IsApplicable, Notes = Clean(item.Input.Notes, 2000) });
+        foreach (var item in applicability) entity.Applicability.Add(new C88IndicatorApplicability { MunicipalityId = entity.MunicipalityId, MunicipalCategoryItemId = item.Category.Id, MunicipalCategoryItem = item.Category, ReadinessTierItemId = item.Tier?.Id, ReadinessTierItem = item.Tier, IsApplicable = item.Input.IsApplicable, Notes = Clean(item.Input.Notes, 2000) });
         context.C88Indicators.Add(entity);
-        Audit(entity.PublicId, "CreateIndicator", null, new { version.PublicId, entity.Code, entity.Name, entity.ValueType, entity.CalculationOperator, DataElements = normalizedElements.Count, Applicability = applicability.Count, Reason = reason }, session.User!.Id, reason);
+        Audit(entity.PublicId, "CreateIndicator", null, IndicatorCreationSnapshot(version.PublicId, entity, reason), session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The indicator conflicts with existing catalogue content.");
     }
 
@@ -593,9 +604,11 @@ public sealed class C88Controller : ControllerBase
         var reportType = await ItemOfKind(version.Id, request.ReportTypePublicId, C88CatalogueItemKind.ReportType);
         var responseType = await ItemOfKind(version.Id, request.ResponseTypePublicId, C88CatalogueItemKind.ResponseType);
         if (reportType == null || responseType == null) return BadRequest(Fail<Guid>("Report and response types must belong to the selected edition."));
-        var entity = new C88ComplianceQuestion { MunicipalityId = tenantContext.MunicipalityId!.Value, C88CatalogueVersionId = version.Id, ReportTypeItemId = reportType.Id, ResponseTypeItemId = responseType.Id, Code = code, Prompt = prompt, IsRequired = request.IsRequired, Sequence = request.Sequence, IsActive = request.IsActive };
+        var entity = new C88ComplianceQuestion { MunicipalityId = tenantContext.MunicipalityId!.Value, C88CatalogueVersionId = version.Id, CatalogueVersion = version, ReportTypeItemId = reportType.Id, ReportTypeItem = reportType, ResponseTypeItemId = responseType.Id, ResponseTypeItem = responseType, Code = code, Prompt = prompt, IsRequired = request.IsRequired, Sequence = request.Sequence, IsActive = request.IsActive };
         context.C88ComplianceQuestions.Add(entity);
-        Audit(entity.PublicId, "CreateComplianceQuestion", null, new { CatalogueVersionPublicId = version.PublicId, ReportTypePublicId = reportType.PublicId, ResponseTypePublicId = responseType.PublicId, entity.Code, Reason = reason }, session.User!.Id, reason);
+        Audit(entity.PublicId, "CreateComplianceQuestion", null, new C88ComplianceQuestionCreationAuditSnapshot(
+            version.PublicId, reportType.PublicId, responseType.PublicId, entity.Code, entity.Prompt,
+            entity.IsRequired, entity.Sequence, entity.IsActive, reason), session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The compliance question conflicts with existing catalogue content.");
     }
 
@@ -612,10 +625,12 @@ public sealed class C88Controller : ControllerBase
         var entity = await context.C88MunicipalityConfigurations.Include(item => item.CatalogueVersion)
             .SingleOrDefaultAsync(item => item.MunicipalityFinancialYearId == year.Id);
         object? before = null;
+        var created = entity == null;
+        var now = DateTime.UtcNow;
         if (entity == null)
         {
             if (!string.IsNullOrWhiteSpace(request.RowVersion)) return Conflict(Fail<Guid>("Configuration does not yet exist; reload and retry."));
-            entity = new C88MunicipalityConfiguration { MunicipalityId = tenantContext.MunicipalityId!.Value, MunicipalityFinancialYearId = year.Id, CreatedByUserId = session.User!.Id };
+            entity = new C88MunicipalityConfiguration { MunicipalityId = tenantContext.MunicipalityId!.Value, MunicipalityFinancialYearId = year.Id, MunicipalityFinancialYear = year, CatalogueVersion = version, CreatedAt = now, CreatedByUserId = session.User!.Id };
             context.C88MunicipalityConfigurations.Add(entity);
         }
         else
@@ -632,7 +647,12 @@ public sealed class C88Controller : ControllerBase
             };
         }
         entity.C88CatalogueVersionId = version.Id; entity.IsEnabled = request.IsEnabled; entity.EffectiveFrom = Utc(request.EffectiveFrom); entity.EffectiveTo = NullableUtc(request.EffectiveTo);
-        Audit(entity.PublicId, "Configure", before, new { FinancialYearPublicId = year.PublicId, CatalogueVersionPublicId = version.PublicId, entity.IsEnabled, entity.EffectiveFrom, entity.EffectiveTo, Reason = reason }, session.User!.Id, reason);
+        if (created)
+            AuditAt(entity.PublicId, "Configure", null, new C88ConfigurationCreationAuditSnapshot(
+                year.PublicId, version.PublicId, entity.IsEnabled, entity.EffectiveFrom, entity.EffectiveTo,
+                entity.CreatedByUserId, reason), session.User!.Id, reason, now);
+        else
+            Audit(entity.PublicId, "Configure", before, new { FinancialYearPublicId = year.PublicId, CatalogueVersionPublicId = version.PublicId, entity.IsEnabled, entity.EffectiveFrom, entity.EffectiveTo, Reason = reason }, session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The Circular 88 configuration changed before this update. Reload and retry.");
     }
 
@@ -1100,6 +1120,37 @@ public sealed class C88Controller : ControllerBase
     private void Audit(Guid publicId, string action, object? before, object after, string userId, string reason) =>
         workflow.QueueAuditTrail("C88", publicId.ToString(), action, before, after, userId,
             PerformanceApiSupport.GetIpAddress(HttpContext), reason);
+    private void AuditAt(Guid publicId, string action, object? before, object after, string userId, string reason, DateTime changedAt) =>
+        workflow.QueueAuditTrailAt("C88", publicId.ToString(), action, before, after, userId,
+            PerformanceApiSupport.GetIpAddress(HttpContext), reason, changedAt);
+    private static C88IndicatorCreationAuditSnapshot IndicatorCreationSnapshot(
+        Guid catalogueVersionPublicId, C88Indicator indicator, string reason) => new(
+            catalogueVersionPublicId,
+            indicator.Code,
+            indicator.Name,
+            indicator.Definition,
+            indicator.OfficialTechnicalIndicatorDescription,
+            indicator.SectorItem?.PublicId,
+            indicator.OutcomeItem?.PublicId,
+            indicator.IndicatorTypeItem?.PublicId,
+            indicator.ValueType,
+            indicator.CalculationOperator,
+            indicator.OfficialFormulaText,
+            indicator.RequiresBaseline,
+            indicator.RequiresMediumTermTarget,
+            indicator.RequiresAnnualTarget,
+            indicator.IsActive,
+            indicator.DataElements.OrderBy(item => item.Sequence).Select(item => new C88DataElementCreationAuditSnapshot(
+                item.PublicId, item.Code, item.Name, item.Description, item.ValueType, item.IsRequired, item.Sequence)).ToArray(),
+            indicator.Applicability.OrderBy(item => item.MunicipalCategoryItem.PublicId)
+                .ThenBy(item => item.ReadinessTierItem == null ? Guid.Empty : item.ReadinessTierItem.PublicId)
+                .Select(item => new C88IndicatorApplicabilityCreationAuditSnapshot(
+                    item.PublicId, item.MunicipalCategoryItem.PublicId, item.ReadinessTierItem?.PublicId,
+                    item.IsApplicable, item.Notes)).ToArray(),
+            reason);
+    private static C88CatalogueVersionStateAuditSnapshot CatalogueVersionState(C88CatalogueVersion version) => new(
+        version.Code, version.Name, version.EditionDate, version.EffectiveFrom, version.EffectiveTo,
+        version.IsPublished, version.IsActive);
     private static C88WorkflowVersionAuditSnapshot WorkflowSnapshot(Guid configurationPublicId,
         C88WorkflowDefinition workflowDefinition, IEnumerable<C88WorkflowStage> stages, string? reason,
         Guid? previousPublicId) => new(
