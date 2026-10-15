@@ -3026,22 +3026,59 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.C88MunicipalityConfigurationId == entry.Entity.C88MunicipalityConfigurationId
                 && candidate.Entity.VersionNumber == entry.Entity.VersionNumber + 1
                 && candidate.Entity.IsCurrent && candidate.Entity.IsActive);
-            var successorAudit = successor == null ? null : ChangeTracker.Entries<AuditTrail>().SingleOrDefault(candidate =>
-                candidate.State == EntityState.Added
-                && candidate.Entity.EntityName == "C88"
-                && candidate.Entity.EntityId == successor.Entity.PublicId.ToString()
-                && candidate.Entity.Action == "CreateWorkflowVersion"
-                && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
-                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
-                && candidate.Entity.NewValue != null);
+            var configurationPublicId = ResolveC88ConfigurationPublicId(entry.Entity.C88MunicipalityConfigurationId);
+            var predecessorStages = C88WorkflowStages.IgnoreQueryFilters().AsNoTracking()
+                .Where(stage => stage.C88WorkflowDefinitionId == entry.Entity.Id)
+                .OrderBy(stage => stage.Sequence)
+                .Select(stage => new C88WorkflowStageAuditSnapshot(stage.Sequence, stage.Kind, stage.Name,
+                    stage.RequiredRole, stage.IsActive)).ToArray();
+            var predecessorPreviousPublicId = ResolveC88WorkflowPublicId(
+                entry.OriginalValues.GetValue<long?>(nameof(C88WorkflowDefinition.PreviousVersionId)));
+            var predecessorSnapshot = configurationPublicId.HasValue ? new C88WorkflowVersionAuditSnapshot(
+                configurationPublicId.Value,
+                entry.OriginalValues.GetValue<Guid>(nameof(C88WorkflowDefinition.PublicId)),
+                entry.OriginalValues.GetValue<int>(nameof(C88WorkflowDefinition.VersionNumber)),
+                predecessorPreviousPublicId,
+                entry.OriginalValues.GetValue<DateTime>(nameof(C88WorkflowDefinition.EffectiveFrom)),
+                entry.OriginalValues.GetValue<DateTime?>(nameof(C88WorkflowDefinition.EffectiveTo)),
+                entry.OriginalValues.GetValue<bool>(nameof(C88WorkflowDefinition.IsCurrent)),
+                entry.OriginalValues.GetValue<bool>(nameof(C88WorkflowDefinition.IsActive)),
+                entry.OriginalValues.GetValue<string>(nameof(C88WorkflowDefinition.CreatedByUserId)),
+                predecessorStages,
+                null) : null;
+            var successorAudits = successor == null || predecessorSnapshot == null ? [] :
+                ChangeTracker.Entries<AuditTrail>().Where(candidate =>
+                    candidate.State == EntityState.Added
+                    && candidate.Entity.EntityName == "C88"
+                    && candidate.Entity.EntityId == successor.Entity.PublicId.ToString()
+                    && candidate.Entity.Action == "CreateWorkflowVersion"
+                    && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
+                    && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+                    && candidate.Entity.ChangedBy == successor.Entity.CreatedByUserId
+                    && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                    && ExactJsonMatches(candidate.Entity.OldValue, predecessorSnapshot)
+                    && ExactJsonMatches(candidate.Entity.NewValue, new C88WorkflowVersionAuditSnapshot(
+                        configurationPublicId!.Value,
+                        successor.Entity.PublicId,
+                        successor.Entity.VersionNumber,
+                        entry.Entity.PublicId,
+                        successor.Entity.EffectiveFrom,
+                        successor.Entity.EffectiveTo,
+                        successor.Entity.IsCurrent,
+                        successor.Entity.IsActive,
+                        successor.Entity.CreatedByUserId,
+                        successor.Entity.Stages.OrderBy(stage => stage.Sequence)
+                            .Select(stage => new C88WorkflowStageAuditSnapshot(stage.Sequence, stage.Kind,
+                                stage.Name, stage.RequiredRole, stage.IsActive)).ToArray(),
+                        candidate.Entity.Reason))).ToArray();
             if (!entry.OriginalValues.GetValue<bool>(nameof(C88WorkflowDefinition.IsCurrent))
                 || !entry.OriginalValues.GetValue<bool>(nameof(C88WorkflowDefinition.IsActive))
                 || entry.CurrentValues.GetValue<bool>(nameof(C88WorkflowDefinition.IsCurrent))
                 || entry.CurrentValues.GetValue<bool>(nameof(C88WorkflowDefinition.IsActive))
-                || successor == null || successorAudit == null
+                || successor == null || successorAudits.Length != 1
                 || successor.Entity.EffectiveFrom <= entry.OriginalValues.GetValue<DateTime>(nameof(C88WorkflowDefinition.EffectiveFrom))
                 || entry.CurrentValues.GetValue<DateTime?>(nameof(C88WorkflowDefinition.EffectiveTo)) != successor.Entity.EffectiveFrom)
-                throw new InvalidOperationException("A Circular 88 workflow predecessor may only close beside its exact chronological, reason-audited successor version.");
+                throw new InvalidOperationException("A Circular 88 workflow predecessor may only close beside its exact chronological, actor-bound predecessor/successor audit.");
         }
         if (ChangeTracker.Entries<C88CatalogueItem>().Any(entry => entry.State == EntityState.Modified)
             || ChangeTracker.Entries<C88Indicator>().Any(entry => entry.State == EntityState.Modified)
@@ -4393,6 +4430,29 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
         return tracked ?? C88Indicators.IgnoreQueryFilters().AsNoTracking()
             .Where(candidate => candidate.Id == indicatorId)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private Guid? ResolveC88ConfigurationPublicId(long configurationId)
+    {
+        var tracked = ChangeTracker.Entries<C88MunicipalityConfiguration>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == configurationId)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? C88MunicipalityConfigurations.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == configurationId)
+            .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private Guid? ResolveC88WorkflowPublicId(long? workflowId)
+    {
+        if (!workflowId.HasValue) return null;
+        var tracked = ChangeTracker.Entries<C88WorkflowDefinition>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == workflowId.Value)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId).SingleOrDefault();
+        return tracked ?? C88WorkflowDefinitions.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == workflowId.Value)
             .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
     }
 

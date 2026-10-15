@@ -745,7 +745,8 @@ public sealed class C88Controller : ControllerBase
         C88WorkflowDefinition? previous = null;
         if (request.PreviousWorkflowPublicId.HasValue)
         {
-            previous = await context.C88WorkflowDefinitions.SingleOrDefaultAsync(item => item.PublicId == request.PreviousWorkflowPublicId && item.C88MunicipalityConfigurationId == configuration.Id && item.IsCurrent);
+            previous = await context.C88WorkflowDefinitions.Include(item => item.Stages).Include(item => item.PreviousVersion)
+                .SingleOrDefaultAsync(item => item.PublicId == request.PreviousWorkflowPublicId && item.C88MunicipalityConfigurationId == configuration.Id && item.IsCurrent);
             if (previous == null || !TryVersion(request.PreviousWorkflowRowVersion, out var previousVersion)) return Conflict(Fail<Guid>("The current workflow or RowVersion is stale."));
             context.Entry(previous).Property(item => item.RowVersion).OriginalValue = previousVersion;
         }
@@ -754,11 +755,14 @@ public sealed class C88Controller : ControllerBase
         var effectiveFrom = Utc(request.EffectiveFrom);
         if (previous != null && effectiveFrom <= previous.EffectiveFrom)
             return Conflict(Fail<Guid>("A Circular 88 workflow successor must start after its predecessor."));
+        var previousSnapshot = previous == null ? null : WorkflowSnapshot(
+            configuration.PublicId, previous, previous.Stages, null, previous.PreviousVersion?.PublicId);
         var entity = new C88WorkflowDefinition { MunicipalityId = tenantContext.MunicipalityId!.Value, C88MunicipalityConfigurationId = configuration.Id, PreviousVersionId = previous?.Id, VersionNumber = (previous?.VersionNumber ?? 0) + 1, EffectiveFrom = effectiveFrom, EffectiveTo = NullableUtc(request.EffectiveTo), CreatedByUserId = session.User!.Id };
         foreach (var stage in ordered) entity.Stages.Add(new C88WorkflowStage { MunicipalityId = entity.MunicipalityId, Sequence = stage.Sequence, Kind = stage.Kind, Name = stage.Name.Trim(), RequiredRole = stage.RequiredRole, IsActive = true });
         if (previous != null) { previous.IsCurrent = false; previous.IsActive = false; previous.EffectiveTo = entity.EffectiveFrom; }
         context.C88WorkflowDefinitions.Add(entity);
-        Audit(entity.PublicId, "CreateWorkflowVersion", null, new { configuration.PublicId, entity.VersionNumber, PreviousPublicId = previous?.PublicId, Stages = ordered.Select(item => new { item.Sequence, item.Kind, item.Name, item.RequiredRole }), Reason = reason }, session.User!.Id, reason);
+        Audit(entity.PublicId, "CreateWorkflowVersion", previousSnapshot,
+            WorkflowSnapshot(configuration.PublicId, entity, entity.Stages, reason, previous?.PublicId), session.User!.Id, reason);
         return await SaveId(entity.PublicId, "The workflow changed before this successor was saved.");
     }
 
@@ -1096,6 +1100,21 @@ public sealed class C88Controller : ControllerBase
     private void Audit(Guid publicId, string action, object? before, object after, string userId, string reason) =>
         workflow.QueueAuditTrail("C88", publicId.ToString(), action, before, after, userId,
             PerformanceApiSupport.GetIpAddress(HttpContext), reason);
+    private static C88WorkflowVersionAuditSnapshot WorkflowSnapshot(Guid configurationPublicId,
+        C88WorkflowDefinition workflowDefinition, IEnumerable<C88WorkflowStage> stages, string? reason,
+        Guid? previousPublicId) => new(
+            configurationPublicId,
+            workflowDefinition.PublicId,
+            workflowDefinition.VersionNumber,
+            previousPublicId,
+            workflowDefinition.EffectiveFrom,
+            workflowDefinition.EffectiveTo,
+            workflowDefinition.IsCurrent,
+            workflowDefinition.IsActive,
+            workflowDefinition.CreatedByUserId,
+            stages.OrderBy(item => item.Sequence).Select(item => new C88WorkflowStageAuditSnapshot(
+                item.Sequence, item.Kind, item.Name, item.RequiredRole, item.IsActive)).ToArray(),
+            reason);
     private ActionResult<ApiResponse<Guid>> OkId(Guid id) => Ok(new ApiResponse<Guid>(true, id));
 
     private async Task<ActionResult<ApiResponse<Guid>>> SaveId(Guid id, string conflict)

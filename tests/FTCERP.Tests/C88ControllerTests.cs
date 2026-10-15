@@ -263,7 +263,48 @@ public class C88ControllerTests
         context.ChangeTracker.Clear();
         (await context.C88WorkflowDefinitions.SingleAsync(item => item.PublicId == workflowId)).IsActive = false;
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*exact chronological, reason-audited successor version*");
+            .WithMessage("*exact chronological, actor-bound predecessor/successor audit*");
+
+        context.ChangeTracker.Clear();
+        var workflow = await context.C88WorkflowDefinitions.Include(item => item.Stages)
+            .SingleAsync(item => item.PublicId == workflowId);
+        var successorEffectiveFrom = workflow.EffectiveFrom.AddDays(10);
+        workflow.IsCurrent = false;
+        workflow.IsActive = false;
+        workflow.EffectiveTo = successorEffectiveFrom;
+        var successor = new C88WorkflowDefinition
+        {
+            MunicipalityId = workflow.MunicipalityId,
+            C88MunicipalityConfigurationId = workflow.C88MunicipalityConfigurationId,
+            PreviousVersionId = workflow.Id,
+            VersionNumber = workflow.VersionNumber + 1,
+            EffectiveFrom = successorEffectiveFrom,
+            CreatedByUserId = seed.User.Id
+        };
+        foreach (var stage in workflow.Stages.OrderBy(item => item.Sequence))
+            successor.Stages.Add(new C88WorkflowStage
+            {
+                MunicipalityId = workflow.MunicipalityId,
+                Sequence = stage.Sequence,
+                Kind = stage.Kind,
+                Name = stage.Name,
+                RequiredRole = stage.RequiredRole,
+                IsActive = stage.IsActive
+            });
+        context.C88WorkflowDefinitions.Add(successor);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = seed.Municipality.Id,
+            EntityName = "C88",
+            EntityId = successor.PublicId.ToString(),
+            Action = "CreateWorkflowVersion",
+            ChangedBy = seed.User.Id,
+            Reason = "Disguised empty workflow-version evidence",
+            OldValue = "{}",
+            NewValue = "{}"
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact chronological, actor-bound predecessor/successor audit*");
 
         context.ChangeTracker.Clear();
         context.C88MunicipalityConfigurations.Remove(await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == module.Configuration.PublicId));

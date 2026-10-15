@@ -351,6 +351,26 @@ public class C88WorkflowStage
     public C88WorkflowDefinition WorkflowDefinition { get; set; } = null!;
 }
 
+public sealed record C88WorkflowStageAuditSnapshot(
+    int Sequence,
+    C88WorkflowStageKind Kind,
+    string Name,
+    C88AssignmentRole RequiredRole,
+    bool IsActive);
+
+public sealed record C88WorkflowVersionAuditSnapshot(
+    Guid ConfigurationPublicId,
+    Guid WorkflowPublicId,
+    int VersionNumber,
+    Guid? PreviousPublicId,
+    DateTime EffectiveFrom,
+    DateTime? EffectiveTo,
+    bool IsCurrent,
+    bool IsActive,
+    string CreatedByUserId,
+    IReadOnlyList<C88WorkflowStageAuditSnapshot> Stages,
+    string? Reason);
+
 public class C88WorkflowAction
 {
     public long Id { get; set; }
