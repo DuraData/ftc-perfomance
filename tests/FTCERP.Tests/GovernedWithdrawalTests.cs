@@ -178,13 +178,22 @@ public sealed class GovernedWithdrawalTests
             SubmissionKind = SubmissionKind.Ipms, Code = "DUE-CANONICAL-IPMS", Name = "Canonical IPMS workflow",
             EffectiveFrom = financialYear.StartDate
         };
+        var configurationCreatedAt = DateTime.UtcNow;
         var auditConfiguration = new InternalAuditAssessmentConfiguration
         {
             MunicipalityId = municipality.Id, MunicipalityFinancialYearId = municipalityYear.Id,
             Model = InternalAuditAssessmentModel.Detailed, EffectiveFrom = financialYear.StartDate,
-            Reason = "Approved canonical audit configuration", CreatedByUserId = user.Id
+            Reason = "Approved canonical audit configuration", CreatedByUserId = user.Id,
+            CreatedAt = configurationCreatedAt
         };
         context.AddRange(opmsSubmission, ipmsSubmission, opmsWorkflow, ipmsWorkflow, auditConfiguration);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipality.Id, EntityName = nameof(InternalAuditAssessmentConfiguration),
+            EntityId = auditConfiguration.PublicId.ToString(), Action = "SelectModel",
+            NewValue = System.Text.Json.JsonSerializer.Serialize(new { auditConfiguration.Model, auditConfiguration.Version, auditConfiguration.EffectiveFrom, auditConfiguration.Reason }),
+            ChangedBy = user.Id, ChangedAt = configurationCreatedAt, Reason = auditConfiguration.Reason
+        });
         await context.SaveChangesAsync();
         var opmsInstance = new SubmissionWorkflowInstance
         {
@@ -200,14 +209,16 @@ public sealed class GovernedWithdrawalTests
         };
         context.AddRange(opmsInstance, ipmsInstance);
         await context.SaveChangesAsync();
-        context.Add(new InternalAuditAssessment
-        {
-            MunicipalityId = municipality.Id, SubmissionWorkflowInstanceId = ipmsInstance.Id,
-            ConfigurationId = auditConfiguration.Id, Outcome = InternalAuditAssessmentOutcome.Achieved,
-            DetailedObservation = "Internal Audit completed", AssessedByUserId = user.Id,
-            CorrelationId = "canonical-due-date-audit"
-        });
-        await context.SaveChangesAsync();
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO InternalAuditAssessments
+                (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, ConfigurationId, PreviousAssessmentId,
+                 PerformanceRfiId, Outcome, DetailedObservation, Comment, Findings, Recommendation, Score,
+                 AssessedByUserId, AssessedAt, CorrelationId)
+            VALUES
+                ({Guid.NewGuid()}, {municipality.Id}, {ipmsInstance.Id}, {auditConfiguration.Id}, NULL, NULL,
+                 {(int)InternalAuditAssessmentOutcome.Achieved}, {"Internal Audit completed"}, NULL, NULL, NULL,
+                 NULL, {user.Id}, {DateTime.UtcNow}, {"canonical-due-date-audit"})
+            """);
 
         var access = Mock.Of<IAccessControlService>();
         var governance = new WorkflowGovernanceService(context,

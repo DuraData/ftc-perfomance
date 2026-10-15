@@ -750,12 +750,13 @@ public sealed class WorkflowConfigurationController(
         var members = await ReadRfiMembersAsync(user, kind, access.Scope);
         if (!members.QuestionUpdate) return Forbid();
         if (await WorkflowActionMemberDenialAsync(user, kind, access.Scope, request.Question, null) != null) return Forbid();
-        var entity = new PerformanceRfi { MunicipalityId = tenantContext.MunicipalityId!.Value, SubmissionWorkflowInstanceId = access.Instance.Id, SubmissionWorkflowInstance = access.Instance, Question = request.Question.Trim(), RaisedByUserId = user.Id, ResponseDueAt = request.ResponseDueAt };
+        var now = DateTime.UtcNow;
+        var entity = new PerformanceRfi { MunicipalityId = tenantContext.MunicipalityId!.Value, SubmissionWorkflowInstanceId = access.Instance.Id, SubmissionWorkflowInstance = access.Instance, Question = request.Question.Trim(), RaisedByUserId = user.Id, RaisedAt = now, ResponseDueAt = request.ResponseDueAt.ToUniversalTime() };
         var evidenceError = await LinkEvidenceAsync(entity, kind, submissionId, RfiEvidencePurpose.Question, request.EvidencePublicIds, user.Id);
         if (evidenceError != null) return BadRequest(Fail<PerformanceRfiDto>(evidenceError));
         context.PerformanceRfis.Add(entity);
-        AddRfiAction(access.Instance, permissionCode, WorkflowActionOutcome.RaiseRfi, user.Id, entity.Question);
-        context.AuditTrails.Add(NewRfiAudit(entity, permissionCode, user, new { entity.Question, entity.ResponseDueAt }));
+        AddRfiAction(access.Instance, permissionCode, WorkflowActionOutcome.RaiseRfi, user.Id, entity.Question, now);
+        context.AuditTrails.Add(NewRfiAudit(entity, permissionCode, user, new { entity.Question, entity.ResponseDueAt }, now));
         governance.QueueWorkflowNotifications(access.Recipients, NotificationType.Rfi, "Performance RFI raised", $"An RFI was raised for {kind} submission '{submissionId}'.", kind + "Submission", submissionId);
         await context.SaveChangesAsync();
         return Ok(new ApiResponse<PerformanceRfiDto>(true, (await ToRfiDtosAsync([entity], members)).Single()));
@@ -781,9 +782,10 @@ public sealed class WorkflowConfigurationController(
         if (!TrySetRowVersion(rfi, request.RowVersion)) return BadRequest(Fail<PerformanceRfiDto>("A valid RowVersion is required."));
         var evidenceError = await LinkEvidenceAsync(rfi, rfi.SubmissionWorkflowInstance.SubmissionKind, rfi.SubmissionWorkflowInstance.SubmissionId, RfiEvidencePurpose.Response, request.EvidencePublicIds, user.Id);
         if (evidenceError != null) return BadRequest(Fail<PerformanceRfiDto>(evidenceError));
-        rfi.Response = request.Response.Trim(); rfi.RespondedByUserId = user.Id; rfi.RespondedAt = DateTime.UtcNow;
-        AddRfiAction(rfi.SubmissionWorkflowInstance, permissionCode, WorkflowActionOutcome.RespondRfi, user.Id, rfi.Response);
-        context.AuditTrails.Add(NewRfiAudit(rfi, permissionCode, user, new { rfi.Response }));
+        var now = DateTime.UtcNow;
+        rfi.Response = request.Response.Trim(); rfi.RespondedByUserId = user.Id; rfi.RespondedAt = now;
+        AddRfiAction(rfi.SubmissionWorkflowInstance, permissionCode, WorkflowActionOutcome.RespondRfi, user.Id, rfi.Response, now);
+        context.AuditTrails.Add(NewRfiAudit(rfi, permissionCode, user, new { rfi.Response }, now));
         governance.QueueWorkflowNotifications(access.Recipients, NotificationType.Rfi, "Performance RFI response", $"An RFI response was submitted for '{rfi.SubmissionWorkflowInstance.SubmissionId}'.", rfi.SubmissionWorkflowInstance.SubmissionKind + "Submission", rfi.SubmissionWorkflowInstance.SubmissionId);
         return await SaveRfi(rfi, members);
     }
@@ -805,9 +807,11 @@ public sealed class WorkflowConfigurationController(
         var members = await ReadRfiMembersAsync(user, rfi.SubmissionWorkflowInstance.SubmissionKind, access.Scope);
         if (await WorkflowActionMemberDenialAsync(user, rfi.SubmissionWorkflowInstance.SubmissionKind, access.Scope, request.Comment, null) != null) return Forbid();
         if (!TrySetRowVersion(rfi, request.RowVersion)) return BadRequest(Fail<PerformanceRfiDto>("A valid RowVersion is required."));
-        rfi.ClosedByUserId = user.Id; rfi.ClosedAt = DateTime.UtcNow;
-        AddRfiAction(rfi.SubmissionWorkflowInstance, permissionCode, WorkflowActionOutcome.Complete, user.Id, request.Comment?.Trim());
-        context.AuditTrails.Add(NewRfiAudit(rfi, permissionCode, user, new { request.Comment }));
+        var now = DateTime.UtcNow;
+        var comment = request.Comment?.Trim();
+        rfi.ClosedByUserId = user.Id; rfi.ClosedAt = now;
+        AddRfiAction(rfi.SubmissionWorkflowInstance, permissionCode, WorkflowActionOutcome.Complete, user.Id, comment, now);
+        context.AuditTrails.Add(NewRfiAudit(rfi, permissionCode, user, new { Comment = comment }, now));
         governance.QueueWorkflowNotifications(access.Recipients, NotificationType.Rfi, "Performance RFI closed", $"An RFI was closed for '{rfi.SubmissionWorkflowInstance.SubmissionId}'.", rfi.SubmissionWorkflowInstance.SubmissionKind + "Submission", rfi.SubmissionWorkflowInstance.SubmissionId);
         return await SaveRfi(rfi, members);
     }
@@ -842,11 +846,11 @@ public sealed class WorkflowConfigurationController(
         var instance = await context.SubmissionWorkflowInstances.Include(x => x.CurrentStage).SingleOrDefaultAsync(x => x.SubmissionKind == kind && x.SubmissionId == submissionId);
         return new SubmissionAccess(new AccessScopeContext(department, unit, owner, TargetId: submissionId, MunicipalityId: tenantContext.MunicipalityId), instance, new[] { owner, submitter }.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
     }
-    private void AddRfiAction(SubmissionWorkflowInstance instance, string actionCode, WorkflowActionOutcome outcome, string actorId, string? comment)
+    private void AddRfiAction(SubmissionWorkflowInstance instance, string actionCode, WorkflowActionOutcome outcome, string actorId, string? comment, DateTime occurredAt)
     {
-        context.SubmissionWorkflowActions.Add(new SubmissionWorkflowAction { MunicipalityId = tenantContext.MunicipalityId!.Value, SubmissionWorkflowInstanceId = instance.Id, SubmissionWorkflowInstance = instance, Sequence = instance.NextSequence++, FromStageId = instance.CurrentStageId, ToStageId = instance.CurrentStageId, ActionCode = actionCode, Outcome = outcome, ActorUserId = actorId, Comment = comment, CorrelationId = HttpContext.TraceIdentifier });
+        context.SubmissionWorkflowActions.Add(new SubmissionWorkflowAction { MunicipalityId = tenantContext.MunicipalityId!.Value, SubmissionWorkflowInstanceId = instance.Id, SubmissionWorkflowInstance = instance, Sequence = instance.NextSequence++, FromStageId = instance.CurrentStageId, ToStageId = instance.CurrentStageId, ActionCode = actionCode, Outcome = outcome, ActorUserId = actorId, Comment = comment, CorrelationId = HttpContext.TraceIdentifier, OccurredAt = occurredAt });
     }
-    private AuditTrail NewRfiAudit(PerformanceRfi rfi, string action, ApplicationUser user, object value) => new() { EntityName = nameof(PerformanceRfi), EntityId = rfi.PublicId.ToString(), Action = action, NewValue = JsonSerializer.Serialize(value), ChangedBy = user.Id, CorrelationId = HttpContext.TraceIdentifier, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(), UserAgent = Request.Headers.UserAgent.ToString() };
+    private AuditTrail NewRfiAudit(PerformanceRfi rfi, string action, ApplicationUser user, object value, DateTime changedAt) => new() { MunicipalityId = tenantContext.MunicipalityId, EntityName = nameof(PerformanceRfi), EntityId = rfi.PublicId.ToString(), Action = action, NewValue = JsonSerializer.Serialize(value), ChangedBy = user.Id, ChangedAt = changedAt, CorrelationId = HttpContext.TraceIdentifier, IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(), UserAgent = Request.Headers.UserAgent.ToString() };
     private bool TrySetRowVersion(PerformanceRfi rfi, string rowVersion) { try { context.Entry(rfi).Property(x => x.RowVersion).OriginalValue = Convert.FromBase64String(rowVersion); return true; } catch (FormatException) { return false; } }
     private async Task<ActionResult<ApiResponse<PerformanceRfiDto>>> SaveRfi(PerformanceRfi rfi, RfiMemberAccess members) { try { await context.SaveChangesAsync(); return Ok(new ApiResponse<PerformanceRfiDto>(true, (await ToRfiDtosAsync([rfi], members)).Single())); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<PerformanceRfiDto>("RFI was changed by another user.")); } }
     private async Task<string?> LinkEvidenceAsync(PerformanceRfi rfi, SubmissionKind kind, string submissionId, RfiEvidencePurpose purpose, IReadOnlyCollection<Guid>? publicIds, string userId)

@@ -106,6 +106,7 @@ public sealed class InternalAuditAssessmentsController(
             current.EffectiveTo = request.EffectiveFrom;
         }
 
+        var now = DateTime.UtcNow;
         var entity = new InternalAuditAssessmentConfiguration
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value,
@@ -115,12 +116,14 @@ public sealed class InternalAuditAssessmentsController(
             Version = (current?.Version ?? 0) + 1,
             EffectiveFrom = request.EffectiveFrom.ToUniversalTime(),
             Reason = reason,
-            CreatedByUserId = user.Id
+            CreatedByUserId = user.Id,
+            CreatedAt = now
         };
         context.InternalAuditAssessmentConfigurations.Add(entity);
-        governance.QueueAuditTrail(nameof(InternalAuditAssessmentConfiguration), entity.PublicId.ToString(), "SelectModel",
+        governance.QueueAuditTrailAt(nameof(InternalAuditAssessmentConfiguration), entity.PublicId.ToString(), "SelectModel",
             current == null ? null : new { current.PublicId, current.Model, current.Version },
-            new { entity.Model, entity.Version, entity.EffectiveFrom, Reason = reason }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+            new { entity.Model, entity.Version, entity.EffectiveFrom, Reason = reason }, user.Id,
+            PerformanceApiSupport.GetIpAddress(HttpContext), reason, now);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<InternalAuditConfigurationDto>("The model configuration changed; reload and try again.")); }
         catch (DbUpdateException) { return Conflict(Fail<InternalAuditConfigurationDto>("Another model version was selected; reload and try again.")); }
@@ -285,6 +288,8 @@ public sealed class InternalAuditAssessmentsController(
             context.PerformanceRfis.Add(rfi);
             entity.PerformanceRfi = rfi;
             context.SubmissionWorkflowActions.Add(NewAction(loaded.Instance, permissionCode, WorkflowActionOutcome.RaiseRfi, user.Id, entity.DetailedObservation, now));
+            governance.QueueAuditTrailAt(nameof(PerformanceRfi), rfi.PublicId.ToString(), permissionCode, null,
+                new { rfi.Question, rfi.ResponseDueAt }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), null, now);
             governance.QueueWorkflowNotifications(loaded.Recipients, NotificationType.InternalAuditRfi, "Internal Audit RFI raised", $"Internal Audit raised an RFI for {kind} submission '{submissionId}'.", kind + "Submission", submissionId);
         }
         context.InternalAuditAssessments.Add(entity);
@@ -300,9 +305,9 @@ public sealed class InternalAuditAssessmentsController(
                 Value = ratingValue.Value, LabelSnapshot = ratingValue.Label, AchievementPercent = loaded.AchievementPercent, Comment = entity.Comment, RatedByUserId = user.Id, RatedByUser = user,
                 RatedAt = now, CorrelationId = HttpContext.TraceIdentifier
             });
-        governance.QueueAuditTrail(nameof(InternalAuditAssessment), entity.PublicId.ToString(), previous == null ? "Assess" : "Reassess", null,
+        governance.QueueAuditTrailAt(nameof(InternalAuditAssessment), entity.PublicId.ToString(), previous == null ? "Assess" : "Reassess", null,
             new { configuration.Model, request.Outcome, entity.DetailedObservation, entity.Comment, entity.Findings, entity.Recommendation, entity.Score, request.ResponseDueAt, PreviousAssessmentPublicId = previous?.PublicId },
-            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+            user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), null, now);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<InternalAuditAssessmentDto>("The assessment could not be appended because the workflow changed.")); }
         return Ok(new ApiResponse<InternalAuditAssessmentDto>(true, ToDto(entity, configuration.Model, memberAccess)));

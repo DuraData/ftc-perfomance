@@ -2946,6 +2946,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 throw new InvalidOperationException("RFI lifecycle state may only advance through response or closure.");
             }
         }
+        EnforceInternalAuditAndRfiCreation();
         if (ChangeTracker.Entries<PoeEvidenceAssessment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("POE assessment history is append-only.");
         if (ChangeTracker.Entries<PoeEvidenceReplacement>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted))

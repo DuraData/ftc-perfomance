@@ -9,6 +9,7 @@ public sealed class RfiEvidencePersistenceIntegrityTests
         var fixture = await SeedAsync(context, "valid");
         var rfi = NewRfi(fixture);
         var link = NewLink(fixture, rfi, fixture.File, fixture.Actor);
+        GovernCreation(context, fixture, rfi);
         context.AddRange(rfi, link);
 
         await context.SaveChangesAsync();
@@ -47,6 +48,7 @@ public sealed class RfiEvidencePersistenceIntegrityTests
 
         var rfi = NewRfi(fixture);
         var actor = defect == "wrong-actor" ? fixture.OtherActor : fixture.Actor;
+        GovernCreation(context, fixture, rfi);
         context.AddRange(rfi, NewLink(fixture, rfi, fixture.File, actor));
 
         await FluentActions.Invoking(() => context.SaveChangesAsync())
@@ -60,6 +62,7 @@ public sealed class RfiEvidencePersistenceIntegrityTests
         await using var context = IdpTestFixture.CreateRelationalContext();
         var fixture = await SeedAsync(context, "response");
         var rfi = NewRfi(fixture);
+        GovernCreation(context, fixture, rfi);
         context.PerformanceRfis.Add(rfi);
         await context.SaveChangesAsync();
 
@@ -67,6 +70,7 @@ public sealed class RfiEvidencePersistenceIntegrityTests
         rfi.Response = "The requested clarification is attached.";
         rfi.RespondedByUserId = fixture.Actor.Id;
         rfi.RespondedAt = respondedAt;
+        GovernResponse(context, fixture, rfi, respondedAt);
         var link = NewLink(fixture, rfi, fixture.File, fixture.Actor, RfiEvidencePurpose.Response);
         link.LinkedAt = respondedAt;
         context.PerformanceRfiEvidenceLinks.Add(link);
@@ -86,6 +90,44 @@ public sealed class RfiEvidencePersistenceIntegrityTests
         RaisedAt = DateTime.UtcNow,
         ResponseDueAt = DateTime.UtcNow.AddDays(5)
     };
+
+    private static void GovernCreation(ApplicationDbContext context, Fixture fixture, PerformanceRfi rfi)
+    {
+        context.SubmissionWorkflowActions.Add(new SubmissionWorkflowAction
+        {
+            MunicipalityId = fixture.Municipality.Id, SubmissionWorkflowInstance = fixture.Instance,
+            Sequence = fixture.Instance.NextSequence++, FromStageId = fixture.Instance.CurrentStageId,
+            ToStageId = fixture.Instance.CurrentStageId, ActionCode = "OPMS_RFI.RAISE",
+            Outcome = WorkflowActionOutcome.RaiseRfi, ActorUserId = fixture.Actor.Id,
+            Comment = rfi.Question, CorrelationId = "trace-rfi-raise", OccurredAt = rfi.RaisedAt
+        });
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = fixture.Municipality.Id, EntityName = nameof(PerformanceRfi),
+            EntityId = rfi.PublicId.ToString(), Action = "OPMS_RFI.RAISE",
+            NewValue = System.Text.Json.JsonSerializer.Serialize(new { rfi.Question, rfi.ResponseDueAt }),
+            ChangedBy = fixture.Actor.Id, ChangedAt = rfi.RaisedAt, CorrelationId = "trace-rfi-raise"
+        });
+    }
+
+    private static void GovernResponse(ApplicationDbContext context, Fixture fixture, PerformanceRfi rfi, DateTime respondedAt)
+    {
+        context.SubmissionWorkflowActions.Add(new SubmissionWorkflowAction
+        {
+            MunicipalityId = fixture.Municipality.Id, SubmissionWorkflowInstance = fixture.Instance,
+            Sequence = fixture.Instance.NextSequence++, FromStageId = fixture.Instance.CurrentStageId,
+            ToStageId = fixture.Instance.CurrentStageId, ActionCode = "OPMS_RFI.RESPOND",
+            Outcome = WorkflowActionOutcome.RespondRfi, ActorUserId = fixture.Actor.Id,
+            Comment = rfi.Response, CorrelationId = "trace-rfi-response", OccurredAt = respondedAt
+        });
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = fixture.Municipality.Id, EntityName = nameof(PerformanceRfi),
+            EntityId = rfi.PublicId.ToString(), Action = "OPMS_RFI.RESPOND",
+            NewValue = System.Text.Json.JsonSerializer.Serialize(new { rfi.Response }),
+            ChangedBy = fixture.Actor.Id, ChangedAt = respondedAt, CorrelationId = "trace-rfi-response"
+        });
+    }
 
     private static PerformanceRfiEvidence NewLink(
         Fixture fixture,

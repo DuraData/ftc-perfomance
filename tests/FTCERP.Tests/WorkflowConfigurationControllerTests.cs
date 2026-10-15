@@ -208,22 +208,27 @@ public sealed class WorkflowConfigurationControllerTests
         var raisedAt = DateTime.UtcNow.AddDays(-10);
         for (var index = 0; index < 31; index++)
         {
-            context.PerformanceRfis.Add(new PerformanceRfi
-            {
-                MunicipalityId = municipality.Id,
-                SubmissionWorkflowInstanceId = instance.Id,
-                SubmissionWorkflowInstance = instance,
-                Question = $"match-{index:00}",
-                RaisedByUserId = user.Id,
-                RaisedAt = raisedAt.AddMinutes(index),
-                ResponseDueAt = raisedAt.AddDays(5),
-                Response = index % 2 == 0 ? null : "answered",
-                RespondedByUserId = index % 2 == 0 ? null : user.Id,
-                RespondedAt = index % 2 == 0 ? null : raisedAt.AddMinutes(index + 1)
-            });
+            var response = index % 2 == 0 ? null : "answered";
+            var respondedBy = index % 2 == 0 ? null : user.Id;
+            DateTime? respondedAt = index % 2 == 0 ? null : raisedAt.AddMinutes(index + 1);
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO PerformanceRfis
+                    (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, Question, RaisedByUserId, RaisedAt,
+                     ResponseDueAt, Response, RespondedByUserId, RespondedAt, ClosedByUserId, ClosedAt, RowVersion)
+                VALUES
+                    ({Guid.NewGuid()}, {municipality.Id}, {instance.Id}, {$"match-{index:00}"}, {user.Id},
+                     {raisedAt.AddMinutes(index)}, {raisedAt.AddDays(5)}, {response}, {respondedBy}, {respondedAt},
+                     NULL, NULL, {Guid.NewGuid().ToByteArray()})
+                """);
         }
-        context.PerformanceRfis.Add(new PerformanceRfi { MunicipalityId = municipality.Id, SubmissionWorkflowInstanceId = otherInstance.Id, SubmissionWorkflowInstance = otherInstance, Question = "match-outside", RaisedByUserId = user.Id, RaisedAt = raisedAt, ResponseDueAt = raisedAt.AddDays(5) });
-        await context.SaveChangesAsync();
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO PerformanceRfis
+                (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, Question, RaisedByUserId, RaisedAt,
+                 ResponseDueAt, Response, RespondedByUserId, RespondedAt, ClosedByUserId, ClosedAt, RowVersion)
+            VALUES
+                ({Guid.NewGuid()}, {municipality.Id}, {otherInstance.Id}, {"match-outside"}, {user.Id}, {raisedAt},
+                 {raisedAt.AddDays(5)}, NULL, NULL, NULL, NULL, NULL, {Guid.NewGuid().ToByteArray()})
+            """);
         var evidenceRfi = await context.PerformanceRfis.SingleAsync(item => item.Question == "match-30");
         var evidenceBlob = new EvidenceBlob { MunicipalityId = municipality.Id, StorageKey = "rfi/secret-evidence", ContentType = "application/pdf", SizeInBytes = 321, Sha256 = new string('a', 64), SignatureVerified = true, ScanStatus = "Clean" };
         var evidence = new PoeFile { Id = "rfi-evidence", MunicipalityId = municipality.Id, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id, FileName = "secret-evidence.pdf", Blob = evidenceBlob, UploadedByUserId = user.Id, UploadedByUser = user, IsActive = true };
@@ -604,16 +609,18 @@ public sealed class WorkflowConfigurationControllerTests
             .ReturnsAsync((ApplicationUser _, string code, AccessScopeContext? _) => permissionPredicate?.Invoke(code) is not false
                 ? new AccessDecisionResult(true, "Allowed", [], [], [])
                 : new AccessDecisionResult(false, "Denied", [], [], []));
+        var http = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) };
+        var httpAccessor = new HttpContextAccessor { HttpContext = http };
         return new WorkflowConfigurationController(
             context,
             tenant.Object,
             access.Object,
             Mock.Of<IConfigurableWorkflowService>(),
             Mock.Of<IReportingWindowService>(),
-            new WorkflowGovernanceService(context),
+            new WorkflowGovernanceService(context, httpAccessor, tenant.Object),
             IdpTestFixture.CreateUserManagerMock(user).Object)
         {
-            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
+            ControllerContext = new ControllerContext { HttpContext = http }
         };
     }
 

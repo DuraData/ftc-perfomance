@@ -173,24 +173,14 @@ public sealed class InternalAuditAssessmentTests
         var createdAt = new DateTime(2035, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         for (var index = 0; index < 11; index++)
         {
-            context.InternalAuditAssessmentConfigurations.Add(new InternalAuditAssessmentConfiguration
-            {
-                MunicipalityId = seed.Municipality.Id,
-                MunicipalityFinancialYearId = seed.Year.Id,
-                MunicipalityFinancialYear = seed.Year,
-                Model = index % 2 == 0 ? InternalAuditAssessmentModel.Detailed : InternalAuditAssessmentModel.SatisfactoryNotSatisfactory,
-                Version = index + 1,
-                IsCurrent = index == 10,
-                EffectiveFrom = createdAt.AddDays(index),
-                EffectiveTo = index == 10 ? null : createdAt.AddDays(index + 1),
-                Reason = $"match governance reason {index:00}",
-                CreatedByUserId = seed.User.Id,
-                CreatedByUser = seed.User,
-                CreatedAt = createdAt.AddMinutes(index)
-            });
+            await InsertHistoricalConfiguration(context, seed, index + 1,
+                index % 2 == 0 ? InternalAuditAssessmentModel.Detailed : InternalAuditAssessmentModel.SatisfactoryNotSatisfactory,
+                index == 10, createdAt.AddDays(index), index == 10 ? null : createdAt.AddDays(index + 1),
+                $"match governance reason {index:00}", createdAt.AddMinutes(index));
         }
-        context.InternalAuditAssessmentConfigurations.Add(new InternalAuditAssessmentConfiguration { MunicipalityId = seed.Municipality.Id, MunicipalityFinancialYearId = seed.Year.Id, MunicipalityFinancialYear = seed.Year, Model = InternalAuditAssessmentModel.Detailed, Version = 12, IsCurrent = false, EffectiveFrom = createdAt.AddDays(12), EffectiveTo = createdAt.AddDays(13), Reason = "outside governance reason", CreatedByUserId = seed.User.Id, CreatedByUser = seed.User, CreatedAt = createdAt.AddDays(12) });
-        await context.SaveChangesAsync();
+        await InsertHistoricalConfiguration(context, seed, 12, InternalAuditAssessmentModel.Detailed, false,
+            createdAt.AddDays(12), createdAt.AddDays(13), "outside governance reason", createdAt.AddDays(12));
+        context.ChangeTracker.Clear();
         var controller = Controller(context, seed, allowed: true);
 
         var result = await controller.ConfigurationsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "version", SortDirection = "asc" });
@@ -209,38 +199,16 @@ public sealed class InternalAuditAssessmentTests
         var seed = await SeedAsync(context, InternalAuditAssessmentModel.SatisfactoryNotSatisfactory);
         var instance = await context.SubmissionWorkflowInstances.SingleAsync();
         var configuration = await context.InternalAuditAssessmentConfigurations.SingleAsync();
-        InternalAuditAssessment? previous = null;
+        long? previousId = null;
         var assessedAt = new DateTime(2035, 2, 1, 0, 0, 0, DateTimeKind.Utc);
         for (var index = 0; index < 11; index++)
         {
-            var assessment = new InternalAuditAssessment
-            {
-                MunicipalityId = seed.Municipality.Id,
-                SubmissionWorkflowInstanceId = instance.Id,
-                SubmissionWorkflowInstance = instance,
-                ConfigurationId = configuration.Id,
-                Configuration = configuration,
-                PreviousAssessmentId = previous?.Id,
-                PreviousAssessment = previous,
-                Outcome = InternalAuditAssessmentOutcome.Satisfactory,
-                DetailedObservation = $"match assessment {index:00}",
-                AssessedByUserId = seed.User.Id,
-                AssessedByUser = seed.User,
-                AssessedAt = assessedAt.AddMinutes(index),
-                CorrelationId = $"assessment-{index:00}"
-            };
-            context.InternalAuditAssessments.Add(assessment);
-            await context.SaveChangesAsync();
-            previous = assessment;
+            previousId = await InsertHistoricalAssessment(context, seed, instance.Id, configuration.Id, previousId,
+                InternalAuditAssessmentOutcome.Satisfactory, $"match assessment {index:00}", assessedAt.AddMinutes(index), $"assessment-{index:00}");
         }
-        context.InternalAuditAssessments.Add(new InternalAuditAssessment
-        {
-            MunicipalityId = seed.Municipality.Id, SubmissionWorkflowInstanceId = instance.Id, SubmissionWorkflowInstance = instance,
-            ConfigurationId = configuration.Id, Configuration = configuration, PreviousAssessmentId = previous!.Id, PreviousAssessment = previous,
-            Outcome = InternalAuditAssessmentOutcome.NotSatisfactory, DetailedObservation = "outside history search",
-            AssessedByUserId = seed.User.Id, AssessedByUser = seed.User, AssessedAt = assessedAt.AddMinutes(20), CorrelationId = "outside"
-        });
-        await context.SaveChangesAsync();
+        await InsertHistoricalAssessment(context, seed, instance.Id, configuration.Id, previousId,
+            InternalAuditAssessmentOutcome.NotSatisfactory, "outside history search", assessedAt.AddMinutes(20), "outside");
+        context.ChangeTracker.Clear();
         var controller = Controller(context, seed, allowed: true);
 
         var result = await controller.AssessmentsPage(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
@@ -262,22 +230,11 @@ public sealed class InternalAuditAssessmentTests
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
         var seed = await SeedAsync(context, InternalAuditAssessmentModel.Detailed);
-        var instance = await context.SubmissionWorkflowInstances.SingleAsync();
-        var configuration = await context.InternalAuditAssessmentConfigurations.SingleAsync();
-        var rfi = new PerformanceRfi
-        {
-            MunicipalityId = seed.Municipality.Id, SubmissionWorkflowInstanceId = instance.Id, SubmissionWorkflowInstance = instance,
-            Question = "secret RFI", RaisedByUserId = seed.User.Id, RaisedAt = DateTime.UtcNow, ResponseDueAt = DateTime.UtcNow.AddDays(3)
-        };
-        context.InternalAuditAssessments.Add(new InternalAuditAssessment
-        {
-            MunicipalityId = seed.Municipality.Id, SubmissionWorkflowInstanceId = instance.Id, SubmissionWorkflowInstance = instance,
-            ConfigurationId = configuration.Id, Configuration = configuration, Outcome = InternalAuditAssessmentOutcome.NotAchieved,
-            DetailedObservation = "secret observation", Comment = "secret comment", Findings = "secret finding",
-            Recommendation = "secret recommendation", Score = 2, AssessedByUserId = seed.User.Id, AssessedByUser = seed.User,
-            AssessedAt = DateTime.UtcNow, CorrelationId = "secret-correlation", PerformanceRfi = rfi
-        });
-        await context.SaveChangesAsync();
+        var created = await Controller(context, seed, allowed: true).Assess(SubmissionKind.Opms, seed.Submission.PublicId.ToString(),
+            new(InternalAuditAssessmentOutcome.NotAchieved, "secret observation", "secret comment", "secret finding",
+                "secret recommendation", 2, DateTime.UtcNow.AddDays(3), null));
+        created.Result.Should().BeOfType<OkObjectResult>();
+        var rfi = await context.PerformanceRfis.SingleAsync();
         var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "OPMS_SUBMISSION.READ" };
         var controller = Controller(context, seed, permissions.Contains);
 
@@ -353,9 +310,11 @@ public sealed class InternalAuditAssessmentTests
                 var granted = allowed(permission);
                 return new AccessDecisionResult(granted, granted ? "Allowed" : "Denied", [], [], []);
             });
-        return new(context, tenant.Object, access.Object, new WorkflowGovernanceService(context), IdpTestFixture.CreateUserManagerMock(seed.User).Object)
+        var http = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(seed.User.Id), TraceIdentifier = "ia-test" };
+        var httpAccessor = new HttpContextAccessor { HttpContext = http };
+        return new(context, tenant.Object, access.Object, new WorkflowGovernanceService(context, httpAccessor, tenant.Object), IdpTestFixture.CreateUserManagerMock(seed.User).Object)
         {
-            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(seed.User.Id), TraceIdentifier = "ia-test" } }
+            ControllerContext = new ControllerContext { HttpContext = http }
         };
     }
 
@@ -383,9 +342,54 @@ public sealed class InternalAuditAssessmentTests
         var instance = new SubmissionWorkflowInstance { MunicipalityId = municipality.Id, WorkflowDefinitionId = workflow.Id, WorkflowDefinition = workflow, SubmissionKind = SubmissionKind.Opms, SubmissionId = submission.Id };
         context.SubmissionWorkflowInstances.Add(instance);
         if (model.HasValue)
-            context.InternalAuditAssessmentConfigurations.Add(new InternalAuditAssessmentConfiguration { MunicipalityId = municipality.Id, MunicipalityFinancialYearId = year.Id, MunicipalityFinancialYear = year, Model = model.Value, EffectiveFrom = DateTime.UtcNow.AddHours(-1), Reason = "Approved test configuration", CreatedByUserId = user.Id, CreatedByUser = user });
+        {
+            var createdAt = DateTime.UtcNow;
+            var configuration = new InternalAuditAssessmentConfiguration
+            {
+                MunicipalityId = municipality.Id, MunicipalityFinancialYearId = year.Id, MunicipalityFinancialYear = year,
+                Model = model.Value, EffectiveFrom = createdAt.AddHours(-1), Reason = "Approved test configuration",
+                CreatedByUserId = user.Id, CreatedByUser = user, CreatedAt = createdAt
+            };
+            context.InternalAuditAssessmentConfigurations.Add(configuration);
+            context.AuditTrails.Add(new AuditTrail
+            {
+                MunicipalityId = municipality.Id, EntityName = nameof(InternalAuditAssessmentConfiguration),
+                EntityId = configuration.PublicId.ToString(), Action = "SelectModel",
+                NewValue = System.Text.Json.JsonSerializer.Serialize(new { configuration.Model, configuration.Version, configuration.EffectiveFrom, configuration.Reason }),
+                ChangedBy = user.Id, ChangedAt = createdAt, Reason = configuration.Reason
+            });
+        }
         await context.SaveChangesAsync();
         return new(municipality, year, user, submission);
+    }
+
+    private static Task InsertHistoricalConfiguration(ApplicationDbContext context, Seed seed, int version,
+        InternalAuditAssessmentModel model, bool isCurrent, DateTime effectiveFrom, DateTime? effectiveTo,
+        string reason, DateTime createdAt) => context.Database.ExecuteSqlInterpolatedAsync($"""
+        INSERT INTO InternalAuditAssessmentConfigurations
+            (PublicId, MunicipalityId, MunicipalityFinancialYearId, Model, Version, IsCurrent, EffectiveFrom, EffectiveTo,
+             Reason, CreatedByUserId, CreatedAt, RowVersion)
+        VALUES
+            ({Guid.NewGuid()}, {seed.Municipality.Id}, {seed.Year.Id}, {(int)model}, {version}, {isCurrent},
+             {effectiveFrom}, {effectiveTo}, {reason}, {seed.User.Id}, {createdAt}, {Guid.NewGuid().ToByteArray()})
+        """);
+
+    private static async Task<long> InsertHistoricalAssessment(ApplicationDbContext context, Seed seed, long instanceId,
+        long configurationId, long? previousId, InternalAuditAssessmentOutcome outcome, string observation,
+        DateTime assessedAt, string correlationId)
+    {
+        var publicId = Guid.NewGuid();
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO InternalAuditAssessments
+                (PublicId, MunicipalityId, SubmissionWorkflowInstanceId, ConfigurationId, PreviousAssessmentId,
+                 PerformanceRfiId, Outcome, DetailedObservation, Comment, Findings, Recommendation, Score,
+                 AssessedByUserId, AssessedAt, CorrelationId)
+            VALUES
+                ({publicId}, {seed.Municipality.Id}, {instanceId}, {configurationId}, {previousId}, NULL,
+                 {(int)outcome}, {observation}, NULL, NULL, NULL, NULL, {seed.User.Id}, {assessedAt}, {correlationId})
+            """);
+        return await context.InternalAuditAssessments.IgnoreQueryFilters().AsNoTracking()
+            .Where(item => item.PublicId == publicId).Select(item => item.Id).SingleAsync();
     }
 
     private sealed record Seed(Municipality Municipality, MunicipalityFinancialYear Year, ApplicationUser User, OpmsSubmission Submission);
