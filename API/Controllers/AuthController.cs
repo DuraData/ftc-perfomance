@@ -95,7 +95,8 @@ public class AuthController : ControllerBase
         var authenticatedAt = DateTime.UtcNow;
         await QueueAuthenticationEventAsync(user.Id, user.Email ?? request.Email, true, null, authenticatedAt);
         user.LastLoginAt = authenticatedAt;
-        await _context.SaveChangesAsync();
+        using (_context.BeginPreAuthenticationLedgerWrite())
+            await _context.SaveChangesAsync();
 
         var (accessToken, refreshToken, expiresAt) = await _jwtService.GenerateTokensAsync(user, HttpContext.Connection.RemoteIpAddress?.ToString(), Request.Headers.UserAgent.ToString());
         SetSessionCookies(accessToken, refreshToken, expiresAt);
@@ -531,7 +532,8 @@ public class AuthController : ControllerBase
     private async Task RecordAuthenticationEventAsync(string? userId, string email, bool success, string? failureReason)
     {
         await QueueAuthenticationEventAsync(userId, email, success, failureReason, DateTime.UtcNow);
-        await _context.SaveChangesAsync();
+        using (_context.BeginPreAuthenticationLedgerWrite())
+            await _context.SaveChangesAsync();
     }
 
     private async Task QueueAuthenticationEventAsync(string? userId, string email, bool success, string? failureReason, DateTime occurredAt)

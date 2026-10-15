@@ -13,6 +13,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
 {
     private readonly ITenantContext? _tenantContext;
     private bool _tenantOwnershipReconciliationActive;
+    private bool _preAuthenticationLedgerWriteActive;
     private bool TenantFilterBypass => _tenantContext == null || (_tenantContext.IsSystem && !_tenantContext.MunicipalityId.HasValue);
     private long? CurrentMunicipalityId => _tenantContext?.MunicipalityId;
     private long CurrentMunicipalityIdOrSentinel => CurrentMunicipalityId ?? long.MinValue;
@@ -2291,6 +2292,10 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         };
         foreach (var entry in ChangeTracker.Entries().Where(item => protectedTypes.Contains(item.Entity.GetType()) && item.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
         {
+            if (_preAuthenticationLedgerWriteActive
+                && entry.State == EntityState.Added
+                && entry.Entity is AuthenticationEvent { MunicipalityId: null })
+                continue;
             if (entry.Entity is AuditTrail { MunicipalityId: null, EntityName: nameof(FinancialYear) } && _tenantContext.IsSystem)
                 continue;
             if (!tenantId.HasValue || tenantId == long.MinValue) throw new UnauthorizedAccessException("A municipality context is required for this operation.");
@@ -2324,6 +2329,25 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             throw new InvalidOperationException("A tenant-ownership reconciliation scope is already active.");
         _tenantOwnershipReconciliationActive = true;
         return new ReconciliationScope(this);
+    }
+
+    internal IDisposable BeginPreAuthenticationLedgerWrite()
+    {
+        if (_preAuthenticationLedgerWriteActive)
+            throw new InvalidOperationException("A pre-authentication ledger-write scope is already active.");
+        _preAuthenticationLedgerWriteActive = true;
+        return new PreAuthenticationLedgerWriteScope(this);
+    }
+
+    private sealed class PreAuthenticationLedgerWriteScope(ApplicationDbContext context) : IDisposable
+    {
+        private ApplicationDbContext? _context = context;
+        public void Dispose()
+        {
+            if (_context == null) return;
+            _context._preAuthenticationLedgerWriteActive = false;
+            _context = null;
+        }
     }
 
     private sealed class ReconciliationScope(ApplicationDbContext context) : IDisposable

@@ -221,6 +221,65 @@ public sealed class AuthSessionTests
     }
 
     [Fact]
+    public async Task Institution_wide_administrator_can_login_before_an_authenticated_system_scope_exists()
+    {
+        var user = User("institution-admin");
+        user.Email = "institution-admin@local.test";
+        user.UserName = user.Email;
+        user.MunicipalityId = null;
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(null, user.Id));
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var userManager = IdpTestFixture.CreateUserManagerMock(user);
+        userManager.Setup(manager => manager.FindByEmailAsync(user.Email)).ReturnsAsync(user);
+        userManager.Setup(manager => manager.GetTwoFactorEnabledAsync(user)).ReturnsAsync(false);
+        userManager.Setup(manager => manager.GetRolesAsync(user)).ReturnsAsync(["Super Admin"]);
+        var signInManager = new Mock<SignInManager<ApplicationUser>>(
+            userManager.Object,
+            new Mock<Microsoft.AspNetCore.Http.IHttpContextAccessor>().Object,
+            new Mock<IUserClaimsPrincipalFactory<ApplicationUser>>().Object,
+            Options.Create(new IdentityOptions()),
+            new Mock<Microsoft.Extensions.Logging.ILogger<SignInManager<ApplicationUser>>>().Object,
+            new Mock<Microsoft.AspNetCore.Authentication.IAuthenticationSchemeProvider>().Object,
+            new Mock<IUserConfirmation<ApplicationUser>>().Object);
+        signInManager.Setup(manager => manager.CheckPasswordSignInAsync(user, "ValidPassword!1", true))
+            .ReturnsAsync(Microsoft.AspNetCore.Identity.SignInResult.Success);
+        var policies = new Mock<IAuthenticationPolicyResolver>();
+        policies.Setup(resolver => resolver.ResolveAsync(user, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EffectiveAuthenticationPolicy(12, 5, 15, true, true, true, 30, 24, 5));
+        var jwt = new Mock<IJwtService>();
+        jwt.Setup(service => service.GenerateTokensAsync(user, It.IsAny<string?>(), It.IsAny<string?>(), null, null, "LOCAL"))
+            .ReturnsAsync(("access-token", "refresh-token", DateTime.UtcNow.AddMinutes(15)));
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetEffectiveAccessAsync(user))
+            .ReturnsAsync(new EffectiveAccessResult(["SECURITY.SYSTEM_SCOPE"], [], [], [], [], []));
+        access.Setup(service => service.GetAuthorizedNavigationAsync(user)).ReturnsAsync([]);
+        var environment = new Mock<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
+        environment.SetupGet(item => item.EnvironmentName).Returns(Environments.Development);
+        var services = new ServiceCollection().AddSingleton(environment.Object).BuildServiceProvider();
+        var controller = new AuthController(userManager.Object, signInManager.Object, jwt.Object, access.Object, context,
+            Options.Create(new JwtSettings()), null!, policies.Object, IdpTestFixture.Tenant(null, user.Id))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    TraceIdentifier = "institution-admin-login",
+                    RequestServices = services
+                }
+            }
+        };
+
+        var response = await controller.Login(new LoginRequest(user.Email, "ValidPassword!1"));
+
+        Assert.True(Assert.IsType<ApiResponse<LoginResponse>>(Assert.IsType<OkObjectResult>(response.Result).Value).Success);
+        (await context.Users.AsNoTracking().SingleAsync(item => item.Id == user.Id)).LastLoginAt.Should().NotBeNull();
+        (await context.AuthenticationEvents.IgnoreQueryFilters().AsNoTracking().SingleAsync()).MunicipalityId.Should().BeNull();
+        (await context.LoginAuditLogs.IgnoreQueryFilters().AsNoTracking().SingleAsync()).MunicipalityId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Sqlite_enforces_unique_session_token_digests()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
