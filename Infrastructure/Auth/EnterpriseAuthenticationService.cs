@@ -71,7 +71,7 @@ public sealed class EnterpriseAuthenticationService(ApplicationDbContext context
 
         authenticator.LastAuthenticatedAt = now;
         authenticator.User.LastLoginAt = now;
-        AddEvent(municipalityId, authenticator.UserId, providerCode, "ExternalSignIn", true, null, httpContext);
+        AddEvent(municipalityId, authenticator.UserId, providerCode, "ExternalSignIn", true, null, httpContext, now);
         try
         {
             await context.SaveChangesAsync(cancellationToken);
@@ -85,12 +85,13 @@ public sealed class EnterpriseAuthenticationService(ApplicationDbContext context
 
     private async Task<EnterpriseIdentityResult> FailAsync(long municipalityId, string? userId, string providerCode, string failureCode, HttpContext httpContext, CancellationToken cancellationToken)
     {
-        AddEvent(municipalityId, userId, providerCode, "ExternalSignIn", false, failureCode, httpContext);
+        AddEvent(municipalityId, userId, providerCode, "ExternalSignIn", false, failureCode, httpContext, DateTime.UtcNow);
         await context.SaveChangesAsync(cancellationToken);
         return EnterpriseIdentityResult.Failure(failureCode);
     }
 
-    private void AddEvent(long municipalityId, string? userId, string providerCode, string eventType, bool success, string? failureCode, HttpContext httpContext) =>
+    private void AddEvent(long municipalityId, string? userId, string providerCode, string eventType, bool success, string? failureCode,
+        HttpContext httpContext, DateTime occurredAt) =>
         context.AuthenticationEvents.Add(new AuthenticationEvent
         {
             MunicipalityId = municipalityId,
@@ -102,7 +103,7 @@ public sealed class EnterpriseAuthenticationService(ApplicationDbContext context
             IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
             UserAgent = httpContext.Request.Headers.UserAgent.ToString(),
             CorrelationId = httpContext.TraceIdentifier,
-            OccurredAt = DateTime.UtcNow
+            OccurredAt = occurredAt
         });
 
     internal static bool ModeAllows(AuthenticationMode mode, string providerKind) => mode == AuthenticationMode.Hybrid

@@ -87,7 +87,47 @@ public sealed class EnterpriseAuthenticationTests
         authenticator.Subject.Should().Be("subject-1");
         authenticator.ExternalIdentityHash.Should().HaveLength(64);
         authenticator.LinkedAt.Should().NotBeNull();
-        (await context.AuthenticationEvents.SingleAsync()).Success.Should().BeTrue();
+        var authenticationEvent = await context.AuthenticationEvents.SingleAsync();
+        authenticationEvent.Success.Should().BeTrue();
+        authenticationEvent.OccurredAt.Should().Be(authenticator.LastAuthenticatedAt);
+        authenticationEvent.OccurredAt.Should().Be(authenticator.LinkedAt);
+    }
+
+    [Fact]
+    public async Task Authenticator_last_use_rejects_an_exact_success_event_with_a_future_timestamp()
+    {
+        await using var context = NewContext();
+        var (municipality, user) = await SeedConfigurationAsync(context);
+        var authenticator = new UserAuthenticator
+        {
+            MunicipalityId = municipality.Id,
+            UserId = user.Id,
+            ProviderRegistrationCode = "ENTRA",
+            ExpectedEmail = user.Email!,
+            CreatedByUserId = user.Id,
+            LastAuthenticatedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        context.UserAuthenticators.Add(authenticator);
+        await context.SaveChangesAsync();
+
+        var future = DateTime.UtcNow.AddHours(1);
+        authenticator.LastAuthenticatedAt = future;
+        context.AuthenticationEvents.Add(new AuthenticationEvent
+        {
+            MunicipalityId = municipality.Id,
+            UserId = user.Id,
+            ProviderCode = "ENTRA",
+            EventType = "ExternalSignIn",
+            Success = true,
+            CorrelationId = "future-enterprise-sign-in",
+            OccurredAt = future
+        });
+
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        failure.Message.Should().Contain("append-only successful authentication event");
+        context.ChangeTracker.Clear();
+        (await context.UserAuthenticators.AsNoTracking().SingleAsync()).LastAuthenticatedAt.Should().NotBe(future);
+        (await context.AuthenticationEvents.AsNoTracking().CountAsync()).Should().Be(0);
     }
 
     [Fact]

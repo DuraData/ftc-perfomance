@@ -2505,14 +2505,18 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             {
                 var currentAuthentication = entry.CurrentValues.GetValue<DateTime?>(nameof(UserAuthenticator.LastAuthenticatedAt));
                 var originalAuthentication = entry.OriginalValues.GetValue<DateTime?>(nameof(UserAuthenticator.LastAuthenticatedAt));
-                var hasEvent = ChangeTracker.Entries<AuthenticationEvent>().Any(candidate => candidate.State == EntityState.Added
+                var successEvents = ChangeTracker.Entries<AuthenticationEvent>().Where(candidate => candidate.State == EntityState.Added
                     && candidate.Entity.MunicipalityId == entry.Entity.MunicipalityId
                     && candidate.Entity.UserId == entry.Entity.UserId
                     && candidate.Entity.ProviderCode == entry.Entity.ProviderRegistrationCode
-                    && candidate.Entity.EventType == "ExternalSignIn" && candidate.Entity.Success);
+                    && candidate.Entity.EventType == "ExternalSignIn" && candidate.Entity.Success).ToArray();
                 if (statusChanged || !currentAuthentication.HasValue
                     || originalAuthentication.HasValue && currentAuthentication <= originalAuthentication
-                    || !hasEvent)
+                    || currentAuthentication > DateTime.UtcNow.AddMinutes(5)
+                    || successEvents.Length != 1
+                    || successEvents[0].Entity.OccurredAt == default
+                    || successEvents[0].Entity.OccurredAt > DateTime.UtcNow.AddMinutes(5)
+                    || successEvents[0].Entity.OccurredAt != currentAuthentication)
                     throw new InvalidOperationException("Enterprise-authenticator last-use evidence may advance only with its append-only successful authentication event.");
             }
 
