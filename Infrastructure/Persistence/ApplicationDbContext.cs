@@ -2351,6 +2351,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceOrganizationMasterHistory();
         EnforceMunicipalEmployeeHistory();
         EnforceStrategicDocumentTypeHistory();
+        EnforceStrategicDocumentCreationAndLifecycle();
         EnforceStrategicRiskHistory();
         EnforceStrategicRiskTreatmentHistory();
         EnforceStrategicRiskCreation();

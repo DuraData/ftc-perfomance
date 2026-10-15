@@ -119,6 +119,7 @@ public sealed class StrategicDocumentsController : ControllerBase
         if (!TryNormalizeType(request, out var normalized, out var error)) return BadRequest(Fail<StrategicDocumentTypeResponse>(error!));
         if (await context.StrategicDocumentTypes.AnyAsync(item => item.Code == normalized.Code))
             return Conflict(Fail<StrategicDocumentTypeResponse>("A strategic-document type with this code already exists."));
+        var now = DateTime.UtcNow;
         var entity = new StrategicDocumentType
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value,
@@ -128,12 +129,13 @@ public sealed class StrategicDocumentsController : ControllerBase
             AllowsExternalLinks = request.AllowsExternalLinks,
             IsActive = request.IsActive,
             DisplayOrder = request.DisplayOrder,
-            CreatedByUserId = session.User!.Id
+            CreatedByUserId = session.User!.Id,
+            CreatedAt = now
         };
         context.StrategicDocumentTypes.Add(entity);
-        workflow.QueueAuditTrail(nameof(StrategicDocumentType), entity.PublicId.ToString(), "Create", null,
-            new { entity.Code, entity.Name, entity.AllowsExternalLinks, entity.IsActive, entity.DisplayOrder, Reason = normalized.Reason },
-            session.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext), normalized.Reason);
+        workflow.QueueAuditTrailAt(nameof(StrategicDocumentType), entity.PublicId.ToString(), "Create", null,
+            new { entity.Code, entity.Name, entity.Description, entity.AllowsExternalLinks, entity.IsActive, entity.DisplayOrder, Reason = normalized.Reason },
+            session.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext), normalized.Reason, now);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicDocumentTypeResponse>("A strategic-document type with this code already exists.")); }
         return Ok(new ApiResponse<StrategicDocumentTypeResponse>(true, ToResponse(entity)));
@@ -356,6 +358,7 @@ public sealed class StrategicDocumentsController : ControllerBase
             };
         }
 
+        var now = DateTime.UtcNow;
         var entity = new StrategicDocument
         {
             DocumentFamilyId = familyId,
@@ -373,17 +376,18 @@ public sealed class StrategicDocumentsController : ControllerBase
             ExternalUrl = normalized.ExternalUrl,
             DisplayOrder = request.DisplayOrder,
             CreatedByUserId = user.Id,
-            CreatedByUser = user
+            CreatedByUser = user,
+            CreatedAt = now
         };
-        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.VersionCreated, normalized.Reason, user));
+        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.VersionCreated, normalized.Reason, user, now));
         await using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
             if (previous != null) previous.IsCurrent = false;
             context.StrategicDocuments.Add(entity);
-            workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "CreateVersion", null,
-                new { entity.DocumentFamilyId, entity.VersionNumber, PreviousVersionPublicId = previous?.PublicId, year.PublicId, TypePublicId = type.PublicId, entity.Title, entity.FileName, entity.ExternalUrl, Reason = normalized.Reason },
-                user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+            workflow.QueueAuditTrailAt(nameof(StrategicDocument), entity.PublicId.ToString(), "CreateVersion", null,
+                new { entity.DocumentFamilyId, entity.VersionNumber, PreviousVersionPublicId = previous?.PublicId, MunicipalityFinancialYearPublicId = year.PublicId, TypePublicId = type.PublicId, entity.SdbipLayer, entity.Title, entity.Description, entity.DocumentDate, EvidenceBlobPublicId = blob?.PublicId, entity.FileName, entity.ExternalUrl, entity.DisplayOrder, Reason = normalized.Reason },
+                user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), normalized.Reason, now);
             await context.SaveChangesAsync();
             await transaction.CommitAsync();
         }
@@ -420,13 +424,14 @@ public sealed class StrategicDocumentsController : ControllerBase
         if (!entity.IsCurrent || !entity.IsActive) return Conflict(Fail<StrategicDocumentResponse>("Only the active current version can be approved."));
         if (entity.IsApproved) return Conflict(Fail<StrategicDocumentResponse>("This version is already approved."));
         if (!ContentReady(entity)) return Conflict(Fail<StrategicDocumentResponse>("The managed file must pass signature and malware checks before approval."));
+        var now = DateTime.UtcNow;
         entity.IsApproved = true;
-        entity.ApprovedAt = DateTime.UtcNow;
+        entity.ApprovedAt = now;
         entity.ApprovedByUserId = loaded.User!.Id;
         entity.ApprovedByUser = loaded.User;
         entity.ApprovalReference = reference;
-        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Approved, reason, loaded.User));
-        workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "Approve", null, new { ApprovalReference = reference, Reason = reason }, loaded.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Approved, reason, loaded.User, now));
+        workflow.QueueAuditTrailAt(nameof(StrategicDocument), entity.PublicId.ToString(), "Approve", null, new { ApprovalReference = reference, Reason = reason }, loaded.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason, now);
         return await SaveCommand(entity, loaded.User!, "The document changed before approval. Reload and retry.");
     }
 
@@ -443,13 +448,14 @@ public sealed class StrategicDocumentsController : ControllerBase
         if (!entity.IsCurrent || !entity.IsActive || !entity.IsApproved) return Conflict(Fail<StrategicDocumentResponse>("Only an active, approved current version can be published."));
         if (entity.IsPublished) return Conflict(Fail<StrategicDocumentResponse>("This version is already published."));
         if (!ContentReady(entity)) return Conflict(Fail<StrategicDocumentResponse>("The managed file must pass signature and malware checks before publication."));
+        var now = DateTime.UtcNow;
         entity.IsPublished = true;
         entity.PublicationDate = NormalizeUtc(request.PublicationDate);
-        entity.PublishedAt = DateTime.UtcNow;
+        entity.PublishedAt = now;
         entity.PublishedByUserId = loaded.User!.Id;
         entity.PublishedByUser = loaded.User;
-        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Published, reason, loaded.User));
-        workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "Publish", null, new { entity.PublicationDate, Reason = reason }, loaded.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Published, reason, loaded.User, now));
+        workflow.QueueAuditTrailAt(nameof(StrategicDocument), entity.PublicId.ToString(), "Publish", null, new { entity.PublicationDate, Reason = reason }, loaded.User.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason, now);
         return await SaveCommand(entity, loaded.User!, "The document changed before publication. Reload and retry.");
     }
 
@@ -464,9 +470,10 @@ public sealed class StrategicDocumentsController : ControllerBase
         var entity = loaded.Document!;
         var actor = loaded.User!;
         if (!entity.IsActive) return Conflict(Fail<StrategicDocumentResponse>("This version is already retired."));
+        var now = DateTime.UtcNow;
         entity.IsActive = false;
-        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Retired, reason, actor));
-        workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "Retire", null, new { Reason = reason }, actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.Retired, reason, actor, now));
+        workflow.QueueAuditTrailAt(nameof(StrategicDocument), entity.PublicId.ToString(), "Retire", null, new { Reason = reason }, actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason, now);
         return await SaveCommand(entity, actor, "The document changed before retirement. Reload and retry.");
     }
 
@@ -485,15 +492,17 @@ public sealed class StrategicDocumentsController : ControllerBase
         if (!stored.Found) return stored.Available ? NotFound(Fail<StrategicDocumentResponse>("Stored document content not found.")) : StatusCode(StatusCodes.Status503ServiceUnavailable, Fail<StrategicDocumentResponse>("Strategic-document storage is unavailable: " + stored.Detail));
         var before = new { entity.Blob.ScanStatus, entity.Blob.IsQuarantined, entity.Blob.ScannerReference };
         var scan = await scanner.ScanAsync(stored.Content, entity.FileName ?? "strategic-document", entity.Blob.ContentType ?? "application/octet-stream", HttpContext.RequestAborted);
+        var now = DateTime.UtcNow;
         entity.Blob.ScanStatus = scan.Status;
         entity.Blob.IsQuarantined = !scan.IsClean;
         entity.Blob.ScannerProvider = scan.Provider;
         entity.Blob.ScannerReference = scan.ProviderReference;
         entity.Blob.ScanDetail = scan.Detail;
-        entity.Blob.ScannedAt = DateTime.UtcNow;
-        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.MalwareRescanned, scan.Detail ?? scan.Status, user));
-        workflow.QueueAuditTrail(nameof(StrategicDocument), entity.PublicId.ToString(), "MalwareRescan", before,
-            new { scan.Status, entity.Blob.IsQuarantined, scan.ProviderReference }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext));
+        entity.Blob.ScannedAt = now;
+        var eventReason = scan.Detail ?? scan.Status;
+        entity.Events.Add(NewEvent(entity, StrategicDocumentEventAction.MalwareRescanned, eventReason, user, now));
+        workflow.QueueAuditTrailAt(nameof(StrategicDocument), entity.PublicId.ToString(), "MalwareRescan", before,
+            new { scan.Status, entity.Blob.IsQuarantined, scan.ProviderReference, Reason = eventReason }, user.Id, PerformanceApiSupport.GetIpAddress(HttpContext), eventReason, now);
         await context.SaveChangesAsync();
         var memberAccess = await GetMemberAccessAsync(user, entity.MunicipalityId);
         return Ok(new ApiResponse<StrategicDocumentResponse>(true, ToResponse(entity, true, memberAccess), scan.IsClean ? "Document released after a clean scan." : "Document remains quarantined."));
@@ -615,13 +624,14 @@ public sealed class StrategicDocumentsController : ControllerBase
 
     private AccessScopeContext MunicipalityScope() => new(MunicipalityId: tenantContext.MunicipalityId);
 
-    private static StrategicDocumentEvent NewEvent(StrategicDocument document, StrategicDocumentEventAction action, string reason, ApplicationUser actor) => new()
+    private static StrategicDocumentEvent NewEvent(StrategicDocument document, StrategicDocumentEventAction action, string reason, ApplicationUser actor, DateTime occurredAt) => new()
     {
         MunicipalityId = document.MunicipalityId,
         Action = action,
         Reason = reason,
         ActorUserId = actor.Id,
         ActorUser = actor,
+        OccurredAt = occurredAt,
         SnapshotJson = JsonSerializer.Serialize(new
         {
             document.PublicId, document.DocumentFamilyId, document.VersionNumber, document.Title, document.IsCurrent,

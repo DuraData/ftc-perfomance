@@ -98,6 +98,190 @@ public class StrategicDocumentsControllerTests
     }
 
     [Fact]
+    public async Task PersistenceBoundary_RejectsUnauditedTypeAndVersionCreation()
+    {
+        await using var typeContext = IdpTestFixture.CreateRelationalContext();
+        var typeSetup = await SeedAsync(typeContext);
+        typeContext.ChangeTracker.Clear();
+        typeContext.StrategicDocumentTypes.Add(Type(typeSetup.Municipality.Id, typeSetup.User.Id, "UNAUDITED"));
+
+        (await FluentActions.Awaiting(() => typeContext.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*type creation requires*exact same-time reasoned audit*");
+
+        await using var documentContext = IdpTestFixture.CreateRelationalContext();
+        var documentSetup = await SeedAsync(documentContext, allowsExternalLinks: true);
+        documentContext.ChangeTracker.Clear();
+        documentContext.StrategicDocuments.Add(new StrategicDocument
+        {
+            MunicipalityId = documentSetup.Municipality.Id,
+            MunicipalityFinancialYearId = documentSetup.Year.Id,
+            StrategicDocumentTypeId = documentSetup.Type.Id,
+            VersionNumber = 1,
+            Title = "Unaudited strategic plan",
+            DocumentDate = DateTime.UtcNow.Date,
+            ExternalUrl = "https://example.gov.za/unaudited.pdf",
+            CreatedByUserId = documentSetup.User.Id
+        });
+
+        (await FluentActions.Awaiting(() => documentContext.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*version creation requires*exact same-time actor-bound event and audit*");
+    }
+
+    [Fact]
+    public async Task PersistenceBoundary_RejectsForgedVersionAuditSnapshot()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context, allowsExternalLinks: true);
+        context.ChangeTracker.Clear();
+        var now = DateTime.UtcNow;
+        const string reason = "Create governed strategic version";
+        var document = new StrategicDocument
+        {
+            MunicipalityId = setup.Municipality.Id,
+            MunicipalityFinancialYearId = setup.Year.Id,
+            StrategicDocumentTypeId = setup.Type.Id,
+            VersionNumber = 1,
+            Title = "Authentic strategic plan",
+            Description = "Governed content",
+            DocumentDate = now.Date,
+            ExternalUrl = "https://example.gov.za/authentic.pdf",
+            CreatedByUserId = setup.User.Id,
+            CreatedAt = now
+        };
+        document.Events.Add(new StrategicDocumentEvent
+        {
+            MunicipalityId = setup.Municipality.Id,
+            StrategicDocument = document,
+            Action = StrategicDocumentEventAction.VersionCreated,
+            Reason = reason,
+            ActorUserId = setup.User.Id,
+            OccurredAt = now,
+            SnapshotJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                document.PublicId,
+                document.DocumentFamilyId,
+                document.VersionNumber,
+                document.Title,
+                document.IsCurrent,
+                document.IsActive,
+                document.IsApproved,
+                document.IsPublished,
+                document.DocumentDate,
+                document.PublicationDate
+            })
+        });
+        context.StrategicDocuments.Add(document);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = setup.Municipality.Id,
+            EntityName = nameof(StrategicDocument),
+            EntityId = document.PublicId.ToString(),
+            Action = "CreateVersion",
+            NewValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                document.DocumentFamilyId,
+                document.VersionNumber,
+                PreviousVersionPublicId = (Guid?)null,
+                MunicipalityFinancialYearPublicId = setup.Year.PublicId,
+                TypePublicId = setup.Type.PublicId,
+                document.SdbipLayer,
+                Title = "Forged strategic plan",
+                document.Description,
+                document.DocumentDate,
+                EvidenceBlobPublicId = (Guid?)null,
+                document.FileName,
+                document.ExternalUrl,
+                document.DisplayOrder,
+                Reason = reason
+            }),
+            ChangedBy = setup.User.Id,
+            ChangedAt = now,
+            Reason = reason
+        });
+
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*version creation requires*exact same-time actor-bound event and audit*");
+    }
+
+    [Fact]
+    public async Task PersistenceBoundary_RejectsLifecycleEventWithoutItsRootTransition()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context, allowsExternalLinks: true);
+        var controller = Controller(context, setup.User, setup.Municipality.Id);
+        var created = Payload(await controller.CreateVersion(
+            ExternalRequest(setup, "Governed plan", "https://example.gov.za/governed.pdf")));
+        context.ChangeTracker.Clear();
+        var document = await context.StrategicDocuments.SingleAsync(item => item.PublicId == created.PublicId);
+        var now = DateTime.UtcNow;
+        context.StrategicDocumentEvents.Add(new StrategicDocumentEvent
+        {
+            MunicipalityId = setup.Municipality.Id,
+            StrategicDocumentId = document.Id,
+            StrategicDocument = document,
+            Action = StrategicDocumentEventAction.Retired,
+            Reason = "Forged retirement event",
+            ActorUserId = setup.User.Id,
+            OccurredAt = now,
+            SnapshotJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                document.PublicId,
+                document.DocumentFamilyId,
+                document.VersionNumber,
+                document.Title,
+                document.IsCurrent,
+                document.IsActive,
+                document.IsApproved,
+                document.IsPublished,
+                document.DocumentDate,
+                document.PublicationDate
+            })
+        });
+
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*events require one canonical lifecycle transition*");
+    }
+
+    [Fact]
+    public async Task LifecycleEventsAndAudits_PersistWithExactTimesActorsAndReasons()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var setup = await SeedAsync(context, allowsExternalLinks: true);
+        var controller = Controller(context, setup.User, setup.Municipality.Id);
+        var created = Payload(await controller.CreateVersion(
+            ExternalRequest(setup, "Audited strategic plan", "https://example.gov.za/audited.pdf")));
+        var approved = Payload(await controller.Approve(created.PublicId,
+            new ApproveStrategicDocumentRequest(created.RowVersion, "Council 31/2026", "Approve audited plan")));
+        var published = Payload(await controller.Publish(created.PublicId,
+            new PublishStrategicDocumentRequest(approved.RowVersion, DateTime.UtcNow.Date, "Publish audited plan")));
+        _ = Payload(await controller.Retire(created.PublicId,
+            new RetireStrategicDocumentRequest(published.RowVersion, "Retire superseded audited plan")));
+
+        var events = await context.StrategicDocumentEvents.AsNoTracking()
+            .Where(item => item.StrategicDocument.PublicId == created.PublicId)
+            .OrderBy(item => item.OccurredAt).ToArrayAsync();
+        var audits = await context.AuditTrails.AsNoTracking()
+            .Where(item => item.EntityName == nameof(StrategicDocument) && item.EntityId == created.PublicId.ToString())
+            .OrderBy(item => item.ChangedAt).ToArrayAsync();
+        events.Should().HaveCount(4);
+        audits.Should().HaveCount(4);
+        var auditActions = new Dictionary<StrategicDocumentEventAction, string>
+        {
+            [StrategicDocumentEventAction.VersionCreated] = "CreateVersion",
+            [StrategicDocumentEventAction.Approved] = "Approve",
+            [StrategicDocumentEventAction.Published] = "Publish",
+            [StrategicDocumentEventAction.Retired] = "Retire"
+        };
+        foreach (var lifecycleEvent in events)
+        {
+            var audit = audits.Single(item => item.Action == auditActions[lifecycleEvent.Action]);
+            audit.ChangedAt.Should().Be(lifecycleEvent.OccurredAt);
+            audit.ChangedBy.Should().Be(lifecycleEvent.ActorUserId);
+            audit.Reason.Should().Be(lifecycleEvent.Reason);
+        }
+    }
+
+    [Fact]
     public async Task ExternalDocument_VersionsRemainIndependentAndPublishedViewUsesLatestPublishedVersion()
     {
         await using var context = IdpTestFixture.CreateRelationalContext();
@@ -228,13 +412,15 @@ public class StrategicDocumentsControllerTests
     {
         var database = Guid.NewGuid().ToString();
         var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(database).Options;
-        await using (var system = new ApplicationDbContext(options, new FixedTenantContext(null, true)))
+        var systemUser = IdpTestFixture.CreateUser("documents-system");
+        await using (var system = new ApplicationDbContext(options, new FixedTenantContext(null, true, systemUser.Id)))
         {
-            var user = IdpTestFixture.CreateUser("documents-system");
+            var user = systemUser;
             var a = new Municipality { Id = 8101, Code = "A", Name = "A" };
             var b = new Municipality { Id = 8102, Code = "B", Name = "B" };
             system.AddRange(user, a, b);
-            system.StrategicDocumentTypes.AddRange(Type(a.Id, user.Id, "A"), Type(b.Id, user.Id, "B"));
+            AddTypeWithCreationAudit(system, Type(a.Id, user.Id, "A"), user.Id, "Create tenant A type");
+            AddTypeWithCreationAudit(system, Type(b.Id, user.Id, "B"), user.Id, "Create tenant B type");
             await system.SaveChangesAsync();
         }
         await using var tenantA = new ApplicationDbContext(options, new FixedTenantContext(8101, false));
@@ -374,11 +560,11 @@ public class StrategicDocumentsControllerTests
         {
             var type = Type(setup.Municipality.Id, setup.User.Id, $"TYPE{index:00}");
             type.DisplayOrder = index;
-            context.StrategicDocumentTypes.Add(type);
+            AddTypeWithCreationAudit(context, type, setup.User.Id, $"Create type {index:00}");
         }
         var inactive = Type(setup.Municipality.Id, setup.User.Id, "ARCHIVE");
         inactive.IsActive = false;
-        context.StrategicDocumentTypes.Add(inactive);
+        AddTypeWithCreationAudit(context, inactive, setup.User.Id, "Create archive type");
         await context.SaveChangesAsync();
         var manager = Controller(context, setup.User, setup.Municipality.Id);
 
@@ -427,7 +613,8 @@ public class StrategicDocumentsControllerTests
         inspection ??= new Mock<IEvidenceInspectionService>();
         scanner ??= new Mock<IEvidenceMalwareScanner>();
         return new StrategicDocumentsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
-            workflow ?? new Mock<IWorkflowGovernanceService>().Object, new FixedTenantContext(municipalityId, false),
+            workflow ?? new WorkflowGovernanceService(context, tenantContext: new FixedTenantContext(municipalityId, false, user.Id)),
+            new FixedTenantContext(municipalityId, false, user.Id),
             storage.Object, inspection.Object, scanner.Object)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
@@ -477,7 +664,8 @@ public class StrategicDocumentsControllerTests
         var financialYear = new FinancialYear { Code = "2026/27", Name = "2026/27", StartDate = new DateTime(2026, 7, 1), EndDate = new DateTime(2027, 6, 30) };
         var year = new MunicipalityFinancialYear { MunicipalityId = municipality.Id, Municipality = municipality, FinancialYear = financialYear, IsActive = true, IsCurrent = true, EffectiveFrom = financialYear.StartDate };
         var type = Type(municipality.Id, user.Id, "IDP", allowsExternalLinks);
-        context.AddRange(user, municipality, financialYear, year, type);
+        context.AddRange(user, municipality, financialYear, year);
+        AddTypeWithCreationAudit(context, type, user.Id, "Create controlled IDP type");
         await context.SaveChangesAsync();
         return (user, municipality, year, type);
     }
@@ -492,13 +680,44 @@ public class StrategicDocumentsControllerTests
         CreatedByUserId = userId
     };
 
+    private static void AddTypeWithCreationAudit(
+        ApplicationDbContext context,
+        StrategicDocumentType type,
+        string actorId,
+        string reason)
+    {
+        var now = DateTime.UtcNow;
+        type.CreatedAt = now;
+        context.StrategicDocumentTypes.Add(type);
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = type.MunicipalityId,
+            EntityName = nameof(StrategicDocumentType),
+            EntityId = type.PublicId.ToString(),
+            Action = "Create",
+            NewValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                type.Code,
+                type.Name,
+                type.Description,
+                type.AllowsExternalLinks,
+                type.IsActive,
+                type.DisplayOrder,
+                Reason = reason
+            }),
+            ChangedBy = actorId,
+            ChangedAt = now,
+            Reason = reason
+        });
+    }
+
     private static T Payload<T>(ActionResult<ApiResponse<T>> action) =>
         ((action.Result as OkObjectResult)!.Value as ApiResponse<T>)!.Data!;
 
-    private sealed class FixedTenantContext(long? municipalityId, bool isSystem) : ITenantContext
+    private sealed class FixedTenantContext(long? municipalityId, bool isSystem, string? userId = "strategic-documents-test") : ITenantContext
     {
         public long? MunicipalityId => municipalityId;
         public bool IsSystem => isSystem;
-        public string? UserId => "strategic-documents-test";
+        public string? UserId => userId;
     }
 }
