@@ -4664,6 +4664,12 @@ Circular 88 municipality-configuration and indicator-plan rewrites now accept th
 
 Relational adversarial coverage constructs otherwise exact actor-bound configuration and indicator-plan audits with future timestamps and proves that both writes fail closed. The focused Circular 88 controller suite passes **15/15**, complete backend regression passes **962 tests with 1 explicit native SQL Server-only skip and 0 failures**, and Release compilation reports **0 warnings and 0 errors**. Implementation commit `1bd1787f62241fbb5d5e0d46bafe24da218eb54a` is on both branches; GitHub Actions run `38720661606`, job `116374120047`, verified the exact revision in **4m53s** with every quality and security gate passing.
 
+### 11.404 Circular 88 workflow-successor audit time integrity
+
+Closing a current Circular 88 workflow beside its successor now requires the exact predecessor/successor audit to carry a non-default, non-future timestamp. Existing chronological effective-date closure, successor-version increment, stage snapshots, authenticated creator/actor equality, tenant ownership, reason and RowVersion concurrency remain mandatory. This closes the path where internally exact lifecycle evidence could otherwise be assigned a fabricated future audit time.
+
+Relational adversarial coverage creates an otherwise exact successor, exact ordered stage snapshots and the correct authenticated actor, but future-dates the audit; the entire predecessor/successor write fails closed. The focused Circular 88 controller suite passes **15/15**, complete backend regression passes **962 tests with 1 explicit native SQL Server-only skip and 0 failures**, and Release compilation reports **0 warnings and 0 errors**. Implementation commit `be97e06e55193b7a54dc63d0448e9a0f1b68a453` is on both branches; GitHub Actions run `38722537672`, job `116380356138`, verified the exact revision in **7m22s** with every quality and security gate passing.
+
 ### 12.1 Final verdict
 
 **NOT FULLY COMPLIANT — NOT PRODUCTION READY.**
