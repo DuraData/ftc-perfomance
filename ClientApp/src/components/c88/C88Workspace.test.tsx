@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { C88Workspace } from './C88Workspace';
+import type { C88CatalogueItem, C88IndicatorReport } from '../../types';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn() }));
 const capabilities = vi.hoisted(() => ({
@@ -20,7 +21,7 @@ vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => capabilitie
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
 vi.mock('../../api/api', () => api);
 
-const workspace = {
+const workspace: { catalogueItems: C88CatalogueItem[]; reports: C88IndicatorReport[] } = {
   catalogueItems: [{ publicId: 'report-type-1', catalogueVersionPublicId: 'version-1', kind: 'ReportType', code: 'Q', name: 'Quarterly', displayOrder: 1, isActive: true, rowVersion: 'AQ==' }],
   reports: [{ publicId: 'report-1', reportFamilyId: 'family-1', versionNumber: 1, isCurrent: true, configurationPublicId: 'config-1', calendarPublicId: 'calendar-1', indicatorPublicId: 'indicator-1', indicatorCode: 'C88-1', state: 'Draft', currentStageSequence: 1, calculatedValue: '42', createdAt: '2026-08-01', rowVersion: 'Ag==', dataElementValues: [], complianceResponses: [], workflowActions: [] }],
 };
@@ -82,7 +83,7 @@ describe('Circular 88 workspace', () => {
   });
 
   it('refreshes the selected report after a workflow action', async () => {
-    const submitted = { ...workspace.reports[0], state: 'Submitted', currentStageSequence: 2, rowVersion: 'Aw==', workflowActions: [{ publicId: 'action-2', fromStageSequence: 1, toStageSequence: 2, action: 'Submitted', reason: 'Ready for review', actorUserPublicId: 'actor-1', actorName: 'Capturer', occurredAt: '2026-08-02' }] };
+    const submitted: C88IndicatorReport = { ...workspace.reports[0], state: 'Submitted', currentStageSequence: 2, rowVersion: 'Aw==', workflowActions: [{ publicId: 'action-2', fromStageSequence: 1, toStageSequence: 2, action: 'Submitted', reason: 'Ready for review', actorUserPublicId: 'actor-1', actorName: 'Capturer', occurredAt: '2026-08-02' }] };
     let latestReports = workspace.reports;
     api.getC88ReportsPage.mockImplementation(() => Promise.resolve({ success: true, data: { items: latestReports, page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } }));
 
