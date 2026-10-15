@@ -104,6 +104,131 @@ public sealed class StrategicRiskTests
     }
 
     [Fact]
+    public async Task StrategicRiskCreationLedgers_RejectUnauditedDirectInserts()
+    {
+        const long municipalityId = 9120;
+        var user = IdpTestFixture.CreateUser("risk-creation-governor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+
+        context.StrategicRisks.Add(new StrategicRisk
+        {
+            MunicipalityId = municipalityId,
+            RiskReference = "DIRECT-1",
+            RiskTitle = "Unaudited direct risk",
+            CreatedByUserId = user.Id,
+            CreatedAt = DateTime.UtcNow
+        });
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*Strategic-risk creation requires*");
+
+        context.ChangeTracker.Clear();
+        var riskDto = Data(await Controller(context, user, municipalityId).Create(
+            Request("CREATION-1", "Governed creation risk", seed.Year.PublicId)));
+        context.ChangeTracker.Clear();
+        var risk = await context.StrategicRisks.SingleAsync(item => item.PublicId == riskDto.PublicId);
+
+        context.OpmsKpiStrategicRisks.Add(new OpmsKpiStrategicRisk
+        {
+            MunicipalityId = municipalityId,
+            OpmsTargetId = seed.Target.Id,
+            StrategicRiskId = risk.Id,
+            IsPrimary = true,
+            LinkedByUserId = user.Id,
+            LinkedAt = DateTime.UtcNow,
+            LinkReason = "Approved but unaudited link"
+        });
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*KPI-link creation requires*");
+
+        context.ChangeTracker.Clear();
+        risk = await context.StrategicRisks.SingleAsync(item => item.PublicId == riskDto.PublicId);
+        context.StrategicRiskAssessments.Add(new StrategicRiskAssessment
+        {
+            MunicipalityId = municipalityId,
+            StrategicRiskId = risk.Id,
+            AssessedAt = DateTime.UtcNow.AddMinutes(-1),
+            InherentLikelihood = 4,
+            InherentImpact = 4,
+            ResidualLikelihood = 2,
+            ResidualImpact = 3,
+            ControlAssessment = "Controls inspected",
+            Reason = "Approved but unaudited assessment",
+            AssessedByUserId = user.Id,
+            CreatedAt = DateTime.UtcNow
+        });
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*assessment creation requires*");
+
+        context.ChangeTracker.Clear();
+        risk = await context.StrategicRisks.SingleAsync(item => item.PublicId == riskDto.PublicId);
+        context.StrategicRiskTreatments.Add(new StrategicRiskTreatment
+        {
+            MunicipalityId = municipalityId,
+            StrategicRiskId = risk.Id,
+            Title = "Unaudited mitigation",
+            OwnerUserId = user.Id,
+            DueAt = DateTime.UtcNow.AddDays(10),
+            Status = "OPEN",
+            CreatedByUserId = user.Id,
+            CreatedAt = DateTime.UtcNow
+        });
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*treatment creation requires*");
+
+        context.ChangeTracker.Clear();
+        risk = await context.StrategicRisks.SingleAsync(item => item.PublicId == riskDto.PublicId);
+        context.StrategicRiskReviews.Add(new StrategicRiskReview
+        {
+            MunicipalityId = municipalityId,
+            StrategicRiskId = risk.Id,
+            ReviewedAt = DateTime.UtcNow.AddMinutes(-1),
+            Outcome = "Risk remains controlled.",
+            Reason = "Approved but unaudited review",
+            ReviewedByUserId = user.Id,
+            CreatedAt = DateTime.UtcNow
+        });
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*review creation requires*");
+    }
+
+    [Fact]
+    public async Task StrategicRiskCreation_RejectsAnExactLookingButForgedAuditSnapshot()
+    {
+        const long municipalityId = 9121;
+        var user = IdpTestFixture.CreateUser("risk-creation-audit-governor");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+        var now = DateTime.UtcNow;
+        var risk = new StrategicRisk
+        {
+            MunicipalityId = municipalityId,
+            RiskReference = "FORGED-1",
+            RiskTitle = "Canonical risk title",
+            EffectiveFromMunicipalityFinancialYearId = seed.Year.Id,
+            EffectiveToMunicipalityFinancialYearId = seed.Year.Id,
+            CreatedByUserId = user.Id,
+            CreatedAt = now
+        };
+        context.StrategicRisks.Add(risk);
+        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id))
+            .QueueAuditTrailAt(nameof(StrategicRisk), risk.PublicId.ToString(), "Create", null,
+                new
+                {
+                    risk.RiskReference,
+                    RiskTitle = "Forged risk title",
+                    risk.RiskDescription,
+                    OwnerUserPublicId = (Guid?)null,
+                    EffectiveFromMunicipalityFinancialYearPublicId = seed.Year.PublicId,
+                    EffectiveToMunicipalityFinancialYearPublicId = seed.Year.PublicId,
+                    risk.IsActive
+                }, user.Id, null, "Approved creation governance reason", now);
+
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact same-time reasoned audit*");
+    }
+
+    [Fact]
     public async Task Kpi_link_history_rejects_identity_rewrites_and_forged_lifecycle_audits()
     {
         const long municipalityId = 9114;
@@ -135,11 +260,14 @@ public sealed class StrategicRiskTests
             LinkReason = "Approved replacement primary risk"
         };
         context.OpmsKpiStrategicRisks.Add(replacement);
+        var governance = new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id));
+        governance.QueueAuditTrailAt(nameof(OpmsKpiStrategicRisk), replacement.PublicId.ToString(), "Link", null,
+            LinkAuditSnapshot(seed.Target.PublicId, riskTwo.PublicId, replacement, user.PublicId),
+            user.Id, null, replacement.LinkReason, replacement.LinkedAt);
         var demotionBefore = LinkAuditSnapshot(seed.Target.PublicId, riskOne.PublicId, directLink, user.PublicId);
         directLink.IsPrimary = false;
         var forgedReplacementPublicId = Guid.NewGuid();
-        new WorkflowGovernanceService(context, tenantContext: IdpTestFixture.Tenant(municipalityId, user.Id))
-            .QueueAuditTrail(nameof(OpmsKpiStrategicRisk), directLink.PublicId.ToString(), "DemotePrimary", demotionBefore,
+        governance.QueueAuditTrail(nameof(OpmsKpiStrategicRisk), directLink.PublicId.ToString(), "DemotePrimary", demotionBefore,
                 LinkAuditSnapshot(seed.Target.PublicId, riskOne.PublicId, directLink, user.PublicId,
                     replacedByPublicId: forgedReplacementPublicId),
                 user.Id, null, replacement.LinkReason);
@@ -205,7 +333,7 @@ public sealed class StrategicRiskTests
                     replacedByPublicId: replacement.PublicId),
                 forgedActor.Id, null, replacement.LinkReason, replacement.LinkedAt);
         (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
-            .WithMessage("*authenticated actor and timestamp evidence*");
+            .WithMessage("*KPI-link creation requires canonical same-tenant records*");
 
         context.ChangeTracker.Clear();
         directLink = await context.OpmsKpiStrategicRisks.SingleAsync(item => item.PublicId == linked.PublicId);
@@ -359,16 +487,19 @@ public sealed class StrategicRiskTests
         await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityA, user.Id));
         var a = await SeedAsync(context, municipalityA, user);
         var bMunicipality = new Municipality { Id = municipalityB, Code = "RISK-B", Name = "Risk B" };
-        var bRisk = new StrategicRisk
-        {
-            MunicipalityId = municipalityB, Municipality = bMunicipality, RiskReference = "B-1", RiskTitle = "Other tenant risk",
-            CreatedByUserId = user.Id
-        };
-        context.AddRange(bMunicipality, bRisk);
+        context.Add(bMunicipality);
         await context.SaveChangesAsync();
+        var bRiskPublicId = Guid.NewGuid();
+        const string bRiskReference = "B-1";
+        const string bRiskTitle = "Other tenant risk";
+        var bRiskRowVersion = Guid.NewGuid().ToByteArray();
+        await context.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO OPMS_StrategicRisks
+                (PublicId, MunicipalityId, RiskReference, RiskTitle, IsActive, CreatedAt, CreatedByUserId, RowVersion)
+            VALUES ({bRiskPublicId}, {municipalityB}, {bRiskReference}, {bRiskTitle}, {true}, {DateTime.UtcNow}, {user.Id}, {bRiskRowVersion})");
         var allowed = Controller(context, user, municipalityA);
 
-        var crossTenant = await allowed.LinkKpi(new LinkStrategicRiskRequest(bRisk.PublicId, a.Target.PublicId, false, "Cross tenant attempt"));
+        var crossTenant = await allowed.LinkKpi(new LinkStrategicRiskRequest(bRiskPublicId, a.Target.PublicId, false, "Cross tenant attempt"));
         crossTenant.Result.Should().BeOfType<NotFoundObjectResult>();
 
         var expiredYear = new FinancialYear

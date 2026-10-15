@@ -92,6 +92,7 @@ public sealed class StrategicRisksController(
         if (years.Error != null) return BadRequest(Fail<StrategicRiskDto>(years.Error));
         if (await DuplicateReference(normalized.Reference, null)) return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists."));
 
+        var now = DateTime.UtcNow;
         var entity = new StrategicRisk
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value,
@@ -102,12 +103,13 @@ public sealed class StrategicRisksController(
             EffectiveFromMunicipalityFinancialYearId = years.From?.Id,
             EffectiveToMunicipalityFinancialYearId = years.To?.Id,
             IsActive = request.IsActive,
-            CreatedByUserId = session.User!.Id
+            CreatedByUserId = session.User!.Id,
+            CreatedAt = now
         };
         context.StrategicRisks.Add(entity);
-        workflow.QueueAuditTrail(nameof(StrategicRisk), entity.PublicId.ToString(), "Create", null,
+        workflow.QueueAuditTrailAt(nameof(StrategicRisk), entity.PublicId.ToString(), "Create", null,
             new { entity.RiskReference, entity.RiskTitle, entity.RiskDescription, OwnerUserPublicId = owner?.PublicId, request.EffectiveFromMunicipalityFinancialYearPublicId, request.EffectiveToMunicipalityFinancialYearPublicId, entity.IsActive },
-            session.User.Id, IpAddress(), normalized.Reason);
+            session.User.Id, IpAddress(), normalized.Reason, now);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateException) { return Conflict(Fail<StrategicRiskDto>("A strategic risk with this reference already exists.")); }
         entity = await RiskQuery().SingleAsync(item => item.Id == entity.Id);

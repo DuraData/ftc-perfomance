@@ -2353,6 +2353,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceStrategicDocumentTypeHistory();
         EnforceStrategicRiskHistory();
         EnforceStrategicRiskTreatmentHistory();
+        EnforceStrategicRiskCreation();
         EnforceMunicipalityConsolidationPolicyHistory();
         EnforcePerformancePeriodTargetHistory();
         EnforceNotificationHistory();

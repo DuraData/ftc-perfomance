@@ -101,18 +101,19 @@ public sealed class StrategicRiskOperationsController(
             return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskAssessmentDto>("Assessment-control update permission is required."));
         var risk = await context.StrategicRisks.SingleOrDefaultAsync(item => item.PublicId == request.StrategicRiskPublicId);
         if (risk == null) return NotFound(Fail<StrategicRiskAssessmentDto>("Strategic risk not found."));
+        var now = DateTime.UtcNow;
         var entity = new StrategicRiskAssessment
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value, StrategicRiskId = risk.Id,
             AssessedAt = request.AssessedAt.ToUniversalTime(), InherentLikelihood = request.InherentLikelihood,
             InherentImpact = request.InherentImpact, ResidualLikelihood = request.ResidualLikelihood,
             ResidualImpact = request.ResidualImpact, ControlAssessment = controls, Reason = reason,
-            AssessedByUserId = session.User!.Id
+            AssessedByUserId = session.User!.Id, CreatedAt = now
         };
         context.StrategicRiskAssessments.Add(entity);
-        workflow.QueueAuditTrail(nameof(StrategicRiskAssessment), entity.PublicId.ToString(), "RecordAssessment", null,
+        workflow.QueueAuditTrailAt(nameof(StrategicRiskAssessment), entity.PublicId.ToString(), "RecordAssessment", null,
             new { risk.PublicId, entity.AssessedAt, entity.InherentLikelihood, entity.InherentImpact, entity.ResidualLikelihood, entity.ResidualImpact, entity.ControlAssessment },
-            session.User.Id, IpAddress(), reason);
+            session.User.Id, IpAddress(), reason, now);
         await context.SaveChangesAsync();
         entity.StrategicRisk = risk; entity.AssessedByUser = session.User;
         return Ok(new ApiResponse<StrategicRiskAssessmentDto>(true, AssessmentDto(entity, await CanMemberAsync(session.User, "AssessmentControls", "READ"))));
@@ -175,16 +176,18 @@ public sealed class StrategicRiskOperationsController(
         var risk = await context.StrategicRisks.SingleOrDefaultAsync(item => item.PublicId == request.StrategicRiskPublicId);
         var owner = await TenantUserAsync(request.OwnerUserPublicId);
         if (risk == null || owner == null) return BadRequest(Fail<StrategicRiskTreatmentDto>("Strategic risk and active municipality owner are required."));
+        var now = DateTime.UtcNow;
         var entity = new StrategicRiskTreatment
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value, StrategicRiskId = risk.Id, Title = validated.Title,
             Description = validated.Description, OwnerUserId = owner.Id, DueAt = request.DueAt.ToUniversalTime(),
-            Status = validated.Status, ProgressPercent = request.ProgressPercent, CreatedByUserId = session.User!.Id
+            Status = validated.Status, ProgressPercent = request.ProgressPercent, CreatedByUserId = session.User!.Id,
+            CreatedAt = now
         };
         context.StrategicRiskTreatments.Add(entity);
-        workflow.QueueAuditTrail(nameof(StrategicRiskTreatment), entity.PublicId.ToString(), "Create", null,
+        workflow.QueueAuditTrailAt(nameof(StrategicRiskTreatment), entity.PublicId.ToString(), "Create", null,
             new { risk.PublicId, entity.Title, entity.Description, OwnerUserPublicId = owner.PublicId, entity.DueAt, entity.Status, entity.ProgressPercent },
-            session.User.Id, IpAddress(), validated.Reason);
+            session.User.Id, IpAddress(), validated.Reason, now);
         await context.SaveChangesAsync();
         entity.StrategicRisk = risk; entity.OwnerUser = owner;
         return Ok(new ApiResponse<StrategicRiskTreatmentDto>(true, TreatmentDto(entity,
@@ -277,15 +280,17 @@ public sealed class StrategicRiskOperationsController(
             return StatusCode(StatusCodes.Status403Forbidden, Fail<StrategicRiskReviewDto>("Review-outcome update permission is required."));
         var risk = await context.StrategicRisks.SingleOrDefaultAsync(item => item.PublicId == request.StrategicRiskPublicId);
         if (risk == null) return NotFound(Fail<StrategicRiskReviewDto>("Strategic risk not found."));
+        var now = DateTime.UtcNow;
         var entity = new StrategicRiskReview
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value, StrategicRiskId = risk.Id,
             ReviewedAt = request.ReviewedAt.ToUniversalTime(), Outcome = outcome,
-            NextReviewAt = request.NextReviewAt?.ToUniversalTime(), Reason = reason, ReviewedByUserId = session.User!.Id
+            NextReviewAt = request.NextReviewAt?.ToUniversalTime(), Reason = reason, ReviewedByUserId = session.User!.Id,
+            CreatedAt = now
         };
         context.StrategicRiskReviews.Add(entity);
-        workflow.QueueAuditTrail(nameof(StrategicRiskReview), entity.PublicId.ToString(), "RecordReview", null,
-            new { risk.PublicId, entity.ReviewedAt, entity.Outcome, entity.NextReviewAt }, session.User.Id, IpAddress(), reason);
+        workflow.QueueAuditTrailAt(nameof(StrategicRiskReview), entity.PublicId.ToString(), "RecordReview", null,
+            new { risk.PublicId, entity.ReviewedAt, entity.Outcome, entity.NextReviewAt }, session.User.Id, IpAddress(), reason, now);
         await context.SaveChangesAsync();
         entity.StrategicRisk = risk; entity.ReviewedByUser = session.User;
         return Ok(new ApiResponse<StrategicRiskReviewDto>(true, ReviewDto(entity, await CanMemberAsync(session.User, "ReviewOutcome", "READ"))));
