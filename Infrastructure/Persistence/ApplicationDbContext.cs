@@ -3024,6 +3024,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.MunicipalityId == municipalityId
                 && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
                 && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && candidate.Entity.ChangedAt != default
+                && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
                 && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
                 && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
                 && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "FinancialYearPublicId", financialYearPublicId)
@@ -3057,6 +3059,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.MunicipalityId == municipalityId
                 && GovernanceActorMatches(candidate.Entity.ChangedBy, actor)
                 && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && candidate.Entity.ChangedAt != default
+                && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
                 && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
                 && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
                 && NullableGuidSnapshotMatches(candidate.Entity.OldValue, "IndicatorPublicId", indicatorPublicId)

@@ -197,6 +197,39 @@ public class C88ControllerTests
             .WithMessage("*exact actor-bound same-transaction before/after audit*");
 
         context.ChangeTracker.Clear();
+        configuration = await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == module.Configuration.PublicId);
+        originalEnabled = configuration.IsEnabled;
+        configuration.IsEnabled = !originalEnabled;
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = seed.Municipality.Id,
+            EntityName = "C88",
+            EntityId = configuration.PublicId.ToString(),
+            Action = "Configure",
+            ChangedBy = seed.User.Id,
+            ChangedAt = DateTime.UtcNow.AddDays(1),
+            Reason = "Reject future configuration audit time",
+            OldValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                FinancialYearPublicId = seed.Year.PublicId,
+                CatalogueVersionPublicId = module.Version.PublicId,
+                IsEnabled = originalEnabled,
+                configuration.EffectiveFrom,
+                configuration.EffectiveTo
+            }),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                FinancialYearPublicId = seed.Year.PublicId,
+                CatalogueVersionPublicId = module.Version.PublicId,
+                configuration.IsEnabled,
+                configuration.EffectiveFrom,
+                configuration.EffectiveTo
+            })
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
         (await context.C88MunicipalityConfigurations.SingleAsync(item => item.PublicId == module.Configuration.PublicId)).PublicId = Guid.NewGuid();
         await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*configuration identity*");
@@ -230,6 +263,41 @@ public class C88ControllerTests
             NewValue = System.Text.Json.JsonSerializer.Serialize(new
             {
                 IndicatorPublicId = Guid.NewGuid(),
+                plan.BaselineValue,
+                plan.MediumTermTarget,
+                plan.AnnualTarget,
+                plan.MissingDataExplanation,
+                plan.EstimatedAvailability
+            })
+        });
+        await FluentActions.Invoking(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        plan = await context.C88IndicatorPlans.SingleAsync(item => item.PublicId == planId);
+        originalAnnualTarget = plan.AnnualTarget;
+        plan.AnnualTarget = "997";
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = seed.Municipality.Id,
+            EntityName = "C88",
+            EntityId = plan.PublicId.ToString(),
+            Action = "SavePlan",
+            ChangedBy = seed.User.Id,
+            ChangedAt = DateTime.UtcNow.AddDays(1),
+            Reason = "Reject future indicator-plan audit time",
+            OldValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                IndicatorPublicId = module.Indicator.PublicId,
+                plan.BaselineValue,
+                plan.MediumTermTarget,
+                AnnualTarget = originalAnnualTarget,
+                plan.MissingDataExplanation,
+                plan.EstimatedAvailability
+            }),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                IndicatorPublicId = module.Indicator.PublicId,
                 plan.BaselineValue,
                 plan.MediumTermTarget,
                 plan.AnnualTarget,
