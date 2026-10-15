@@ -320,6 +320,44 @@ public sealed class TenantMastersControllerTests
     }
 
     [Fact]
+    public async Task Employee_master_rejects_exact_audit_from_a_different_actor()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 87;
+        var identityPublicId = await SeedEmployeeRoot(options, municipalityId);
+        await using var context = new ApplicationDbContext(options, new TestTenantContext(municipalityId, "employee-governor"));
+        var employee = await context.MunicipalEmployees.SingleAsync();
+        var before = new
+        {
+            employee.EmployeeNumber, employee.SalaryReference, employee.FirstName, employee.LastName, employee.EmailAddress,
+            IdentityUserPublicId = (Guid?)identityPublicId, employee.IsActive, employee.EffectiveFrom, employee.EffectiveTo
+        };
+        employee.LastName = "Actor-forged Employee";
+        var after = new
+        {
+            employee.EmployeeNumber, employee.SalaryReference, employee.FirstName, employee.LastName, employee.EmailAddress,
+            IdentityUserPublicId = (Guid?)identityPublicId, employee.IsActive, employee.EffectiveFrom, employee.EffectiveTo
+        };
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId,
+            EntityName = nameof(MunicipalEmployee),
+            EntityId = employee.PublicId.ToString(),
+            Action = "Update",
+            OldValue = System.Text.Json.JsonSerializer.Serialize(before),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(after),
+            ChangedBy = "different-employee-governor",
+            ChangedAt = DateTime.UtcNow,
+            Reason = "Correct snapshots must not authorize another actor"
+        });
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("one exact same-transaction reasoned before/after audit", exception.Message);
+    }
+
+    [Fact]
     public async Task Sqlite_relational_constraints_and_tenant_filters_match_provider_neutral_contract()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

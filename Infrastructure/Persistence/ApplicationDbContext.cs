@@ -4041,6 +4041,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && candidate.Entity.EntityId == publicId.ToString()
                 && candidate.Entity.Action == "Update"
                 && candidate.Entity.MunicipalityId == municipalityId
+                && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+                && candidate.Entity.ChangedAt != default
+                && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
                 && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
                 && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
                 && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)
@@ -4809,6 +4812,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             && candidate.Entity.EntityId == publicId.ToString()
             && candidate.Entity.Action == "Update"
             && candidate.Entity.MunicipalityId == municipalityId
+            && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+            && candidate.Entity.ChangedAt != default
+            && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
             && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
             && RootSnapshotMatches(candidate.Entity.OldValue, entry.OriginalValues, snapshotFields)
             && RootSnapshotMatches(candidate.Entity.NewValue, entry.CurrentValues, snapshotFields)).ToArray();

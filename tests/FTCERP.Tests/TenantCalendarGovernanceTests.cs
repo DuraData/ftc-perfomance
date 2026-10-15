@@ -221,6 +221,45 @@ public sealed class TenantCalendarGovernanceTests
         Assert.Contains("one exact same-transaction reasoned before/after audit", exception.Message);
     }
 
+    [Fact]
+    public async Task Persistence_rejects_exact_calendar_audit_from_a_different_actor()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        const long municipalityId = 745;
+        await SeedCalendar(options, municipalityId);
+
+        await using var context = new ApplicationDbContext(options, new TestTenantContext(municipalityId, "calendar-governor"));
+        var period = await context.ReportingPeriods.SingleAsync();
+        var before = new
+        {
+            period.MunicipalityFinancialYearId, period.Code, period.Name, period.PeriodType, period.Sequence,
+            period.StartDate, period.EndDate, period.IsActive
+        };
+        period.Name = "Actor-forged calendar update";
+        var after = new
+        {
+            period.MunicipalityFinancialYearId, period.Code, period.Name, period.PeriodType, period.Sequence,
+            period.StartDate, period.EndDate, period.IsActive
+        };
+        context.AuditTrails.Add(new AuditTrail
+        {
+            MunicipalityId = municipalityId,
+            EntityName = nameof(ReportingPeriod),
+            EntityId = period.PublicId.ToString(),
+            Action = "Update",
+            OldValue = System.Text.Json.JsonSerializer.Serialize(before),
+            NewValue = System.Text.Json.JsonSerializer.Serialize(after),
+            ChangedBy = "different-calendar-governor",
+            ChangedAt = DateTime.UtcNow,
+            Reason = "Correct snapshots must not authorize another actor"
+        });
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+        Assert.Contains("one exact same-transaction reasoned before/after audit", exception.Message);
+    }
+
     private static async Task SeedCalendar(DbContextOptions<ApplicationDbContext> options, long municipalityId)
     {
         await using var setup = new ApplicationDbContext(options, new TestTenantContext(null, "system", true));
