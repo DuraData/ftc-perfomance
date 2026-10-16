@@ -509,6 +509,47 @@ public sealed class EnterpriseAuthenticationTests
     }
 
     [Fact]
+    public async Task Platform_administrator_can_apply_tenant_authentication_member_permissions()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Code = "AUTH-PLATFORM", Name = "Platform Authentication" };
+        var platformActor = new ApplicationUser
+        {
+            Id = "authentication-admin", UserName = "authentication-admin@example.test",
+            NormalizedUserName = "AUTHENTICATION-ADMIN@EXAMPLE.TEST", Email = "authentication-admin@example.test",
+            NormalizedEmail = "AUTHENTICATION-ADMIN@EXAMPLE.TEST", EmailConfirmed = true,
+            FirstName = "Platform", LastName = "Administrator", IsActive = true, SecurityStamp = "platform-authentication-admin"
+        };
+        var linked = User("platform-linked-user", municipality);
+        context.AddRange(municipality, platformActor, linked);
+        await context.SaveChangesAsync();
+
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(platformActor,
+                "AUTHENTICATION.ExpectedEmail.UPDATE", It.Is<AccessScopeContext?>(scope => scope!.MunicipalityId == municipality.Id)))
+            .ReturnsAsync(new AccessDecisionResult(true, "allowed", [], [], []));
+        access.Setup(item => item.CheckPermissionAsync(platformActor, It.IsAny<string>(), It.IsAny<AccessScopeContext?>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "allowed", [], [], []));
+        var controller = new AuthenticationAdministrationController(context, new TenantContext(municipality.Id),
+            new EnterpriseProviderRegistry([Provider()]), access.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = Http(platformActor.Id) }
+        };
+
+        var result = await controller.Provision(new ProvisionUserAuthenticatorRequest(
+            linked.PublicId, "ENTRA", linked.Email!, null, null, "Approved platform identity link"), default);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        var authenticator = await context.UserAuthenticators.SingleAsync();
+        Assert.Equal(municipality.Id, authenticator.MunicipalityId);
+        Assert.Equal(platformActor.Id, authenticator.CreatedByUserId);
+    }
+
+    [Fact]
     public async Task Authentication_administration_status_changes_preserve_actor_stamped_audit_history()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

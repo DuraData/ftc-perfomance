@@ -519,7 +519,8 @@ public sealed class AuthenticationAdministrationController(
     {
         var actorId = tenant.UserId ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(actorId)) return false;
-        var actor = await context.Users.SingleOrDefaultAsync(item => item.Id == actorId && item.MunicipalityId == municipalityId);
+        var actor = await context.Users.SingleOrDefaultAsync(item => item.Id == actorId
+            && (item.MunicipalityId == municipalityId || item.MunicipalityId == null));
         if (actor == null) return false;
         var decision = await accessControl.CheckPermissionAsync(actor,
             $"AUTHENTICATION.{memberCode}.{operation.ToString().ToUpperInvariant()}",

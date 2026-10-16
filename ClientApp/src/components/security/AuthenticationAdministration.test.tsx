@@ -16,7 +16,7 @@ describe('AuthenticationAdministrationPage', () => {
     security.canReadField.mockReturnValue(true);
     security.canEditField.mockReturnValue(true);
     api.getAuthenticationConfiguration.mockResolvedValue({ success: true, data: {
-      publicId: 'configuration-1', configurationFamilyPublicId: 'family-1', versionNumber: 1, isCurrent: true, mode: 1, providerRegistrationCode: null, displayName: 'Local sign-in',
+      publicId: 'configuration-1', configurationFamilyPublicId: 'family-1', versionNumber: 1, isCurrent: true, mode: 'Local', providerRegistrationCode: null, displayName: 'Local sign-in',
       isActive: true, effectiveFrom: '2026-10-01T08:00:00Z', effectiveTo: null, rowVersion: 'AQ==',
       policy: {
         publicId: 'policy-1', minimumPasswordLength: 14, maximumFailedAttempts: 4, lockoutMinutes: 30,
@@ -27,7 +27,7 @@ describe('AuthenticationAdministrationPage', () => {
     } });
     api.getAuthenticationConfigurationHistoryPage.mockResolvedValue({ success: true, data: { items: [{
       publicId: 'configuration-1', configurationFamilyPublicId: 'family-1', versionNumber: 1, isCurrent: true,
-      mode: 1, providerRegistrationCode: null, displayName: 'Local sign-in', isActive: true,
+      mode: 'Local', providerRegistrationCode: null, displayName: 'Local sign-in', isActive: true,
       effectiveFrom: '2026-10-01T08:00:00Z', effectiveTo: null, rowVersion: 'AQ==',
       policy: { minimumPasswordLength: 14, maximumFailedAttempts: 4, sessionIdleTimeoutMinutes: 20 },
     }], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
@@ -36,6 +36,7 @@ describe('AuthenticationAdministrationPage', () => {
     api.getSecurityUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
     api.getUserAuthenticatorsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'authenticator-1', userPublicId: 'user-public-1', userEmail: 'person@example.test', providerRegistrationCode: 'ENTRA', expectedEmail: 'person@example.test', isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 } });
     api.saveAuthenticationConfiguration.mockResolvedValue({ success: true, data: {} });
+    api.setUserAuthenticatorStatus.mockResolvedValue({ success: true, data: {} });
   });
 
   it('loads and saves editable municipality policy values', async () => {
@@ -69,6 +70,42 @@ describe('AuthenticationAdministrationPage', () => {
 
     await waitFor(() => expect(api.getUserAuthenticatorsPage).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'person', active: false })));
     await waitFor(() => expect(api.getAuthenticationEventsPage).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'denied', success: false })));
+  });
+
+  it('refreshes configuration history after creating a version while already on page one', async () => {
+    render(<AuthenticationAdministrationPage />);
+
+    expect(await screen.findByText('1 versions')).toBeInTheDocument();
+    api.getAuthenticationConfigurationHistoryPage.mockResolvedValue({ success: true, data: {
+      items: [{
+        publicId: 'configuration-2', configurationFamilyPublicId: 'family-1', versionNumber: 2, isCurrent: true,
+        mode: 'Hybrid', providerRegistrationCode: 'ENTRA', displayName: 'Updated hybrid sign-in', isActive: true,
+        effectiveFrom: '2026-10-16T08:00:00Z', effectiveTo: null, rowVersion: 'Aw==',
+        policy: { minimumPasswordLength: 18, maximumFailedAttempts: 4, sessionIdleTimeoutMinutes: 20 },
+      }], page: 1, pageSize: 10, totalCount: 2, totalPages: 1,
+    } });
+    fireEvent.change(screen.getByLabelText(/Governance reason/, { selector: '#authentication-policy-reason' }), { target: { value: 'Create audited policy version' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create configuration version' }));
+
+    expect(await screen.findByText('2 versions')).toBeInTheDocument();
+    expect(screen.getByText(/Version 2/)).toBeInTheDocument();
+    expect(api.getAuthenticationConfigurationHistoryPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires and transports an administrator-entered reason for identity status changes', async () => {
+    render(<AuthenticationAdministrationPage />);
+
+    const disable = await screen.findByRole('button', { name: 'Disable' });
+    expect(disable).toBeDisabled();
+    const statusReason = screen.getByLabelText(/Identity status governance reason/, { selector: '#identity-status-reason' });
+    fireEvent.change(statusReason, { target: { value: 'Suspend access after role review' } });
+    expect(disable).toBeEnabled();
+    fireEvent.click(disable);
+
+    await waitFor(() => expect(api.setUserAuthenticatorStatus).toHaveBeenCalledWith(
+      'authenticator-1', false, 'Suspend access after role review', 'AQ==',
+    ));
+    await waitFor(() => expect(statusReason).toHaveValue(''));
   });
 
   it('hides protected authentication members and avoids sensitive email sorting without grants', async () => {

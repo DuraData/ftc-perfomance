@@ -18,6 +18,13 @@ const modeOptions = [
   { value: 1, label: 'Local passwords' }, { value: 2, label: 'Microsoft Entra ID' },
   { value: 3, label: 'Active Directory federation' }, { value: 4, label: 'Hybrid' },
 ];
+const normalizeMode = (value: AuthenticationConfiguration['mode']): 1 | 2 | 3 | 4 => {
+  if (typeof value === 'number') return value;
+  const modes: Record<Exclude<AuthenticationConfiguration['mode'], number>, 1 | 2 | 3 | 4> = {
+    Local: 1, MicrosoftEntraId: 2, ActiveDirectory: 3, Hybrid: 4,
+  };
+  return modes[value];
+};
 
 export function AuthenticationAdministrationPage() {
   const security = useSecurity();
@@ -32,6 +39,7 @@ export function AuthenticationAdministrationPage() {
   const [configurationVersionTotalCount, setConfigurationVersionTotalCount] = useState(0);
   const [configurationVersionTotalPages, setConfigurationVersionTotalPages] = useState(0);
   const [configurationVersionSearch, setConfigurationVersionSearch] = useState('');
+  const [configurationVersionRevision, setConfigurationVersionRevision] = useState(0);
   const [providers, setProviders] = useState<EnterpriseProviderOption[]>([]);
   const [users, setUsers] = useState<SecurityUserSummary[]>([]);
   const [userPage, setUserPage] = useState(1);
@@ -44,6 +52,7 @@ export function AuthenticationAdministrationPage() {
   const [authenticatorSearch, setAuthenticatorSearch] = useState('');
   const [authenticatorStatus, setAuthenticatorStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [authenticatorRevision, setAuthenticatorRevision] = useState(0);
+  const [authenticatorReason, setAuthenticatorReason] = useState('');
   const [events, setEvents] = useState<AuthenticationEvent[]>([]);
   const [eventPage, setEventPage] = useState(1);
   const [eventTotalCount, setEventTotalCount] = useState(0);
@@ -76,7 +85,7 @@ export function AuthenticationAdministrationPage() {
     const config = configResult.data ?? null;
     setConfiguration(config); setProviders(providerResult.data ?? []);
     if (config) {
-      setMode(config.mode); setProviderCode(config.providerRegistrationCode ?? ''); setDisplayName(config.displayName);
+      setMode(normalizeMode(config.mode)); setProviderCode(config.providerRegistrationCode ?? ''); setDisplayName(config.displayName);
       setEffectiveFrom(successorLocal(config.effectiveFrom));
       if (config.policy) {
         setMinimumPasswordLength(config.policy.minimumPasswordLength);
@@ -105,7 +114,7 @@ export function AuthenticationAdministrationPage() {
       });
     }, 250);
     return () => window.clearTimeout(timeout);
-  }, [configurationVersionPage, configurationVersionSearch]);
+  }, [configurationVersionPage, configurationVersionRevision, configurationVersionSearch]);
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void getUserAuthenticatorsPage({
@@ -154,7 +163,12 @@ export function AuthenticationAdministrationPage() {
       },
     });
     setMessage(result.success ? 'Authentication configuration version created.' : result.message ?? 'Unable to save authentication configuration.');
-    if (result.success) { setReason(''); setConfigurationVersionPage(1); await load(); }
+    if (result.success) {
+      setReason('');
+      setConfigurationVersionPage(1);
+      setConfigurationVersionRevision(value => value + 1);
+      await load();
+    }
     setBusy(false);
   };
 
@@ -169,9 +183,12 @@ export function AuthenticationAdministrationPage() {
 
   const toggle = async (item: UserAuthenticator) => {
     setBusy(true); setMessage('');
-    const result = await setUserAuthenticatorStatus(item.publicId, !item.isActive, 'Administrator changed enterprise identity access', item.rowVersion);
+    const result = await setUserAuthenticatorStatus(item.publicId, !item.isActive, authenticatorReason.trim(), item.rowVersion);
     setMessage(result.success ? 'Identity status updated.' : result.message ?? 'Unable to update identity status.');
-    if (result.success) setAuthenticatorRevision(value => value + 1);
+    if (result.success) {
+      setAuthenticatorReason('');
+      setAuthenticatorRevision(value => value + 1);
+    }
     setBusy(false);
   };
 
@@ -208,7 +225,7 @@ export function AuthenticationAdministrationPage() {
     <section className="rounded-xl border border-secondary-200 p-5 dark:border-secondary-700">
       <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-semibold">Configuration version history</h2><p className="text-xs text-secondary-500">Append-preserved authentication modes and local security policies.</p></div><Input label="Search configuration versions" value={configurationVersionSearch} onChange={event => { setConfigurationVersionSearch(event.target.value); setConfigurationVersionPage(1); }} /></div>
       <p className="mt-3 text-xs text-secondary-500">{configurationVersionTotalCount} versions</p>
-      <div className="mt-3 space-y-2">{configurationVersions.map(item => <div key={item.publicId} className="rounded border border-secondary-200 p-3 text-sm dark:border-secondary-700"><div className="flex justify-between gap-3"><strong>Version {item.versionNumber} · {modeOptions.find(option => option.value === item.mode)?.label ?? item.mode}</strong><span className="text-xs text-secondary-500">{item.isCurrent ? 'Current' : 'Historic'}</span></div><p className="text-xs text-secondary-500">{item.displayName} · effective {new Date(item.effectiveFrom).toLocaleString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleString() : 'open-ended'}</p><p className="mt-1 text-xs">Minimum password {item.policy?.minimumPasswordLength ?? '—'} · failed attempts {item.policy?.maximumFailedAttempts ?? '—'} · idle timeout {item.policy?.sessionIdleTimeoutMinutes ?? '—'} minutes</p></div>)}{!configurationVersions.length ? <p className="text-sm text-secondary-500">No authentication configuration versions.</p> : null}</div>
+      <div className="mt-3 space-y-2">{configurationVersions.map(item => <div key={item.publicId} className="rounded border border-secondary-200 p-3 text-sm dark:border-secondary-700"><div className="flex justify-between gap-3"><strong>Version {item.versionNumber} · {modeOptions.find(option => option.value === normalizeMode(item.mode))?.label}</strong><span className="text-xs text-secondary-500">{item.isCurrent ? 'Current' : 'Historic'}</span></div><p className="text-xs text-secondary-500">{item.displayName} · effective {new Date(item.effectiveFrom).toLocaleString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleString() : 'open-ended'}</p><p className="mt-1 text-xs">Minimum password {item.policy?.minimumPasswordLength ?? '—'} · failed attempts {item.policy?.maximumFailedAttempts ?? '—'} · idle timeout {item.policy?.sessionIdleTimeoutMinutes ?? '—'} minutes</p></div>)}{!configurationVersions.length ? <p className="text-sm text-secondary-500">No authentication configuration versions.</p> : null}</div>
       {configurationVersionTotalPages > 1 ? <div className="mt-4 flex items-center justify-end gap-2 text-xs"><Button size="sm" variant="outline" disabled={configurationVersionPage <= 1} onClick={() => setConfigurationVersionPage(value => value - 1)}>Previous versions</Button><span>{configurationVersionPage}/{configurationVersionTotalPages}</span><Button size="sm" variant="outline" disabled={configurationVersionPage >= configurationVersionTotalPages} onClick={() => setConfigurationVersionPage(value => value + 1)}>Next versions</Button></div> : null}
     </section>
     <section className="rounded-xl border border-secondary-200 dark:border-secondary-700 p-5 space-y-4">
@@ -226,8 +243,9 @@ export function AuthenticationAdministrationPage() {
         <Input label="Search enterprise identities" value={authenticatorSearch} onChange={event => { setAuthenticatorSearch(event.target.value); setAuthenticatorPage(1); }} />
         <Select label="Identity status" value={authenticatorStatus} options={[{ value: 'all', label: 'All statuses' }, { value: 'active', label: 'Active' }, { value: 'inactive', label: 'Disabled' }]} onChange={event => { setAuthenticatorStatus(event.target.value as 'all' | 'active' | 'inactive'); setAuthenticatorPage(1); }} />
       </div>
+      <Input id="identity-status-reason" label="Identity status governance reason" value={authenticatorReason} onChange={event => setAuthenticatorReason(event.target.value)} required />
       <p className="text-xs text-secondary-500">{authenticatorTotalCount} enterprise identities</p>
-      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left">{canReadUserEmail ? <th className="p-2">User</th> : null}<th className="p-2">Provider</th><th className="p-2">Link state</th><th className="p-2">Status</th><th className="p-2">Action</th></tr></thead><tbody>{authenticators.map(item => <tr key={item.publicId} className="border-t">{canReadUserEmail ? <td className="p-2">{item.userEmail ?? 'Protected'}</td> : null}<td className="p-2">{item.providerRegistrationCode}</td><td className="p-2">{item.linkedAt ? 'Bound' : 'Awaiting first validated sign-in'}</td><td className="p-2">{item.isActive ? 'Active' : 'Disabled'}</td><td className="p-2"><Button variant="secondary" size="sm" onClick={() => toggle(item)} disabled={busy}>{item.isActive ? 'Disable' : 'Enable'}</Button></td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left">{canReadUserEmail ? <th className="p-2">User</th> : null}<th className="p-2">Provider</th><th className="p-2">Link state</th><th className="p-2">Status</th><th className="p-2">Action</th></tr></thead><tbody>{authenticators.map(item => <tr key={item.publicId} className="border-t">{canReadUserEmail ? <td className="p-2">{item.userEmail ?? 'Protected'}</td> : null}<td className="p-2">{item.providerRegistrationCode}</td><td className="p-2">{item.linkedAt ? 'Bound' : 'Awaiting first validated sign-in'}</td><td className="p-2">{item.isActive ? 'Active' : 'Disabled'}</td><td className="p-2"><Button variant="secondary" size="sm" onClick={() => toggle(item)} disabled={busy || authenticatorReason.trim().length < 5}>{item.isActive ? 'Disable' : 'Enable'}</Button></td></tr>)}</tbody></table></div>
       {authenticatorTotalPages > 1 && <div className="flex items-center justify-between gap-2 text-xs text-secondary-500"><span>Page {authenticatorPage} of {authenticatorTotalPages}</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={authenticatorPage <= 1} onClick={() => setAuthenticatorPage(value => Math.max(1, value - 1))}>Previous identities</Button><Button variant="outline" size="sm" disabled={authenticatorPage >= authenticatorTotalPages} onClick={() => setAuthenticatorPage(value => value + 1)}>Next identities</Button></div></div>}
     </section>
     <section className="space-y-4 rounded-xl border border-secondary-200 p-5 dark:border-secondary-700">
