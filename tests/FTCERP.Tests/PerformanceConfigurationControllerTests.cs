@@ -27,6 +27,6 @@ public sealed class PerformanceConfigurationControllerTests
         var onOrBefore = catalogue.PerformanceDirections.Single(item => item.Code == "ON_OR_BEFORE_DATE");
         date.InputControlType.Should().Be("DATE");
         date.DefaultPerformanceDirectionPublicId.Should().Be(onOrBefore.PublicId);
-        onOrBefore.EngineDirection.Should().Be(PerformanceDirection.LowerIsBetter);
+        onOrBefore.EngineDirection.Should().Be((int)PerformanceDirection.LowerIsBetter);
     }
 }

@@ -11,6 +11,7 @@ import { StrategicClassificationPicker } from '../common/StrategicClassification
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 import { PerformancePeriodTargetEditor } from './PerformancePeriodTargetEditor';
+import { PerformanceValueInput } from '../submissions/PerformanceValueInput';
 import {
   createIpmsTarget,
   createOpmsTarget,
@@ -796,11 +797,35 @@ export function TargetFormActions({
   );
 }
 
-function targetValueInputType(value: string): 'text' | 'number' | 'date' {
-  const unit = toXafUnitType(value);
-  if (unit === 'Date') return 'date';
-  if (['None', 'QualitativeTargets', 'Binary', 'BinaryDetermination', 'Ratios'].includes(unit)) return 'text';
-  return 'number';
+function TargetValueInput({
+  label,
+  unitValue,
+  value,
+  onChange,
+  configuration,
+  required,
+  error,
+}: {
+  label: string;
+  unitValue: string;
+  value: string;
+  onChange: (value: string) => void;
+  configuration?: PerformanceConfigurationCatalogueDto;
+  required?: boolean;
+  error?: string;
+}) {
+  const unitKind = canonicalPeriodTarget(6, value || '0', unitValue, null, null, configuration).unitKind;
+  const unit = configuration?.opmsUnits.find(item => item.engineUnitKind === unitKind);
+  const currentCount = unitKind === 8 ? Math.min(4, Math.max(2, value ? value.split(':').length : 2)) : 0;
+  const valueConfiguration = unit ? {
+    ...unit,
+    componentCount: unitKind === 8 ? currentCount : null,
+    segments: unitKind === 8 ? Array.from({ length: currentCount }, (_, index) => ({ position: index + 1, label: `Segment ${index + 1}`, decimalPlaces: 6, minValue: 0, maxValue: null, unitDescription: null })) : [],
+  } : undefined;
+  return <div className="space-y-2">
+    {unitKind === 8 && <Select label={`${label} segment count`} value={String(currentCount)} options={[2, 3, 4].map(count => ({ value: String(count), label: `${count} segments` }))} onChange={event => { const count = Number(event.target.value); const parts = value.split(':'); onChange(Array.from({ length: count }, (_, index) => parts[index] ?? '').join(':')); }} />}
+    <PerformanceValueInput configuration={valueConfiguration} label={label} value={value} onChange={onChange} required={required} error={error} />
+  </div>;
 }
 
 function buildCanonicalPeriodTargets(form: OpmsFormState | IpmsFormState, configuration?: PerformanceConfigurationCatalogueDto): SaveTargetPeriodValuePayload[] {
@@ -1493,7 +1518,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
           <FormPanel title="Measurement Details" description="Define numeric measures, unit configuration, and performance classification." icon={<BarChart3 className="h-5 w-5" />}>
             <FormRow cols={4}>
               <Input label="Baseline" required type="number" value={form.baseline} onChange={(event) => setForm(prev => ({ ...prev, baseline: event.target.value }))} />
-              <Input label="Annual Target" required error={fieldError('Annual Target')} type={targetValueInputType(form.annualUnitType)} value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
+              <TargetValueInput label="Annual Target" required error={fieldError('Annual Target')} unitValue={form.annualUnitType} value={form.annualTarget} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, annualTarget: value }))} />
               <Input label="Weight %" required error={fieldError('Weight %')} type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
               <StrategicClassificationPicker targetKind="opms" classificationKind="kpi-units-of-measure" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.kpiUnitOfMeasurePublicId} selectedLabel={selectedUomName} onChange={(value, item) => { if (item) setReferenceLabels(current => ({ ...current, [`uom:${value}`]: item.name })); setForm(prev => ({ ...prev, kpiUnitOfMeasurePublicId: value })); }} />
             </FormRow>
@@ -1578,7 +1603,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type={targetValueInputType(form.q1UnitType)} value={form.q1Target} onChange={(e) => setForm(prev => ({ ...prev, q1Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <TargetValueInput label="Q1 target" unitValue={form.q1UnitType} value={form.q1Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q1Target: value }))} />
                 </div>
                 <Textarea label="" rows={2} value={form.q1Description} onChange={(e) => setForm(prev => ({ ...prev, q1Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1600,7 +1625,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type={targetValueInputType(form.q2UnitType)} value={form.q2Target} onChange={(e) => setForm(prev => ({ ...prev, q2Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <TargetValueInput label="Q2 target" unitValue={form.q2UnitType} value={form.q2Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q2Target: value }))} />
                 </div>
                 <Textarea label="" rows={2} value={form.q2Description} onChange={(e) => setForm(prev => ({ ...prev, q2Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1622,7 +1647,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type={targetValueInputType(form.midTermUnitType)} value={form.midTermTarget} onChange={(e) => setForm(prev => ({ ...prev, midTermTarget: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <TargetValueInput label="Mid-Year target" unitValue={form.midTermUnitType} value={form.midTermTarget} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, midTermTarget: value }))} />
                 </div>
                 <Textarea label="" rows={2} value={form.midTermDescription} onChange={(e) => setForm(prev => ({ ...prev, midTermDescription: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1644,7 +1669,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type={targetValueInputType(form.q3UnitType)} value={form.q3Target} onChange={(e) => setForm(prev => ({ ...prev, q3Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <TargetValueInput label="Q3 target" unitValue={form.q3UnitType} value={form.q3Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q3Target: value }))} />
                 </div>
                 <Textarea label="" rows={2} value={form.q3Description} onChange={(e) => setForm(prev => ({ ...prev, q3Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1666,7 +1691,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type={targetValueInputType(form.q4UnitType)} value={form.q4Target} onChange={(e) => setForm(prev => ({ ...prev, q4Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <TargetValueInput label="Q4 target" unitValue={form.q4UnitType} value={form.q4Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q4Target: value }))} />
                 </div>
                 <Textarea label="" rows={2} value={form.q4Description} onChange={(e) => setForm(prev => ({ ...prev, q4Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -1958,7 +1983,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
           <FormPanel title="Performance Measures" description="Set numeric measures, unit configuration, and classification." icon={<BarChart3 className="h-5 w-5" />}>
             <FormRow cols={4}>
               <Input label="Baseline" type="number" value={form.baseline} onChange={(event) => setForm(prev => ({ ...prev, baseline: event.target.value }))} />
-              <Input label="Annual Target" required error={fieldError('Annual Target')} type={targetValueInputType(form.annualUnitType)} value={form.annualTarget} onChange={(event) => setForm(prev => ({ ...prev, annualTarget: event.target.value }))} />
+              <TargetValueInput label="Annual Target" required error={fieldError('Annual Target')} unitValue={form.annualUnitType} value={form.annualTarget} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, annualTarget: value }))} />
               <Input label="Weight %" required error={fieldError('Weight %')} type="number" value={form.weight} onChange={(event) => setForm(prev => ({ ...prev, weight: event.target.value }))} />
               <StrategicClassificationPicker targetKind="ipms" classificationKind="kpi-units-of-measure" municipalityFinancialYearPublicId={form.municipalityFinancialYearPublicId} label="Unit Of Measure" required error={fieldError('Unit of Measure')} value={form.kpiUnitOfMeasurePublicId} selectedLabel={selectedUomName} onChange={(value, item) => { if (item) setOrganizationLabels(current => ({ ...current, [`uom:${value}`]: item.name })); setForm(prev => ({ ...prev, kpiUnitOfMeasurePublicId: value })); }} />
             </FormRow>
@@ -2043,7 +2068,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type={targetValueInputType(form.q1UnitType)} value={form.q1Target} onChange={(e) => setForm(prev => ({ ...prev, q1Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <TargetValueInput label="Q1 target" unitValue={form.q1UnitType} value={form.q1Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q1Target: value }))} />
                 </div>
                 <Textarea label="" rows={2} value={form.q1Description} onChange={(e) => setForm(prev => ({ ...prev, q1Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -2065,7 +2090,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type={targetValueInputType(form.q2UnitType)} value={form.q2Target} onChange={(e) => setForm(prev => ({ ...prev, q2Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <TargetValueInput label="Q2 target" unitValue={form.q2UnitType} value={form.q2Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q2Target: value }))} />
                 </div>
                 <Textarea label="" rows={2} value={form.q2Description} onChange={(e) => setForm(prev => ({ ...prev, q2Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -2087,7 +2112,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type={targetValueInputType(form.midTermUnitType)} value={form.midTermTarget} onChange={(e) => setForm(prev => ({ ...prev, midTermTarget: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <TargetValueInput label="Mid-Year target" unitValue={form.midTermUnitType} value={form.midTermTarget} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, midTermTarget: value }))} />
                 </div>
                 <Textarea label="" rows={2} value={form.midTermDescription} onChange={(e) => setForm(prev => ({ ...prev, midTermDescription: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -2109,7 +2134,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type={targetValueInputType(form.q3UnitType)} value={form.q3Target} onChange={(e) => setForm(prev => ({ ...prev, q3Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <TargetValueInput label="Q3 target" unitValue={form.q3UnitType} value={form.q3Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q3Target: value }))} />
                 </div>
                 <Textarea label="" rows={2} value={form.q3Description} onChange={(e) => setForm(prev => ({ ...prev, q3Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
@@ -2131,7 +2156,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
               <div className="p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
-                  <Input type={targetValueInputType(form.q4UnitType)} value={form.q4Target} onChange={(e) => setForm(prev => ({ ...prev, q4Target: e.target.value }))} className="text-2xl font-bold h-10" />
+                  <TargetValueInput label="Q4 target" unitValue={form.q4UnitType} value={form.q4Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q4Target: value }))} />
                 </div>
                 <Textarea label="" rows={2} value={form.q4Description} onChange={(e) => setForm(prev => ({ ...prev, q4Description: e.target.value }))} placeholder="Description" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">

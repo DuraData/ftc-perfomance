@@ -40,7 +40,62 @@ public class PerformancePeriodTarget
     public OpmsUnitDefinition? RevisedOpmsUnit { get; set; }
     public ApplicationUser CreatedByUser { get; set; } = null!;
     public PerformanceCalculationTypeDefinition? DerivedCalculationType { get; set; }
+    public PerformanceRatioDefinition? RatioDefinition { get; set; }
     public ICollection<PerformanceTargetRevision> Revisions { get; set; } = new List<PerformanceTargetRevision>();
+}
+
+public sealed class RatioComparisonMethodDefinition
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool SupportsAutoCalculation { get; set; }
+    public bool IsActive { get; set; } = true;
+    public byte[] RowVersion { get; set; } = [];
+}
+
+public sealed class PerformanceRatioDefinition
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public long PerformancePeriodTargetId { get; set; }
+    public byte RatioSegmentCount { get; set; }
+    public long RatioComparisonMethodId { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string CreatedByUserId { get; set; } = string.Empty;
+    public DateTime? ModifiedAt { get; set; }
+    public string? ModifiedByUserId { get; set; }
+    public byte[] RowVersion { get; set; } = [];
+
+    public Municipality Municipality { get; set; } = null!;
+    public PerformancePeriodTarget PerformancePeriodTarget { get; set; } = null!;
+    public RatioComparisonMethodDefinition RatioComparisonMethod { get; set; } = null!;
+    public ApplicationUser CreatedByUser { get; set; } = null!;
+    public ApplicationUser? ModifiedByUser { get; set; }
+    public ICollection<PerformanceRatioSegment> Segments { get; set; } = new List<PerformanceRatioSegment>();
+}
+
+public sealed class PerformanceRatioSegment
+{
+    public long Id { get; set; }
+    public Guid PublicId { get; set; } = Guid.NewGuid();
+    public long MunicipalityId { get; set; }
+    public long RatioDefinitionId { get; set; }
+    public byte SegmentPosition { get; set; }
+    public string SegmentLabel { get; set; } = string.Empty;
+    public byte? DecimalPlaces { get; set; }
+    public decimal? MinValue { get; set; }
+    public decimal? MaxValue { get; set; }
+    public string? UnitDescription { get; set; }
+    public bool IsActive { get; set; } = true;
+    public byte[] RowVersion { get; set; } = [];
+
+    public Municipality Municipality { get; set; } = null!;
+    public PerformanceRatioDefinition RatioDefinition { get; set; } = null!;
 }
 
 public class PerformanceTargetRevision

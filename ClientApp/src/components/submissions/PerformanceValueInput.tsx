@@ -49,8 +49,11 @@ export function PerformanceValueInput({
   }
 
   if (control === 'RATIO' || code === 'RATIO' || configuration.requiresComponentUi) {
-    const segmentCount = configuration.componentCount && configuration.componentCount >= 2 && configuration.componentCount <= 4
-      ? configuration.componentCount
+    const configuredSegments = [...(configuration.segments ?? [])].sort((left, right) => left.position - right.position);
+    const segmentCount = configuredSegments.length >= 2 && configuredSegments.length <= 4
+      ? configuredSegments.length
+      : configuration.componentCount && configuration.componentCount >= 2 && configuration.componentCount <= 4
+        ? configuration.componentCount
       : 2;
     const segments = value.split(':');
     while (segments.length < segmentCount) segments.push('');
@@ -64,14 +67,14 @@ export function PerformanceValueInput({
         <div className={`grid gap-2 ${segmentCount >= 3 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2'}`}>
           {visibleSegments.map((segment, index) => (
             <Input
-              key={index}
+              key={configuredSegments[index]?.position ?? index}
               type="number"
-              label={`Segment ${index + 1}`}
-              aria-label={`${label} segment ${index + 1}`}
+              label={configuredSegments[index]?.label ?? `Segment ${index + 1}`}
+              aria-label={`${label} ${configuredSegments[index]?.label ?? `segment ${index + 1}`}`}
               value={segment}
-              min={configuration.minValue ?? 0}
-              max={configuration.maxValue ?? undefined}
-              step={inputStep(configuration.decimalPlaces)}
+              min={configuredSegments[index]?.minValue ?? configuration.minValue ?? 0}
+              max={configuredSegments[index]?.maxValue ?? configuration.maxValue ?? undefined}
+              step={inputStep(configuredSegments[index]?.decimalPlaces ?? configuration.decimalPlaces)}
               required={required}
               onChange={event => {
                 const next = [...visibleSegments];

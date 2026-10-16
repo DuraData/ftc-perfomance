@@ -20,7 +20,14 @@ internal sealed record PlannedPeriodTarget(
     PerformanceDirection Direction,
     string TargetValue,
     decimal? BudgetValue,
-    string? Description);
+    string? Description,
+    PlannedRatioDefinition? RatioDefinition);
+
+internal sealed record PlannedRatioDefinition(
+    long RatioComparisonMethodId,
+    string RatioComparisonMethodCode,
+    byte RatioSegmentCount,
+    IReadOnlyList<SaveRatioSegmentRequest> Segments);
 
 internal sealed record TargetPeriodPlan(IReadOnlyList<PlannedPeriodTarget> Rows, string? Error)
 {
@@ -41,6 +48,8 @@ internal static class TargetPeriodCutover
         var ids = targets.Select(item => item.Id).ToArray();
         var rows = await context.PerformancePeriodTargets.AsNoTracking().Include(item => item.ReportingPeriod).ThenInclude(item => item.MunicipalityFinancialYear).ThenInclude(item => item.FinancialYear)
             .Include(item => item.OpmsUnit).Include(item => item.PerformanceDirectionDefinition).Include(item => item.RevisedOpmsUnit)
+            .Include(item => item.RatioDefinition!).ThenInclude(item => item.RatioComparisonMethod)
+            .Include(item => item.RatioDefinition!).ThenInclude(item => item.Segments)
             .Where(item => item.OpmsTargetId != null && ids.Contains(item.OpmsTargetId) && item.IsActive)
             .ToArrayAsync();
         foreach (var target in targets)
@@ -53,6 +62,8 @@ internal static class TargetPeriodCutover
         var ids = targets.Select(item => item.Id).ToArray();
         var rows = await context.PerformancePeriodTargets.AsNoTracking().Include(item => item.ReportingPeriod).ThenInclude(item => item.MunicipalityFinancialYear)
             .Include(item => item.OpmsUnit).Include(item => item.PerformanceDirectionDefinition).Include(item => item.RevisedOpmsUnit)
+            .Include(item => item.RatioDefinition!).ThenInclude(item => item.RatioComparisonMethod)
+            .Include(item => item.RatioDefinition!).ThenInclude(item => item.Segments)
             .Where(item => item.IpmsTargetId != null && ids.Contains(item.IpmsTargetId) && item.IsActive)
             .ToArrayAsync();
         foreach (var target in targets)
@@ -161,8 +172,44 @@ internal static class TargetPeriodCutover
             var normalized = unitEngine.Normalize(engineUnit, value.TargetValue);
             if (!normalized.IsValid)
                 return TargetPeriodPlan.Invalid($"{value.PeriodType} target is invalid: {normalized.Error}");
+            PlannedRatioDefinition? ratioDefinition = null;
+            if (engineUnit == PerformanceUnitKind.Ratios)
+            {
+                var requested = value.RatioDefinition;
+                if (requested == null)
+                    return TargetPeriodPlan.Invalid($"{value.PeriodType} ratio configuration is required.");
+                var comparisonMethod = await context.RatioComparisonMethods.AsNoTracking()
+                    .SingleOrDefaultAsync(item => item.PublicId == requested.RatioComparisonMethodPublicId && item.IsActive);
+                if (comparisonMethod == null)
+                    return TargetPeriodPlan.Invalid($"{value.PeriodType} ratio comparison method is missing or inactive.");
+                var configuredSegments = requested.Segments.Select(item => new PerformanceRatioSegment
+                {
+                    SegmentPosition = item.SegmentPosition,
+                    SegmentLabel = item.SegmentLabel?.Trim() ?? string.Empty,
+                    DecimalPlaces = item.DecimalPlaces,
+                    MinValue = item.MinValue,
+                    MaxValue = item.MaxValue,
+                    UnitDescription = item.UnitDescription?.Trim(),
+                    IsActive = true
+                }).ToArray();
+                var definitionError = PerformanceRatioRules.ValidateDefinition(requested.RatioSegmentCount, comparisonMethod.Code, configuredSegments);
+                if (definitionError != null) return TargetPeriodPlan.Invalid($"{value.PeriodType} ratio configuration is invalid: {definitionError}");
+                var validationDefinition = new PerformanceRatioDefinition
+                {
+                    RatioSegmentCount = requested.RatioSegmentCount,
+                    RatioComparisonMethod = comparisonMethod,
+                    Segments = configuredSegments
+                };
+                var valueError = PerformanceRatioRules.ValidateCanonicalValue(normalized.CanonicalValue!, validationDefinition);
+                if (valueError != null) return TargetPeriodPlan.Invalid($"{value.PeriodType} target is invalid: {valueError}");
+                ratioDefinition = new(comparisonMethod.Id, comparisonMethod.Code, requested.RatioSegmentCount, requested.Segments);
+            }
+            else if (value.RatioDefinition != null)
+            {
+                return TargetPeriodPlan.Invalid($"{value.PeriodType} ratio configuration is allowed only when the effective OPMS Unit is RATIO.");
+            }
             rows.Add(new PlannedPeriodTarget(
-                matchingPeriods[0], unit.Id, direction.Id, engineUnit, engineDirection, normalized.CanonicalValue!, value.BudgetValue, value.Description?.Trim()));
+                matchingPeriods[0], unit.Id, direction.Id, engineUnit, engineDirection, normalized.CanonicalValue!, value.BudgetValue, value.Description?.Trim(), ratioDefinition));
         }
 
         return new TargetPeriodPlan(rows, null);
@@ -179,8 +226,18 @@ internal static class TargetPeriodCutover
         if (!TryParseUnitKind(targetUnitType, out var unitKind))
             return Task.FromResult(TargetPeriodPlan.Invalid($"Target unit type '{targetUnitType}' is not supported by the canonical performance engine."));
         var direction = DefaultDirection(unitKind);
-        var canonical = values.Where(item => item.Value.HasValue).Select(item => new SaveTargetPeriodValueRequest(
-            item.PeriodType, unitKind, direction, item.Value!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture), item.BudgetValue, item.Description));
+        var canonical = values.Where(item => item.Value.HasValue).Select(item =>
+        {
+            var value = item.Value!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var request = new SaveTargetPeriodValueRequest(item.PeriodType, unitKind, direction, value, item.BudgetValue, item.Description);
+            if (unitKind != PerformanceUnitKind.Ratios) return request;
+            var count = Math.Clamp(value.Split(':', StringSplitOptions.TrimEntries).Length, 2, 4);
+            return request with
+            {
+                RatioDefinition = new SaveRatioDefinitionRequest((byte)count, Guid.Parse("30000000-0000-0000-0000-000000000004"),
+                    Enumerable.Range(1, count).Select(position => new SaveRatioSegmentRequest((byte)position, $"Segment {position}", 6, 0, null, null)).ToArray())
+            };
+        });
         return BuildPlanAsync(context, unitEngine, municipalityId, legacyPeriodId, canonical);
     }
 
@@ -193,7 +250,8 @@ internal static class TargetPeriodCutover
         string? ipmsTargetId)
     {
         foreach (var row in plan.Rows)
-            context.PerformancePeriodTargets.Add(new PerformancePeriodTarget
+        {
+            var periodTarget = new PerformancePeriodTarget
             {
                 MunicipalityId = municipalityId,
                 ReportingPeriodId = row.ReportingPeriod.Id,
@@ -207,7 +265,31 @@ internal static class TargetPeriodCutover
                 BudgetValue = row.BudgetValue,
                 Description = row.Description,
                 CreatedByUserId = userId
-            });
+            };
+            if (row.RatioDefinition != null)
+            {
+                periodTarget.RatioDefinition = new PerformanceRatioDefinition
+                {
+                    MunicipalityId = municipalityId,
+                    RatioSegmentCount = row.RatioDefinition.RatioSegmentCount,
+                    RatioComparisonMethodId = row.RatioDefinition.RatioComparisonMethodId,
+                    IsActive = true,
+                    CreatedByUserId = userId,
+                    Segments = row.RatioDefinition.Segments.Select(item => new PerformanceRatioSegment
+                    {
+                        MunicipalityId = municipalityId,
+                        SegmentPosition = item.SegmentPosition,
+                        SegmentLabel = item.SegmentLabel.Trim(),
+                        DecimalPlaces = item.DecimalPlaces,
+                        MinValue = item.MinValue,
+                        MaxValue = item.MaxValue,
+                        UnitDescription = item.UnitDescription?.Trim(),
+                        IsActive = true
+                    }).ToList()
+                };
+            }
+            context.PerformancePeriodTargets.Add(periodTarget);
+        }
     }
 
     public static async Task<string?> EnsureUnchangedOrAddMissingAsync(

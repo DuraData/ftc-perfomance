@@ -73,6 +73,22 @@ export function canonicalPeriodTarget(
   };
   if (opmsUnit) result.opmsUnitPublicId = opmsUnit.publicId;
   if (directionDefinition) result.performanceDirectionPublicId = directionDefinition.publicId;
+  if (unitKind === 8) {
+    const segmentCount = Math.min(4, Math.max(2, result.targetValue.split(':').length));
+    const method = configuration?.ratioComparisonMethods?.find(item => item.code === (segmentCount === 2 ? 'NORMALIZED_RATIO' : 'MANUAL'));
+    if (method) result.ratioDefinition = {
+      ratioSegmentCount: segmentCount,
+      ratioComparisonMethodPublicId: method.publicId,
+      segments: Array.from({ length: segmentCount }, (_, index) => ({
+        segmentPosition: index + 1,
+        segmentLabel: `Segment ${index + 1}`,
+        decimalPlaces: 6,
+        minValue: 0,
+        maxValue: null,
+        unitDescription: null,
+      })),
+    };
+  }
   return result;
 }
 
@@ -91,6 +107,19 @@ export function canonicalSaveRows(rows: PerformancePeriodTargetDto[]): SaveTarge
     };
     if (row.opmsUnitPublicId) result.opmsUnitPublicId = row.opmsUnitPublicId;
     if (row.performanceDirectionPublicId) result.performanceDirectionPublicId = row.performanceDirectionPublicId;
+    if (row.ratioDefinition) result.ratioDefinition = {
+      ratioSegmentCount: row.ratioDefinition.ratioSegmentCount,
+      ratioComparisonMethodPublicId: row.ratioDefinition.ratioComparisonMethodPublicId,
+      rowVersion: row.ratioDefinition.rowVersion,
+      segments: row.ratioDefinition.segments.filter(item => item.isActive).map(item => ({
+        segmentPosition: item.segmentPosition,
+        segmentLabel: item.segmentLabel,
+        decimalPlaces: item.decimalPlaces,
+        minValue: item.minValue,
+        maxValue: item.maxValue,
+        unitDescription: item.unitDescription,
+      })),
+    };
     return result;
   });
 }

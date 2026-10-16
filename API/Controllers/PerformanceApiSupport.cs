@@ -432,9 +432,9 @@ public static class PerformanceApiSupport
             target.PublicId,
             target.ReportingPeriod.PublicId,
             target.ReportingPeriod.Code,
-            target.ReportingPeriod.PeriodType,
-            PerformanceRevisionResolver.EffectiveUnitKind(target),
-            target.Direction,
+            (int)target.ReportingPeriod.PeriodType,
+            (int)PerformanceRevisionResolver.EffectiveUnitKind(target),
+            (int)target.Direction,
             memberAccess.TargetValue ? PerformanceRevisionResolver.EffectiveTargetValue(target) : null,
             memberAccess.BudgetValue ? PerformanceRevisionResolver.EffectiveBudgetValue(target) : null,
             memberAccess.Description ? target.Description : null,
@@ -442,11 +442,11 @@ public static class PerformanceApiSupport
             Convert.ToBase64String(target.RowVersion))
         {
             ValueConfiguration = ToValueConfiguration(target, memberAccess.TargetValue),
-            OriginalUnitKind = target.UnitKind,
+            OriginalUnitKind = (int)target.UnitKind,
             OriginalTargetValue = memberAccess.TargetValue ? target.TargetValue : null,
             OriginalBudgetValue = memberAccess.BudgetValue ? target.BudgetValue : null,
             IsTargetRevised = target.IsTargetRevised,
-            RevisedUnitKind = target.RevisedUnitKind,
+            RevisedUnitKind = target.RevisedUnitKind.HasValue ? (int)target.RevisedUnitKind.Value : null,
             RevisedTargetValue = memberAccess.TargetValue ? target.RevisedTargetValue : null,
             IsBudgetRevised = target.IsBudgetRevised,
             RevisedBudgetValue = memberAccess.BudgetValue ? target.RevisedBudgetValue : null
@@ -667,27 +667,42 @@ public static class PerformanceApiSupport
             : (int?)null;
 
         if (componentCount is < 2 or > 4) componentCount = null;
+        var segments = periodTarget.RatioDefinition is { IsActive: true } definition
+            ? definition.Segments.Where(item => item.IsActive).OrderBy(item => item.SegmentPosition)
+                .Select(item => new RatioSegmentConfigurationResponse(item.SegmentPosition, item.SegmentLabel,
+                    item.DecimalPlaces, item.MinValue, item.MaxValue, item.UnitDescription)).ToArray()
+            : [];
+        if (segments.Length > 0) componentCount = segments.Length;
         if (unit != null)
         {
-            return new(unit.PublicId, unit.Code, unit.Name, unit.InputControlType, unit.ValueDataType,
+            return new PerformanceValueConfigurationResponse(unit.PublicId, unit.Code, unit.Name, unit.InputControlType, unit.ValueDataType,
                 unit.Symbol, unit.DecimalPlaces, unit.MinValue, unit.MaxValue, unit.SupportsAutoVariance,
-                unit.RequiresComponentUi, unit.IsQualitative, kind, componentCount);
+                unit.RequiresComponentUi, unit.IsQualitative, (int)kind, componentCount)
+            {
+                RatioComparisonMethodCode = periodTarget.RatioDefinition?.RatioComparisonMethod?.Code,
+                Segments = segments
+            };
         }
 
         var fallback = LegacyValueConfiguration(kind);
-        return fallback with { ComponentCount = componentCount };
+        return fallback with
+        {
+            ComponentCount = componentCount,
+            RatioComparisonMethodCode = periodTarget.RatioDefinition?.RatioComparisonMethod?.Code,
+            Segments = segments
+        };
     }
 
     private static PerformanceValueConfigurationResponse LegacyValueConfiguration(PerformanceUnitKind kind) => kind switch
     {
-        PerformanceUnitKind.Date => new(null, "DATE", "Date", "DATE", "DATE", null, null, null, null, true, false, false, kind, null),
-        PerformanceUnitKind.Ratios => new(null, "RATIO", "Ratio", "RATIO", "TEXT", null, 6, 0, null, true, true, false, kind, null),
-        PerformanceUnitKind.Binary or PerformanceUnitKind.BinaryDetermination => new(null, "YES_NO", "Yes / No", "SELECT", "BOOLEAN", null, null, null, null, true, false, false, kind, null),
-        PerformanceUnitKind.QualitativeTargets or PerformanceUnitKind.None => new(null, "QUALITATIVE", "Qualitative", "TEXT", "TEXT", null, null, null, null, false, false, true, kind, null),
-        PerformanceUnitKind.PercentageBased => new(null, "PERCENT", "Percentage", "NUMERIC", "DECIMAL", "%", 2, 0, 100, true, false, false, kind, null),
-        PerformanceUnitKind.Financial => new(null, "FINANCIAL", "Financial", "CURRENCY", "DECIMAL", null, 2, 0, null, true, false, false, kind, null),
-        PerformanceUnitKind.ReadinessScale => new(null, "SCALE_1_5", "Readiness scale", "SELECT", "INTEGER", null, 0, 1, 5, true, false, false, kind, null),
-        _ => new(null, "NUMBER", "Number", "NUMERIC", "DECIMAL", null, 0, 0, null, true, false, false, kind, null)
+        PerformanceUnitKind.Date => new(null, "DATE", "Date", "DATE", "DATE", null, null, null, null, true, false, false, (int)kind, null),
+        PerformanceUnitKind.Ratios => new(null, "RATIO", "Ratio", "RATIO", "TEXT", null, 6, 0, null, true, true, false, (int)kind, null),
+        PerformanceUnitKind.Binary or PerformanceUnitKind.BinaryDetermination => new(null, "YES_NO", "Yes / No", "SELECT", "BOOLEAN", null, null, null, null, true, false, false, (int)kind, null),
+        PerformanceUnitKind.QualitativeTargets or PerformanceUnitKind.None => new(null, "QUALITATIVE", "Qualitative", "TEXT", "TEXT", null, null, null, null, false, false, true, (int)kind, null),
+        PerformanceUnitKind.PercentageBased => new(null, "PERCENT", "Percentage", "NUMERIC", "DECIMAL", "%", 2, 0, 100, true, false, false, (int)kind, null),
+        PerformanceUnitKind.Financial => new(null, "FINANCIAL", "Financial", "CURRENCY", "DECIMAL", null, 2, 0, null, true, false, false, (int)kind, null),
+        PerformanceUnitKind.ReadinessScale => new(null, "SCALE_1_5", "Readiness scale", "SELECT", "INTEGER", null, 0, 1, 5, true, false, false, (int)kind, null),
+        _ => new(null, "NUMBER", "Number", "NUMERIC", "DECIMAL", null, 0, 0, null, true, false, false, (int)kind, null)
     };
 
     public static NotificationResponse ToResponse(this Notification notification) =>

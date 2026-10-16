@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Claims;
+using System.Text.Json;
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
@@ -71,6 +72,8 @@ public sealed class PerformancePeriodTargetsController(
         if (configuration.Error != null) return BadRequest(Fail<PerformancePeriodTargetDto>(configuration.Error));
         var normalized = unitEngine.Normalize(configuration.Unit!.EngineUnitKind, request.TargetValue);
         if (!normalized.IsValid) return BadRequest(Fail<PerformancePeriodTargetDto>(normalized.Error!));
+        var ratioConfiguration = await ResolveRatioConfiguration(configuration.Unit.EngineUnitKind, normalized.CanonicalValue!, request.RatioDefinition);
+        if (ratioConfiguration.Error != null) return BadRequest(Fail<PerformancePeriodTargetDto>(ratioConfiguration.Error));
 
         OpmsTarget? opms = null; IpmsTarget? ipms = null; string permission;
         if (request.TargetKind == SubmissionKind.Opms)
@@ -110,6 +113,7 @@ public sealed class PerformancePeriodTargetsController(
             UnitKind = configuration.Unit.EngineUnitKind, Direction = configuration.Direction.EngineDirection, TargetValue = normalized.CanonicalValue!,
             BudgetValue = request.BudgetValue, Description = request.Description?.Trim(), CreatedByUserId = user.Id, CreatedByUser = user
         };
+        ApplyNewRatioDefinition(entity, ratioConfiguration, user);
         context.PerformancePeriodTargets.Add(entity);
         await context.SaveChangesAsync();
         return Ok(new ApiResponse<PerformancePeriodTargetDto>(true, ToDto(entity, await GetMemberAccess(user, resource, scope))));
@@ -141,6 +145,10 @@ public sealed class PerformancePeriodTargetsController(
         if (configuration.Error != null) return BadRequest(Fail<PerformancePeriodTargetDto>(configuration.Error));
         var normalized = unitEngine.Normalize(configuration.Unit!.EngineUnitKind, request.TargetValue);
         if (!normalized.IsValid) return BadRequest(Fail<PerformancePeriodTargetDto>(normalized.Error!));
+        var effectiveUnitKind = request.IsTargetRevised ? configuration.Unit.EngineUnitKind : entity.UnitKind;
+        var effectiveTargetValue = request.IsTargetRevised ? normalized.CanonicalValue! : entity.TargetValue;
+        var ratioConfiguration = await ResolveRatioConfiguration(effectiveUnitKind, effectiveTargetValue, request.RatioDefinition);
+        if (ratioConfiguration.Error != null) return BadRequest(Fail<PerformancePeriodTargetDto>(ratioConfiguration.Error));
         if (request.IsTargetRevised && string.IsNullOrWhiteSpace(request.TargetValue))
             return BadRequest(Fail<PerformancePeriodTargetDto>("A revised target value is required when the target revision flag is active."));
         if (request.IsBudgetRevised && !request.BudgetValue.HasValue)
@@ -160,6 +168,13 @@ public sealed class PerformancePeriodTargetsController(
         };
         foreach (var change in changes.Where(x => x.Value.Old != x.Value.New))
             context.PerformanceTargetRevisions.Add(new PerformanceTargetRevision { MunicipalityId = entity.MunicipalityId, PerformancePeriodTargetId = entity.Id, FieldName = change.Key, OriginalValue = change.Value.Old, RevisedValue = change.Value.New, Reason = request.Reason.Trim(), ApprovalReference = request.ApprovalReference.Trim(), EffectiveAt = request.EffectiveAt, RevisedByUserId = user.Id });
+        if (ratioConfiguration.Method != null && entity.RatioDefinition != null
+            && !TrySetVersion(entity.RatioDefinition, request.RatioDefinition?.RowVersion ?? string.Empty))
+            return BadRequest(Fail<PerformancePeriodTargetDto>("A valid ratio-definition row version is required."));
+        var ratioBefore = RatioSnapshot(entity.RatioDefinition);
+        var ratioAfter = ApplyRatioDefinition(entity, ratioConfiguration, request.RatioDefinition, user);
+        if (ratioBefore != ratioAfter)
+            context.PerformanceTargetRevisions.Add(new PerformanceTargetRevision { MunicipalityId = entity.MunicipalityId, PerformancePeriodTargetId = entity.Id, FieldName = "RatioDefinition", OriginalValue = ratioBefore, RevisedValue = ratioAfter, Reason = request.Reason.Trim(), ApprovalReference = request.ApprovalReference.Trim(), EffectiveAt = request.EffectiveAt, RevisedByUserId = user.Id });
         entity.IsTargetRevised = request.IsTargetRevised;
         entity.RevisedOpmsUnitId = request.IsTargetRevised ? configuration.Unit!.Id : null;
         entity.RevisedOpmsUnit = request.IsTargetRevised ? configuration.Unit : null;
@@ -234,7 +249,9 @@ public sealed class PerformancePeriodTargetsController(
     }
 
     private IQueryable<PerformancePeriodTarget> Query() => context.PerformancePeriodTargets.Include(x => x.ReportingPeriod).Include(x => x.OpmsTarget).Include(x => x.IpmsTarget)
-        .Include(x => x.OpmsUnit).Include(x => x.PerformanceDirectionDefinition).Include(x => x.RevisedOpmsUnit);
+        .Include(x => x.OpmsUnit).Include(x => x.PerformanceDirectionDefinition).Include(x => x.RevisedOpmsUnit)
+        .Include(x => x.RatioDefinition!).ThenInclude(x => x.RatioComparisonMethod)
+        .Include(x => x.RatioDefinition!).ThenInclude(x => x.Segments);
     private async Task<(OpmsUnitDefinition? Unit, PerformanceDirectionDefinition? Direction, string? Error)> ResolveConfiguration(
         Guid? unitPublicId, PerformanceUnitKind legacyUnit, Guid? directionPublicId, PerformanceDirection legacyDirection)
     {
@@ -262,7 +279,7 @@ public sealed class PerformancePeriodTargetsController(
         && (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodBudgetValue.UPDATE", scope)).Allowed
         && (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodDescription.UPDATE", scope)).Allowed;
 
-    private static PerformancePeriodTargetDto ToDto(PerformancePeriodTarget x, PeriodTargetMemberAccess memberAccess) => new(x.PublicId, x.ReportingPeriod.PublicId, x.ReportingPeriod.Code, x.ReportingPeriod.PeriodType, PerformanceRevisionResolver.EffectiveUnitKind(x), x.Direction, memberAccess.TargetValue ? PerformanceRevisionResolver.EffectiveTargetValue(x) : null, memberAccess.BudgetValue ? PerformanceRevisionResolver.EffectiveBudgetValue(x) : null, memberAccess.Description ? x.Description : null, x.IsActive, Convert.ToBase64String(x.RowVersion))
+    private static PerformancePeriodTargetDto ToDto(PerformancePeriodTarget x, PeriodTargetMemberAccess memberAccess) => new(x.PublicId, x.ReportingPeriod.PublicId, x.ReportingPeriod.Code, (int)x.ReportingPeriod.PeriodType, (int)PerformanceRevisionResolver.EffectiveUnitKind(x), (int)x.Direction, memberAccess.TargetValue ? PerformanceRevisionResolver.EffectiveTargetValue(x) : null, memberAccess.BudgetValue ? PerformanceRevisionResolver.EffectiveBudgetValue(x) : null, memberAccess.Description ? x.Description : null, x.IsActive, Convert.ToBase64String(x.RowVersion))
     {
         OpmsUnitPublicId = (x.IsTargetRevised ? x.RevisedOpmsUnit : x.OpmsUnit)?.PublicId,
         OpmsUnitCode = (x.IsTargetRevised ? x.RevisedOpmsUnit : x.OpmsUnit)?.Code ?? TargetPeriodCutover.LegacyUnitCode(PerformanceRevisionResolver.EffectiveUnitKind(x)),
@@ -270,18 +287,113 @@ public sealed class PerformancePeriodTargetsController(
         PerformanceDirectionCode = x.PerformanceDirectionDefinition?.Code ?? TargetPeriodCutover.LegacyDirectionCode(x.Direction),
         OriginalOpmsUnitPublicId = x.OpmsUnit?.PublicId,
         OriginalOpmsUnitCode = x.OpmsUnit?.Code ?? TargetPeriodCutover.LegacyUnitCode(x.UnitKind),
-        OriginalUnitKind = x.UnitKind,
+        OriginalUnitKind = (int)x.UnitKind,
         OriginalTargetValue = memberAccess.TargetValue ? x.TargetValue : null,
         OriginalBudgetValue = memberAccess.BudgetValue ? x.BudgetValue : null,
         IsTargetRevised = x.IsTargetRevised,
-        RevisedUnitKind = x.RevisedUnitKind,
+        RevisedUnitKind = x.RevisedUnitKind.HasValue ? (int)x.RevisedUnitKind.Value : null,
         RevisedTargetValue = memberAccess.TargetValue ? x.RevisedTargetValue : null,
         IsBudgetRevised = x.IsBudgetRevised,
-        RevisedBudgetValue = memberAccess.BudgetValue ? x.RevisedBudgetValue : null
+        RevisedBudgetValue = memberAccess.BudgetValue ? x.RevisedBudgetValue : null,
+        RatioDefinition = memberAccess.TargetValue ? ToRatioResponse(x.RatioDefinition) : null
     };
+
+    private async Task<(RatioComparisonMethodDefinition? Method, PerformanceRatioSegment[] Segments, byte SegmentCount, string? Error)> ResolveRatioConfiguration(
+        PerformanceUnitKind unitKind, string canonicalValue, SaveRatioDefinitionRequest? request)
+    {
+        if (unitKind != PerformanceUnitKind.Ratios)
+            return request == null ? (null, [], 0, null) : (null, [], 0, "Ratio configuration is allowed only when the effective OPMS Unit is RATIO.");
+        if (request == null) return (null, [], 0, "An active ratio definition is required for a RATIO target.");
+        var method = await context.RatioComparisonMethods.SingleOrDefaultAsync(item => item.PublicId == request.RatioComparisonMethodPublicId && item.IsActive);
+        if (method == null) return (null, [], 0, "Select an active ratio comparison method.");
+        var segments = request.Segments.Select(item => new PerformanceRatioSegment
+        {
+            MunicipalityId = tenantContext.MunicipalityId!.Value,
+            SegmentPosition = item.SegmentPosition,
+            SegmentLabel = item.SegmentLabel?.Trim() ?? string.Empty,
+            DecimalPlaces = item.DecimalPlaces,
+            MinValue = item.MinValue,
+            MaxValue = item.MaxValue,
+            UnitDescription = item.UnitDescription?.Trim(),
+            IsActive = true
+        }).ToArray();
+        var error = PerformanceRatioRules.ValidateDefinition(request.RatioSegmentCount, method.Code, segments);
+        if (error != null) return (method, segments, request.RatioSegmentCount, error);
+        var definition = new PerformanceRatioDefinition { RatioSegmentCount = request.RatioSegmentCount, RatioComparisonMethod = method, Segments = segments };
+        error = PerformanceRatioRules.ValidateCanonicalValue(canonicalValue, definition);
+        return (method, segments, request.RatioSegmentCount, error);
+    }
+
+    private static void ApplyNewRatioDefinition(PerformancePeriodTarget target,
+        (RatioComparisonMethodDefinition? Method, PerformanceRatioSegment[] Segments, byte SegmentCount, string? Error) configuration,
+        ApplicationUser user)
+    {
+        if (configuration.Method == null) return;
+        target.RatioDefinition = new PerformanceRatioDefinition
+        {
+            MunicipalityId = target.MunicipalityId,
+            RatioSegmentCount = configuration.SegmentCount,
+            RatioComparisonMethodId = configuration.Method.Id,
+            RatioComparisonMethod = configuration.Method,
+            CreatedByUserId = user.Id,
+            CreatedByUser = user,
+            Segments = configuration.Segments.ToList()
+        };
+    }
+
+    private static string? ApplyRatioDefinition(PerformancePeriodTarget target,
+        (RatioComparisonMethodDefinition? Method, PerformanceRatioSegment[] Segments, byte SegmentCount, string? Error) configuration,
+        SaveRatioDefinitionRequest? request,
+        ApplicationUser user)
+    {
+        if (configuration.Method == null)
+            return RatioSnapshot(target.RatioDefinition);
+
+        var definition = target.RatioDefinition;
+        if (definition == null)
+        {
+            ApplyNewRatioDefinition(target, configuration, user);
+            return RatioSnapshot(target.RatioDefinition);
+        }
+        definition.RatioSegmentCount = configuration.SegmentCount;
+        definition.RatioComparisonMethodId = configuration.Method.Id;
+        definition.RatioComparisonMethod = configuration.Method;
+        definition.IsActive = true;
+        definition.ModifiedAt = DateTime.UtcNow;
+        definition.ModifiedByUserId = user.Id;
+        var requestedByPosition = configuration.Segments.ToDictionary(item => item.SegmentPosition);
+        foreach (var current in definition.Segments)
+        {
+            if (!requestedByPosition.Remove(current.SegmentPosition, out var next)) { current.IsActive = false; continue; }
+            current.SegmentLabel = next.SegmentLabel;
+            current.DecimalPlaces = next.DecimalPlaces;
+            current.MinValue = next.MinValue;
+            current.MaxValue = next.MaxValue;
+            current.UnitDescription = next.UnitDescription;
+            current.IsActive = true;
+        }
+        foreach (var next in requestedByPosition.Values) definition.Segments.Add(next);
+        return RatioSnapshot(definition);
+    }
+
+    private static string? RatioSnapshot(PerformanceRatioDefinition? definition) => definition == null ? null : JsonSerializer.Serialize(new
+    {
+        definition.PublicId,
+        definition.RatioSegmentCount,
+        ComparisonMethod = definition.RatioComparisonMethod?.Code,
+        definition.IsActive,
+        Segments = definition.Segments.OrderBy(item => item.SegmentPosition).Select(item => new { item.SegmentPosition, item.SegmentLabel, item.DecimalPlaces, item.MinValue, item.MaxValue, item.UnitDescription, item.IsActive })
+    });
+
+    private static RatioDefinitionResponse? ToRatioResponse(PerformanceRatioDefinition? definition) => definition == null ? null : new(
+        definition.PublicId, definition.RatioSegmentCount, definition.RatioComparisonMethod.PublicId,
+        definition.RatioComparisonMethod.Code, definition.RatioComparisonMethod.Name, definition.IsActive,
+        Convert.ToBase64String(definition.RowVersion), definition.Segments.Where(item => item.IsActive).OrderBy(item => item.SegmentPosition)
+            .Select(item => new RatioSegmentResponse(item.PublicId, item.SegmentPosition, item.SegmentLabel, item.DecimalPlaces,
+                item.MinValue, item.MaxValue, item.UnitDescription, item.IsActive, Convert.ToBase64String(item.RowVersion))).ToArray());
 }
 
-public sealed record PerformancePeriodTargetDto(Guid PublicId, Guid ReportingPeriodPublicId, string PeriodCode, ReportingPeriodType PeriodType, PerformanceUnitKind UnitKind, PerformanceDirection Direction, string? TargetValue, decimal? BudgetValue, string? Description, bool IsActive, string RowVersion)
+public sealed record PerformancePeriodTargetDto(Guid PublicId, Guid ReportingPeriodPublicId, string PeriodCode, int PeriodType, int UnitKind, int Direction, string? TargetValue, decimal? BudgetValue, string? Description, bool IsActive, string RowVersion)
 {
     public Guid? OpmsUnitPublicId { get; init; }
     public string? OpmsUnitCode { get; init; }
@@ -289,19 +401,21 @@ public sealed record PerformancePeriodTargetDto(Guid PublicId, Guid ReportingPer
     public string? PerformanceDirectionCode { get; init; }
     public Guid? OriginalOpmsUnitPublicId { get; init; }
     public string? OriginalOpmsUnitCode { get; init; }
-    public PerformanceUnitKind OriginalUnitKind { get; init; }
+    public int OriginalUnitKind { get; init; }
     public string? OriginalTargetValue { get; init; }
     public decimal? OriginalBudgetValue { get; init; }
     public bool IsTargetRevised { get; init; }
-    public PerformanceUnitKind? RevisedUnitKind { get; init; }
+    public int? RevisedUnitKind { get; init; }
     public string? RevisedTargetValue { get; init; }
     public bool IsBudgetRevised { get; init; }
     public decimal? RevisedBudgetValue { get; init; }
+    public RatioDefinitionResponse? RatioDefinition { get; init; }
 }
 public sealed record SavePerformancePeriodTargetRequest(SubmissionKind TargetKind, Guid TargetPublicId, Guid ReportingPeriodPublicId, PerformanceUnitKind UnitKind, PerformanceDirection Direction, string TargetValue, decimal? BudgetValue, string? Description)
 {
     public Guid? OpmsUnitPublicId { get; init; }
     public Guid? PerformanceDirectionPublicId { get; init; }
+    public SaveRatioDefinitionRequest? RatioDefinition { get; init; }
 }
 public sealed record RevisePerformancePeriodTargetRequest(PerformanceUnitKind UnitKind, PerformanceDirection Direction, string TargetValue, decimal? BudgetValue, string? Description, bool IsActive, string Reason, string ApprovalReference, DateTime EffectiveAt, string RowVersion)
 {
@@ -309,5 +423,10 @@ public sealed record RevisePerformancePeriodTargetRequest(PerformanceUnitKind Un
     public Guid? PerformanceDirectionPublicId { get; init; }
     public bool IsTargetRevised { get; init; } = true;
     public bool IsBudgetRevised { get; init; } = true;
+    public SaveRatioDefinitionRequest? RatioDefinition { get; init; }
 }
+public sealed record RatioDefinitionResponse(Guid PublicId, byte RatioSegmentCount, Guid RatioComparisonMethodPublicId,
+    string RatioComparisonMethodCode, string RatioComparisonMethodName, bool IsActive, string RowVersion, RatioSegmentResponse[] Segments);
+public sealed record RatioSegmentResponse(Guid PublicId, byte SegmentPosition, string SegmentLabel, byte? DecimalPlaces,
+    decimal? MinValue, decimal? MaxValue, string? UnitDescription, bool IsActive, string RowVersion);
 public sealed record PerformanceTargetRevisionDto(Guid PublicId, string FieldName, string? OriginalValue, string? RevisedValue, string? Reason, string? ApprovalReference, DateTime EffectiveAt, Guid? RevisedByUserPublicId, string? RevisedByName, DateTime RecordedAt);

@@ -329,9 +329,9 @@ public record TargetPeriodValueResponse(
     Guid PublicId,
     Guid ReportingPeriodPublicId,
     string PeriodCode,
-    ReportingPeriodType PeriodType,
-    PerformanceUnitKind UnitKind,
-    PerformanceDirection Direction,
+    int PeriodType,
+    int UnitKind,
+    int Direction,
     string? TargetValue,
     decimal? BudgetValue,
     string? Description,
@@ -339,11 +339,11 @@ public record TargetPeriodValueResponse(
     string RowVersion)
 {
     public PerformanceValueConfigurationResponse? ValueConfiguration { get; init; }
-    public PerformanceUnitKind OriginalUnitKind { get; init; }
+    public int OriginalUnitKind { get; init; }
     public string? OriginalTargetValue { get; init; }
     public decimal? OriginalBudgetValue { get; init; }
     public bool IsTargetRevised { get; init; }
-    public PerformanceUnitKind? RevisedUnitKind { get; init; }
+    public int? RevisedUnitKind { get; init; }
     public string? RevisedTargetValue { get; init; }
     public bool IsBudgetRevised { get; init; }
     public decimal? RevisedBudgetValue { get; init; }
@@ -362,8 +362,20 @@ public sealed record PerformanceValueConfigurationResponse(
     bool SupportsAutoVariance,
     bool RequiresComponentUi,
     bool IsQualitative,
-    PerformanceUnitKind EngineUnitKind,
-    int? ComponentCount);
+    int EngineUnitKind,
+    int? ComponentCount)
+{
+    public string? RatioComparisonMethodCode { get; init; }
+    public RatioSegmentConfigurationResponse[] Segments { get; init; } = [];
+}
+
+public sealed record RatioSegmentConfigurationResponse(
+    int Position,
+    string Label,
+    int? DecimalPlaces,
+    decimal? MinValue,
+    decimal? MaxValue,
+    string? UnitDescription);
 
 public sealed record KpiFieldRevisionResponse(
     Guid PublicId,

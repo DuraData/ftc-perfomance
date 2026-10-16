@@ -163,6 +163,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
     {
         base.OnModelCreating(builder);
         ConfigurePerformanceConsolidation(builder);
+        ConfigureRatioConfiguration(builder);
         ConfigureInternalAuditAssessments(builder);
         ConfigureOfficialReports(builder);
         ConfigureNotificationPolicies(builder);
@@ -2277,7 +2278,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             typeof(Department), typeof(Unit), typeof(Position), typeof(Ward), typeof(VoteNumber), typeof(OpmsTarget), typeof(OpmsTargetWard), typeof(OpmsTargetAdditionalAssignee), typeof(OpmsTargetVoteNumber), typeof(OpmsKpiBudgetSource), typeof(IpmsTarget), typeof(IpmsTargetOpmsLink), typeof(IpmsKpiBudgetSource), typeof(OpmsSubmission), typeof(IpmsSubmission),
             typeof(DueDateExtension), typeof(ReviewComment), typeof(AuditFinding), typeof(SubmissionScore),
             typeof(MunicipalEmployee), typeof(EmployeeAssignment), typeof(MunicipalityFinancialYear), typeof(SdbipLayer), typeof(OpmsImportBatch),
-            typeof(PerformancePeriodTarget), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive), typeof(LegacySubmissionPeriodReconciliation), typeof(LegacyTenantOwnershipReconciliation)
+            typeof(PerformancePeriodTarget), typeof(PerformanceRatioDefinition), typeof(PerformanceRatioSegment), typeof(PerformanceTargetRevision), typeof(KpiFieldRevision), typeof(LegacySubmissionValueArchive), typeof(LegacySubmissionPeriodReconciliation), typeof(LegacyTenantOwnershipReconciliation)
             , typeof(MunicipalityConsolidationPolicy), typeof(PerformanceSuggestionEvent)
             , typeof(WorkflowDefinition), typeof(WorkflowStageDefinition), typeof(SubmissionWorkflowInstance), typeof(SubmissionWorkflowAction),
             typeof(PerformanceRfi), typeof(PerformanceRfiEvidence), typeof(ReportingWindow), typeof(ReportingWindowException), typeof(RatingScheme), typeof(RatingSchemeValue), typeof(SubmissionStageRating), typeof(LegacySubmissionRatingReconciliation)
@@ -2383,6 +2384,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         EnforceStrategicRiskCreation();
         EnforceMunicipalityConsolidationPolicyHistory();
         EnforcePerformancePeriodTargetHistory();
+        EnforcePerformanceRatioConfigurationHistory();
         EnforceNotificationHistory();
         EnforceNotificationPreferenceHistory();
         EnforceRefreshTokenHistory();
@@ -2398,6 +2400,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         RejectRewrites<PerformanceCalculationTypeDefinition>("Canonical performance-calculation type definitions are migration-managed and immutable.");
         RejectRewrites<OpmsUnitDefinition>("Canonical OPMS unit definitions are migration-managed and immutable.");
         RejectRewrites<PerformanceDirectionDefinition>("Canonical performance-direction definitions are migration-managed and immutable.");
+        RejectRewrites<RatioComparisonMethodDefinition>("Canonical ratio-comparison definitions are migration-managed and immutable.");
         RejectRewrites<OpmsTargetTemplateVersion>("OPMS target-template version history is append-only.");
         RejectRewrites<IpmsTargetTemplateVersion>("IPMS target-template version history is append-only.");
         EnforceOpmsTargetTemplateHistory();
@@ -5239,6 +5242,35 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         IFormattable formattable => formattable.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
         _ => value.ToString()
     };
+
+    private void EnforcePerformanceRatioConfigurationHistory()
+    {
+        if (ChangeTracker.Entries<PerformanceRatioDefinition>().Any(entry => entry.State == EntityState.Deleted)
+            || ChangeTracker.Entries<PerformanceRatioSegment>().Any(entry => entry.State == EntityState.Deleted))
+            throw new InvalidOperationException("Ratio configuration is append-preserved and cannot be hard deleted.");
+
+        var changedDefinitions = ChangeTracker.Entries<PerformanceRatioDefinition>()
+            .Where(entry => entry.State == EntityState.Modified).Select(entry => entry.Entity.PerformancePeriodTargetId).ToHashSet();
+        var changedSegments = ChangeTracker.Entries<PerformanceRatioSegment>()
+            .Where(entry => entry.State is EntityState.Added or EntityState.Modified)
+            .Where(entry => entry.Entity.RatioDefinitionId > 0)
+            .Select(entry => entry.Entity.RatioDefinition?.PerformancePeriodTargetId
+                ?? PerformanceRatioDefinitions.IgnoreQueryFilters().Where(item => item.Id == entry.Entity.RatioDefinitionId)
+                    .Select(item => item.PerformancePeriodTargetId).Single())
+            .ToHashSet();
+        changedDefinitions.UnionWith(changedSegments);
+        foreach (var periodTargetId in changedDefinitions)
+        {
+            var revisions = ChangeTracker.Entries<PerformanceTargetRevision>().Count(entry => entry.State == EntityState.Added
+                && entry.Entity.PerformancePeriodTargetId == periodTargetId
+                && entry.Entity.FieldName == "RatioDefinition"
+                && !string.IsNullOrWhiteSpace(entry.Entity.Reason)
+                && !string.IsNullOrWhiteSpace(entry.Entity.ApprovalReference)
+                && !string.IsNullOrWhiteSpace(entry.Entity.RevisedByUserId));
+            if (revisions != 1)
+                throw new InvalidOperationException("A ratio configuration change requires one exact same-transaction governed target revision.");
+        }
+    }
 
     private void EnforceNotificationHistory()
     {

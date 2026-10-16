@@ -56,4 +56,20 @@ describe('PerformanceValueInput', () => {
     expect(onChange).toHaveBeenCalledWith([...values.slice(0, -1), '9'].join(':'));
     expect(screen.getByText(/one canonical colon-separated Actual Performance value/i)).toBeInTheDocument();
   });
+
+  it('renders administrator-configured ratio labels and segment constraints', () => {
+    render(<PerformanceValueInput configuration={configuration({
+      code: 'RATIO', name: 'Ratio', inputControlType: 'RATIO', valueDataType: 'TEXT', requiresComponentUi: true, engineUnitKind: 8,
+      componentCount: 2,
+      ratioComparisonMethodCode: 'NORMALIZED_RATIO',
+      segments: [
+        { position: 1, label: 'Officers', decimalPlaces: 0, minValue: 1, maxValue: 50 },
+        { position: 2, label: 'Population', decimalPlaces: 0, minValue: 1, maxValue: 10000 },
+      ],
+    })} value="4:3000" onChange={vi.fn()} />);
+
+    expect(screen.getByRole('spinbutton', { name: 'Actual Performance Officers' })).toHaveAttribute('min', '1');
+    expect(screen.getByRole('spinbutton', { name: 'Actual Performance Officers' })).toHaveAttribute('max', '50');
+    expect(screen.getByRole('spinbutton', { name: 'Actual Performance Population' })).toHaveValue(3000);
+  });
 });

@@ -125,10 +125,9 @@ public sealed class RolePermissionHistoryTests
                     migration, "10.0.0");
 
             const string predecessor = "20261013161110_V39RestrictiveRemainingAggregateHistory";
-            var latest = migrations[^1];
-            latest.Should().EndWith("V39AppendPreservedRolePermissions");
+            var targetMigration = migrations.Single(item => item.EndsWith("V39AppendPreservedRolePermissions", StringComparison.Ordinal));
             await context.GetService<IMigrator>().MigrateAsync(predecessor);
-            await context.GetService<IMigrator>().MigrateAsync(latest);
+            await context.GetService<IMigrator>().MigrateAsync(targetMigration);
             context.ChangeTracker.Clear();
 
             var preserved = await context.RolePermissions.SingleAsync(item => item.RoleId == role.Id && item.PermissionId == permission.Id);

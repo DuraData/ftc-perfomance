@@ -28,7 +28,10 @@ public sealed class SubmissionValueService(ApplicationDbContext context, IPerfor
         decimal? legacyActual,
         Func<IQueryable<PerformancePeriodTarget>, IQueryable<PerformancePeriodTarget>> targetFilter)
     {
-        var target = await targetFilter(context.PerformancePeriodTargets.Include(item => item.ReportingPeriod))
+        var target = await targetFilter(context.PerformancePeriodTargets
+                .Include(item => item.ReportingPeriod)
+                .Include(item => item.RatioDefinition!).ThenInclude(item => item.RatioComparisonMethod)
+                .Include(item => item.RatioDefinition!).ThenInclude(item => item.Segments))
             .SingleOrDefaultAsync(item => item.ReportingPeriod.PublicId == reportingPeriodPublicId
                 && item.ReportingPeriod.IsActive && item.IsActive)
             ?? throw new InvalidOperationException("An authoritative KPI target value is not configured for this reporting period.");
@@ -38,11 +41,22 @@ public sealed class SubmissionValueService(ApplicationDbContext context, IPerfor
             ? actualPerformance
             : legacyActual?.ToString(CultureInfo.InvariantCulture);
         if (string.IsNullOrWhiteSpace(input)) return new(period, target, null);
-        return new(period, target, unitEngine.Calculate(
-            PerformanceRevisionResolver.EffectiveUnitKind(target),
+        var effectiveUnit = PerformanceRevisionResolver.EffectiveUnitKind(target);
+        if (effectiveUnit == PerformanceUnitKind.Ratios)
+        {
+            if (target.RatioDefinition is not { IsActive: true })
+                throw new InvalidOperationException("An active ratio definition is required for this reporting-period target.");
+            var normalized = unitEngine.Normalize(effectiveUnit, input);
+            if (!normalized.IsValid) throw new InvalidOperationException(normalized.Error);
+            var ratioError = PerformanceRatioRules.ValidateCanonicalValue(normalized.CanonicalValue!, target.RatioDefinition);
+            if (ratioError != null) throw new InvalidOperationException(ratioError);
+        }
+        var calculation = unitEngine.Calculate(
+            effectiveUnit,
             PerformanceRevisionResolver.EffectiveTargetValue(target),
             input,
-            target.Direction));
+            target.Direction);
+        return new(period, target, calculation);
     }
 
 }

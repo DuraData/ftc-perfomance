@@ -213,10 +213,10 @@ public sealed class KpiPeriodOrderingTests
         var response = Assert.IsType<ApiResponse<PerformancePeriodTargetDto>>(Assert.IsType<OkObjectResult>(late.Result).Value).Data!;
 
         Assert.Equal("40", response.OriginalTargetValue);
-        Assert.Equal(PerformanceUnitKind.AbsoluteCount, response.OriginalUnitKind);
+        Assert.Equal((int)PerformanceUnitKind.AbsoluteCount, response.OriginalUnitKind);
         Assert.Equal(400, response.OriginalBudgetValue);
         Assert.Equal("75", response.TargetValue);
-        Assert.Equal(PerformanceUnitKind.PercentageBased, response.UnitKind);
+        Assert.Equal((int)PerformanceUnitKind.PercentageBased, response.UnitKind);
         Assert.Equal(500, response.BudgetValue);
         Assert.True(response.IsTargetRevised);
         Assert.True(response.IsBudgetRevised);

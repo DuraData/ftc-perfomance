@@ -113,7 +113,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var result = await controller.CreateTarget(IpmsRequest(seed.MunicipalityYear.PublicId, seed.Classifications));
 
         var response = Assert.IsType<ApiResponse<IpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
-        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == (int)ReportingPeriodType.Annual && item.TargetValue == "100");
         context.ChangeTracker.Clear();
         var stored = await context.IpmsTargets.SingleAsync();
         Assert.Equal(0m, stored.AnnualTarget);
@@ -132,8 +132,8 @@ public sealed class NormalizedTargetWriteCutoverTests
         var result = await controller.CreateTarget(Request(seed.MunicipalityYear.PublicId, seed.SdbipLayer.PublicId, seed.Classifications));
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
-        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
-        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Quarter1 && item.TargetValue == "20");
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == (int)ReportingPeriodType.Annual && item.TargetValue == "100");
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == (int)ReportingPeriodType.Quarter1 && item.TargetValue == "20");
         context.ChangeTracker.Clear();
         var stored = await context.OpmsTargets.SingleAsync();
         Assert.Equal(seed.SdbipLayer.Id, stored.SdbipLayerId);
@@ -179,8 +179,8 @@ public sealed class NormalizedTargetWriteCutoverTests
         var result = await Controller(context, seed.User, seed.Municipality.Id).CreateTarget(request);
 
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
-        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Quarter1 && item.UnitKind == PerformanceUnitKind.QualitativeTargets && item.TargetValue == "Council approved");
-        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.UnitKind == PerformanceUnitKind.Date && item.TargetValue == "2027-06-30");
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == (int)ReportingPeriodType.Quarter1 && item.UnitKind == (int)PerformanceUnitKind.QualitativeTargets && item.TargetValue == "Council approved");
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == (int)ReportingPeriodType.Annual && item.UnitKind == (int)PerformanceUnitKind.Date && item.TargetValue == "2027-06-30");
     }
 
     [Fact]
@@ -253,7 +253,7 @@ public sealed class NormalizedTargetWriteCutoverTests
         var response = Assert.IsType<ApiResponse<OpmsTargetResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
         Assert.Equal("Updated metadata", response.InternalReference);
         Assert.Equal("Normalized target", response.TargetName);
-        Assert.Contains(response.PeriodTargets, item => item.PeriodType == ReportingPeriodType.Annual && item.TargetValue == "100");
+        Assert.Contains(response.PeriodTargets, item => item.PeriodType == (int)ReportingPeriodType.Annual && item.TargetValue == "100");
         Assert.Equal(2, await context.PerformancePeriodTargets.CountAsync());
         context.ChangeTracker.Clear();
         var stored = await context.OpmsTargets.SingleAsync();

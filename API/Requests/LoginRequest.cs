@@ -233,7 +233,24 @@ public record SaveTargetPeriodValueRequest(
 {
     public Guid? OpmsUnitPublicId { get; init; }
     public Guid? PerformanceDirectionPublicId { get; init; }
+    public SaveRatioDefinitionRequest? RatioDefinition { get; init; }
 }
+
+public sealed record SaveRatioDefinitionRequest(
+    byte RatioSegmentCount,
+    Guid RatioComparisonMethodPublicId,
+    SaveRatioSegmentRequest[] Segments)
+{
+    public string? RowVersion { get; init; }
+}
+
+public sealed record SaveRatioSegmentRequest(
+    byte SegmentPosition,
+    string SegmentLabel,
+    byte? DecimalPlaces,
+    decimal? MinValue,
+    decimal? MaxValue,
+    string? UnitDescription);
 
 public record SaveOpmsSubmissionRequest(
     Guid OpmsTargetPublicId,

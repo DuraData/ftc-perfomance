@@ -8,8 +8,9 @@ import {
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { PerformanceConfigurationCatalogueDto, PerformancePeriodTargetDto } from '../../types';
+import type { PerformanceConfigurationCatalogueDto, PerformancePeriodTargetDto, SaveRatioDefinitionPayload } from '../../types';
 import { Input, Select, Textarea } from '../common/Form';
+import { PerformanceValueInput } from '../submissions/PerformanceValueInput';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { Badge, Button, Card } from '../ui';
 import { RevisionHistoryRegister } from './RevisionHistoryRegister';
@@ -37,6 +38,10 @@ type EditorState = {
   reason: string;
   approvalReference: string;
   effectiveAt: string;
+  ratioSegmentCount: number;
+  ratioComparisonMethodPublicId: string;
+  ratioDefinitionRowVersion: string;
+  ratioSegments: Array<{ segmentPosition: number; segmentLabel: string; decimalPlaces: number; minValue: number | null; maxValue: number | null; unitDescription: string }>;
 };
 
 type PeriodTarget = PerformancePeriodTargetDto & { periodName: string };
@@ -48,8 +53,24 @@ const blank = (configuration?: PerformanceConfigurationCatalogueDto): EditorStat
   reportingPeriodPublicId: '', unitKind: unit?.engineUnitKind ?? 2, direction: direction?.engineDirection ?? 1,
   opmsUnitPublicId: unit?.publicId ?? '', performanceDirectionPublicId: direction?.publicId ?? '', targetValue: '', budgetValue: '', description: '',
   isActive: true, isTargetRevised: false, isBudgetRevised: false, reason: '', approvalReference: '', effectiveAt: new Date().toISOString().slice(0, 16),
+  ratioSegmentCount: 2,
+  ratioComparisonMethodPublicId: configuration?.ratioComparisonMethods?.find(item => item.code === 'NORMALIZED_RATIO')?.publicId
+    ?? configuration?.ratioComparisonMethods?.[0]?.publicId ?? '',
+  ratioDefinitionRowVersion: '',
+  ratioSegments: defaultRatioSegments(2),
   });
 };
+
+function defaultRatioSegments(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    segmentPosition: index + 1,
+    segmentLabel: `Segment ${index + 1}`,
+    decimalPlaces: 6,
+    minValue: 0,
+    maxValue: null,
+    unitDescription: '',
+  }));
+}
 
 export function PerformancePeriodTargetEditor({ kind, targetPublicId }: { kind: 1 | 2; targetPublicId: string }) {
   const { pushToast } = useApp();
@@ -108,6 +129,19 @@ export function PerformancePeriodTargetEditor({ kind, targetPublicId }: { kind: 
       description: row.description ?? '', isActive: row.isActive,
       isTargetRevised: row.isTargetRevised, isBudgetRevised: row.isBudgetRevised,
       reason: '', approvalReference: '', effectiveAt: new Date().toISOString().slice(0, 16),
+      ratioSegmentCount: row.ratioDefinition?.ratioSegmentCount ?? 2,
+      ratioComparisonMethodPublicId: row.ratioDefinition?.ratioComparisonMethodPublicId
+        ?? configuration?.ratioComparisonMethods?.find(item => item.code === 'NORMALIZED_RATIO')?.publicId
+        ?? configuration?.ratioComparisonMethods?.[0]?.publicId ?? '',
+      ratioDefinitionRowVersion: row.ratioDefinition?.rowVersion ?? '',
+      ratioSegments: row.ratioDefinition?.segments.map(item => ({
+        segmentPosition: item.segmentPosition,
+        segmentLabel: item.segmentLabel,
+        decimalPlaces: item.decimalPlaces ?? 6,
+        minValue: item.minValue ?? 0,
+        maxValue: item.maxValue ?? null,
+        unitDescription: item.unitDescription ?? '',
+      })) ?? defaultRatioSegments(2),
     });
   };
 
@@ -115,7 +149,19 @@ export function PerformancePeriodTargetEditor({ kind, targetPublicId }: { kind: 
     if (!form.targetValue.trim() || (!editing && !form.reportingPeriodPublicId) || !form.opmsUnitPublicId || !form.performanceDirectionPublicId) { setError('Reporting period, OPMS unit, performance direction and target value are required.'); return; }
     if (editing && (!form.reason.trim() || !form.approvalReference.trim())) { setError('A revision reason and approval reference are required.'); return; }
     setBusy(true); setError('');
-    const common = { unitKind: form.unitKind, direction: form.direction, opmsUnitPublicId: form.opmsUnitPublicId, performanceDirectionPublicId: form.performanceDirectionPublicId, targetValue: form.targetValue.trim(), budgetValue: form.budgetValue ? Number(form.budgetValue) : undefined, description: form.description.trim() || undefined };
+    const selectedUnit = configuration?.opmsUnits.find(item => item.publicId === form.opmsUnitPublicId)
+      ?? configuration?.opmsUnits.find(item => item.engineUnitKind === form.unitKind);
+    let ratioDefinition: SaveRatioDefinitionPayload | null = null;
+    if (selectedUnit?.engineUnitKind === 8) {
+      if (!form.ratioComparisonMethodPublicId || form.ratioSegments.some(item => !item.segmentLabel.trim())) { setError('Ratio comparison method and every segment label are required.'); setBusy(false); return; }
+      ratioDefinition = {
+        ratioSegmentCount: form.ratioSegmentCount,
+        ratioComparisonMethodPublicId: form.ratioComparisonMethodPublicId,
+        rowVersion: form.ratioDefinitionRowVersion || null,
+        segments: form.ratioSegments.map(item => ({ ...item, segmentLabel: item.segmentLabel.trim(), unitDescription: item.unitDescription.trim() || null })),
+      };
+    }
+    const common = { unitKind: form.unitKind, direction: form.direction, opmsUnitPublicId: form.opmsUnitPublicId, performanceDirectionPublicId: form.performanceDirectionPublicId, targetValue: form.targetValue.trim(), budgetValue: form.budgetValue ? Number(form.budgetValue) : undefined, description: form.description.trim() || undefined, ratioDefinition };
     const result = editing
       ? await revisePerformancePeriodTarget(editing.publicId, { ...common, isTargetRevised: form.isTargetRevised, isBudgetRevised: form.isBudgetRevised, isActive: form.isActive, reason: form.reason.trim(), approvalReference: form.approvalReference.trim(), effectiveAt: new Date(form.effectiveAt).toISOString(), rowVersion: editing.rowVersion })
       : await createPerformancePeriodTarget({ ...common, targetKind: kind, targetPublicId, reportingPeriodPublicId: form.reportingPeriodPublicId });
@@ -128,6 +174,15 @@ export function PerformancePeriodTargetEditor({ kind, targetPublicId }: { kind: 
 
   const unitOptions = configuration?.opmsUnits.map(item => ({ value: item.publicId, label: `${item.name}${item.symbol ? ` (${item.symbol})` : ''}` })) ?? [];
   const directionOptions = configuration?.performanceDirections.map(item => ({ value: item.publicId, label: item.name })) ?? [];
+  const ratioMethodOptions = configuration?.ratioComparisonMethods?.map(item => ({ value: item.publicId, label: item.name })) ?? [];
+  const selectedUnit = configuration?.opmsUnits.find(item => item.publicId === form.opmsUnitPublicId)
+    ?? configuration?.opmsUnits.find(item => item.engineUnitKind === form.unitKind);
+  const targetValueConfiguration = selectedUnit ? {
+    ...selectedUnit,
+    componentCount: selectedUnit.engineUnitKind === 8 ? form.ratioSegmentCount : null,
+    ratioComparisonMethodCode: configuration?.ratioComparisonMethods?.find(item => item.publicId === form.ratioComparisonMethodPublicId)?.code,
+    segments: form.ratioSegments.map(item => ({ position: item.segmentPosition, label: item.segmentLabel || `Segment ${item.segmentPosition}`, decimalPlaces: item.decimalPlaces, minValue: item.minValue, maxValue: item.maxValue, unitDescription: item.unitDescription || null })),
+  } : undefined;
   const unitLabel = (row: PerformancePeriodTargetDto, original = false) => {
     const publicId = original ? row.originalOpmsUnitPublicId : row.opmsUnitPublicId;
     const code = original ? row.originalOpmsUnitCode : row.opmsUnitCode;
@@ -152,7 +207,7 @@ export function PerformancePeriodTargetEditor({ kind, targetPublicId }: { kind: 
         {rows.map(row => <div key={row.publicId} className="rounded-lg border border-secondary-200 bg-white p-3 dark:border-secondary-700 dark:bg-secondary-900"><div className="flex items-center justify-between"><strong>{row.periodCode}</strong><div className="flex gap-1">{(row.isTargetRevised || row.isBudgetRevised) && <Badge variant="warning">Revised</Badge>}<Badge variant={row.isActive ? 'success' : 'default'}>{row.isActive ? 'Active' : 'Inactive'}</Badge></div></div><p className="mt-2 text-lg font-semibold">{canReadTarget && row.targetValue != null ? row.targetValue : 'Restricted'}</p><p className="text-xs text-secondary-500">{unitLabel(row)} · {directionLabel(row)}</p>{row.isTargetRevised && <p className="mt-1 text-xs text-secondary-500">Original: {canReadTarget && row.originalTargetValue != null ? row.originalTargetValue : 'Restricted'} ({unitLabel(row, true)})</p>}{canReadBudget && row.budgetValue != null && <p className="mt-2 text-xs text-secondary-600">Budget: {row.budgetValue}</p>}{canReadDescription && row.description && <p className="mt-2 text-xs text-secondary-600">{row.description}</p>}{canRevise && canReadTarget && <Button className="mt-3" size="sm" variant="outline" icon={<History className="h-4 w-4" />} onClick={() => void startRevision(row)}>Revise</Button>}</div>)}
         {!rows.length && <p className="text-sm text-secondary-500">{busy ? 'Loading canonical values…' : 'No canonical period targets have been configured.'}</p>}
       </div>
-      {(editing || creating) && <div className="mt-5 rounded-lg border border-secondary-200 bg-white p-4 dark:border-secondary-700 dark:bg-secondary-900"><h3 className="font-medium">{editing ? `Record approved ${editing.periodCode} revision` : 'Add reporting-period target'}</h3><div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3"><CalendarMasterPicker kind="reporting-period" label="Reporting period" value={form.reportingPeriodPublicId} disabled={!!editing} selectedLabel={editing ? `${editing.periodCode} · ${editing.periodName}` : undefined} excludedValues={editing ? [] : rows.map(row => row.reportingPeriodPublicId)} onChange={value => setValue('reportingPeriodPublicId', value)} required />{editing && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isTargetRevised} onChange={event => setValue('isTargetRevised', event.target.checked)} /> Revised target and unit</label>}<Select label={editing ? 'Revised OPMS unit' : 'OPMS unit'} value={form.opmsUnitPublicId} disabled={!!editing && !form.isTargetRevised} options={unitOptions} onChange={event => { const unit = configuration?.opmsUnits.find(item => item.publicId === event.target.value); const direction = configuration?.performanceDirections.find(item => item.publicId === unit?.defaultPerformanceDirectionPublicId); setForm(current => ({ ...current, opmsUnitPublicId: event.target.value, unitKind: unit?.engineUnitKind ?? current.unitKind, performanceDirectionPublicId: direction?.publicId ?? current.performanceDirectionPublicId, direction: direction?.engineDirection ?? current.direction })); }} /><Select label="Performance direction" value={form.performanceDirectionPublicId} options={directionOptions} onChange={event => { const direction = configuration?.performanceDirections.find(item => item.publicId === event.target.value); setForm(current => ({ ...current, performanceDirectionPublicId: event.target.value, direction: direction?.engineDirection ?? current.direction })); }} /><Input label={editing ? 'Revised target value' : 'Target value'} value={form.targetValue} disabled={!!editing && !form.isTargetRevised} onChange={event => setValue('targetValue', event.target.value)} required={!editing || form.isTargetRevised} />{editing && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isBudgetRevised} onChange={event => setValue('isBudgetRevised', event.target.checked)} /> Revised budget</label>}<Input label={editing ? 'Revised budget value' : 'Budget value'} type="number" min="0" step="0.01" disabled={!!editing && !form.isBudgetRevised} value={form.budgetValue} onChange={event => setValue('budgetValue', event.target.value)} /><Textarea label="Description" value={form.description} onChange={event => setValue('description', event.target.value)} />{editing && <><Input label="External approval reference" value={form.approvalReference} onChange={event => setValue('approvalReference', event.target.value)} required /><Input label="Effective at" type="datetime-local" value={form.effectiveAt} onChange={event => setValue('effectiveAt', event.target.value)} required /><Textarea label="Revision reason" value={form.reason} onChange={event => setValue('reason', event.target.value)} required /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={event => setValue('isActive', event.target.checked)} /> Active value</label></>}</div><div className="mt-4"><Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={() => void save()} disabled={busy}>{editing ? 'Record revision' : 'Create target value'}</Button></div>{editing && <RevisionHistoryRegister key={editing.publicId} source="period" kind={kind === 1 ? 'opms' : 'ipms'} parentId={editing.publicId} title="Revision history" emptyMessage="No period-target revisions recorded." refreshKey={historyRefresh} compact />}</div>}
+      {(editing || creating) && <div className="mt-5 rounded-lg border border-secondary-200 bg-white p-4 dark:border-secondary-700 dark:bg-secondary-900"><h3 className="font-medium">{editing ? `Record approved ${editing.periodCode} revision` : 'Add reporting-period target'}</h3><div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3"><CalendarMasterPicker kind="reporting-period" label="Reporting period" value={form.reportingPeriodPublicId} disabled={!!editing} selectedLabel={editing ? `${editing.periodCode} · ${editing.periodName}` : undefined} excludedValues={editing ? [] : rows.map(row => row.reportingPeriodPublicId)} onChange={value => setValue('reportingPeriodPublicId', value)} required />{editing && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isTargetRevised} onChange={event => setValue('isTargetRevised', event.target.checked)} /> Revised target and unit</label>}<Select label={editing ? 'Revised OPMS unit' : 'OPMS unit'} value={form.opmsUnitPublicId} disabled={!!editing && !form.isTargetRevised} options={unitOptions} onChange={event => { const unit = configuration?.opmsUnits.find(item => item.publicId === event.target.value); const direction = configuration?.performanceDirections.find(item => item.publicId === unit?.defaultPerformanceDirectionPublicId); setForm(current => ({ ...current, opmsUnitPublicId: event.target.value, unitKind: unit?.engineUnitKind ?? current.unitKind, performanceDirectionPublicId: direction?.publicId ?? current.performanceDirectionPublicId, direction: direction?.engineDirection ?? current.direction })); }} /><Select label="Performance direction" value={form.performanceDirectionPublicId} options={directionOptions} onChange={event => { const direction = configuration?.performanceDirections.find(item => item.publicId === event.target.value); setForm(current => ({ ...current, performanceDirectionPublicId: event.target.value, direction: direction?.engineDirection ?? current.direction })); }} />{selectedUnit?.engineUnitKind === 8 && <><Select label="Ratio segment count" value={String(form.ratioSegmentCount)} options={[2, 3, 4].map(value => ({ value: String(value), label: `${value} segments` }))} onChange={event => { const count = Number(event.target.value); const manual = configuration?.ratioComparisonMethods?.find(item => item.code === 'MANUAL'); setForm(current => ({ ...current, ratioSegmentCount: count, ratioSegments: Array.from({ length: count }, (_, index) => current.ratioSegments[index] ?? defaultRatioSegments(count)[index]), ratioComparisonMethodPublicId: count === 2 ? current.ratioComparisonMethodPublicId : (configuration?.ratioComparisonMethods?.find(item => item.publicId === current.ratioComparisonMethodPublicId)?.code === 'NORMALIZED_RATIO' ? manual?.publicId ?? current.ratioComparisonMethodPublicId : current.ratioComparisonMethodPublicId) })); }} /><Select label="Ratio comparison method" value={form.ratioComparisonMethodPublicId} options={ratioMethodOptions} onChange={event => setValue('ratioComparisonMethodPublicId', event.target.value)} />{form.ratioSegments.map((segment, index) => <div key={segment.segmentPosition} className="rounded border border-secondary-200 p-3 dark:border-secondary-700"><Input label={`Segment ${segment.segmentPosition} label`} value={segment.segmentLabel} onChange={event => setForm(current => ({ ...current, ratioSegments: current.ratioSegments.map((item, itemIndex) => itemIndex === index ? { ...item, segmentLabel: event.target.value } : item) }))} required /><Input label="Unit or description" value={segment.unitDescription} onChange={event => setForm(current => ({ ...current, ratioSegments: current.ratioSegments.map((item, itemIndex) => itemIndex === index ? { ...item, unitDescription: event.target.value } : item) }))} /></div>)}</>}<PerformanceValueInput configuration={targetValueConfiguration} label={editing ? 'Revised target value' : 'Target value'} value={form.targetValue} disabled={!!editing && !form.isTargetRevised} onChange={value => setValue('targetValue', value)} required={!editing || form.isTargetRevised} />{editing && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isBudgetRevised} onChange={event => setValue('isBudgetRevised', event.target.checked)} /> Revised budget</label>}<Input label={editing ? 'Revised budget value' : 'Budget value'} type="number" min="0" step="0.01" disabled={!!editing && !form.isBudgetRevised} value={form.budgetValue} onChange={event => setValue('budgetValue', event.target.value)} /><Textarea label="Description" value={form.description} onChange={event => setValue('description', event.target.value)} />{editing && <><Input label="External approval reference" value={form.approvalReference} onChange={event => setValue('approvalReference', event.target.value)} required /><Input label="Effective at" type="datetime-local" value={form.effectiveAt} onChange={event => setValue('effectiveAt', event.target.value)} required /><Textarea label="Revision reason" value={form.reason} onChange={event => setValue('reason', event.target.value)} required /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.isActive} onChange={event => setValue('isActive', event.target.checked)} /> Active value</label></>}</div><div className="mt-4"><Button variant="primary" icon={<Save className="h-4 w-4" />} onClick={() => void save()} disabled={busy}>{editing ? 'Record revision' : 'Create target value'}</Button></div>{editing && <RevisionHistoryRegister key={editing.publicId} source="period" kind={kind === 1 ? 'opms' : 'ipms'} parentId={editing.publicId} title="Revision history" emptyMessage="No period-target revisions recorded." refreshKey={historyRefresh} compact />}</div>}
     </Card>
   );
 }

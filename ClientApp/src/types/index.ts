@@ -1777,6 +1777,39 @@ export interface PerformancePeriodTargetDto {
   isBudgetRevised: boolean;
   revisedBudgetValue?: number | null;
   valueConfiguration?: PerformanceValueConfiguration | null;
+  ratioDefinition?: RatioDefinitionDto | null;
+}
+
+export interface RatioSegmentConfiguration {
+  position: number;
+  label: string;
+  decimalPlaces?: number | null;
+  minValue?: number | null;
+  maxValue?: number | null;
+  unitDescription?: string | null;
+}
+
+export interface RatioSegmentDto {
+  publicId: string;
+  segmentLabel: string;
+  segmentPosition: number;
+  decimalPlaces?: number | null;
+  minValue?: number | null;
+  maxValue?: number | null;
+  unitDescription?: string | null;
+  isActive: boolean;
+  rowVersion: string;
+}
+
+export interface RatioDefinitionDto {
+  publicId: string;
+  ratioSegmentCount: number;
+  ratioComparisonMethodPublicId: string;
+  ratioComparisonMethodCode: string;
+  ratioComparisonMethodName: string;
+  isActive: boolean;
+  rowVersion: string;
+  segments: RatioSegmentDto[];
 }
 
 export interface PerformanceValueConfiguration {
@@ -1794,6 +1827,8 @@ export interface PerformanceValueConfiguration {
   isQualitative: boolean;
   engineUnitKind: number;
   componentCount?: number | null;
+  ratioComparisonMethodCode?: string | null;
+  segments?: RatioSegmentConfiguration[];
 }
 
 export interface OpmsUnitDefinitionDto {
@@ -1826,6 +1861,16 @@ export interface PerformanceDirectionDefinitionDto {
 export interface PerformanceConfigurationCatalogueDto {
   opmsUnits: OpmsUnitDefinitionDto[];
   performanceDirections: PerformanceDirectionDefinitionDto[];
+  ratioComparisonMethods?: RatioComparisonMethodDefinitionDto[];
+}
+
+export interface RatioComparisonMethodDefinitionDto {
+  publicId: string;
+  code: string;
+  name: string;
+  description: string;
+  supportsAutoCalculation: boolean;
+  isActive: boolean;
 }
 
 export interface PerformanceTargetRevisionDto {
@@ -3097,6 +3142,21 @@ export interface SaveTargetPeriodValuePayload {
   targetValue: string;
   budgetValue?: number | null;
   description?: string | null;
+  ratioDefinition?: SaveRatioDefinitionPayload | null;
+}
+
+export interface SaveRatioDefinitionPayload {
+  ratioSegmentCount: number;
+  ratioComparisonMethodPublicId: string;
+  rowVersion?: string | null;
+  segments: Array<{
+    segmentPosition: number;
+    segmentLabel: string;
+    decimalPlaces?: number | null;
+    minValue?: number | null;
+    maxValue?: number | null;
+    unitDescription?: string | null;
+  }>;
 }
 
 export interface SaveOpmsSubmissionPayload {

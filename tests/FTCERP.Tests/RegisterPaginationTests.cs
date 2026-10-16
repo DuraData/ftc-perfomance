@@ -95,7 +95,7 @@ public sealed class RegisterPaginationTests
         response.ValueConfiguration.Code.Should().Be("PERCENT");
         response.ValueConfiguration.InputControlType.Should().Be("NUMERIC");
         response.ValueConfiguration.MaxValue.Should().Be(100);
-        response.ValueConfiguration.EngineUnitKind.Should().Be(PerformanceUnitKind.PercentageBased);
+        response.ValueConfiguration.EngineUnitKind.Should().Be((int)PerformanceUnitKind.PercentageBased);
         response.Quarter.Should().Be("ANNUAL");
     }
 

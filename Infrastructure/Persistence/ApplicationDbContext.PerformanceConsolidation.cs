@@ -139,7 +139,7 @@ public partial class ApplicationDbContext
         Unit(2, "PERCENT", "Percentage", "NUMERIC", "DECIMAL", "%", 2, 0, 100, true, 1, false, false, PerformanceUnitKind.PercentageBased),
         Unit(3, "FINANCIAL", "Financial", "CURRENCY", "DECIMAL", "R", 2, 0, null, true, 1, false, false, PerformanceUnitKind.Financial),
         Unit(4, "DATE", "Date", "DATE", "DATE", null, null, null, null, true, 6, false, false, PerformanceUnitKind.Date),
-        Unit(5, "RATIO", "Ratio", "RATIO", "JSON", null, 6, 0, null, true, 1, true, false, PerformanceUnitKind.Ratios),
+        Unit(5, "RATIO", "Ratio", "RATIO", "TEXT", null, 6, 0, null, true, 1, true, false, PerformanceUnitKind.Ratios),
         Unit(6, "TIME", "Time", "NUMERIC_UNIT", "DECIMAL", null, 2, 0, null, true, 2, true, false, PerformanceUnitKind.TimeBased),
         Unit(7, "AREA", "Area", "NUMERIC_UNIT", "DECIMAL", null, 2, 0, null, true, 1, true, false, PerformanceUnitKind.AreaBased),
         Unit(8, "VOLUME", "Volume", "NUMERIC_UNIT", "DECIMAL", null, 2, 0, null, true, 1, true, false, PerformanceUnitKind.VolumeBased),

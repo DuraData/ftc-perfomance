@@ -8669,7 +8669,7 @@ namespace FTCERP.Host.Migrations
                             RequiresComponentUi = true,
                             RowVersion = new byte[0],
                             SupportsAutoVariance = true,
-                            ValueDataType = "JSON"
+                            ValueDataType = "TEXT"
                         },
                         new
                         {
@@ -9271,6 +9271,142 @@ namespace FTCERP.Host.Migrations
                     b.ToTable("PerformancePeriodTargets", t =>
                         {
                             t.HasCheckConstraint("CK_PerformancePeriodTargets_OneKpi", "CASE WHEN [OpmsTargetId] IS NULL THEN 0 ELSE 1 END + CASE WHEN [IpmsTargetId] IS NULL THEN 0 ELSE 1 END = 1");
+                        });
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRatioDefinition", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("ModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ModifiedByUserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PerformancePeriodTargetId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("RatioComparisonMethodId")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte>("RatioSegmentCount")
+                        .HasColumnType("tinyint");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("ModifiedByUserId");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PerformancePeriodTargetId")
+                        .IsUnique();
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("RatioComparisonMethodId");
+
+                    b.ToTable("PerformanceRatioDefinitions", t =>
+                        {
+                            t.HasCheckConstraint("CK_PerformanceRatioDefinitions_SegmentCount", "[RatioSegmentCount] BETWEEN 2 AND 4");
+                        });
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRatioSegment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<byte?>("DecimalPlaces")
+                        .HasColumnType("tinyint");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("MaxValue")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("decimal(19,6)");
+
+                    b.Property<decimal?>("MinValue")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("decimal(19,6)");
+
+                    b.Property<long>("MunicipalityId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("RatioDefinitionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SegmentLabel")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<byte>("SegmentPosition")
+                        .HasColumnType("tinyint");
+
+                    b.Property<string>("UnitDescription")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MunicipalityId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("RatioDefinitionId", "SegmentPosition")
+                        .IsUnique();
+
+                    b.ToTable("PerformanceRatioSegments", t =>
+                        {
+                            t.HasCheckConstraint("CK_PerformanceRatioSegments_DecimalPlaces", "[DecimalPlaces] IS NULL OR [DecimalPlaces] BETWEEN 0 AND 6");
+
+                            t.HasCheckConstraint("CK_PerformanceRatioSegments_Position", "[SegmentPosition] BETWEEN 1 AND 4");
+
+                            t.HasCheckConstraint("CK_PerformanceRatioSegments_Range", "[MinValue] IS NULL OR [MaxValue] IS NULL OR [MinValue] <= [MaxValue]");
                         });
                 });
 
@@ -10098,6 +10234,101 @@ namespace FTCERP.Host.Migrations
                         .IsUnique();
 
                     b.ToTable("RatingSchemeValues");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.RatioComparisonMethodDefinition", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<bool>("SupportsAutoCalculation")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.ToTable("RatioComparisonMethods");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1L,
+                            Code = "NORMALIZED_RATIO",
+                            Description = "Normalize a two-segment ratio and apply the performance direction.",
+                            IsActive = true,
+                            Name = "Normalized ratio",
+                            PublicId = new Guid("30000000-0000-0000-0000-000000000001"),
+                            RowVersion = new byte[0],
+                            SupportsAutoCalculation = true
+                        },
+                        new
+                        {
+                            Id = 2L,
+                            Code = "EXACT_MATCH",
+                            Description = "Every actual segment must match its target segment.",
+                            IsActive = true,
+                            Name = "Exact match",
+                            PublicId = new Guid("30000000-0000-0000-0000-000000000002"),
+                            RowVersion = new byte[0],
+                            SupportsAutoCalculation = true
+                        },
+                        new
+                        {
+                            Id = 3L,
+                            Code = "SEGMENT_BY_SEGMENT",
+                            Description = "Compare configured segments independently.",
+                            IsActive = true,
+                            Name = "Segment by segment",
+                            PublicId = new Guid("30000000-0000-0000-0000-000000000003"),
+                            RowVersion = new byte[0],
+                            SupportsAutoCalculation = true
+                        },
+                        new
+                        {
+                            Id = 4L,
+                            Code = "MANUAL",
+                            Description = "Do not infer automatic ratio achievement or variance.",
+                            IsActive = true,
+                            Name = "Manual",
+                            PublicId = new Guid("30000000-0000-0000-0000-000000000004"),
+                            RowVersion = new byte[0],
+                            SupportsAutoCalculation = false
+                        });
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.RefreshToken", b =>
@@ -16289,6 +16520,67 @@ namespace FTCERP.Host.Migrations
                     b.Navigation("RevisedOpmsUnit");
                 });
 
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRatioDefinition", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.ApplicationUser", "ModifiedByUser")
+                        .WithMany()
+                        .HasForeignKey("ModifiedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.PerformancePeriodTarget", "PerformancePeriodTarget")
+                        .WithOne("RatioDefinition")
+                        .HasForeignKey("FTCERP.Host.Domain.Entities.PerformanceRatioDefinition", "PerformancePeriodTargetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.RatioComparisonMethodDefinition", "RatioComparisonMethod")
+                        .WithMany()
+                        .HasForeignKey("RatioComparisonMethodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("ModifiedByUser");
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("PerformancePeriodTarget");
+
+                    b.Navigation("RatioComparisonMethod");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRatioSegment", b =>
+                {
+                    b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
+                        .WithMany()
+                        .HasForeignKey("MunicipalityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FTCERP.Host.Domain.Entities.PerformanceRatioDefinition", "RatioDefinition")
+                        .WithMany("Segments")
+                        .HasForeignKey("RatioDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Municipality");
+
+                    b.Navigation("RatioDefinition");
+                });
+
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRfi", b =>
                 {
                     b.HasOne("FTCERP.Host.Domain.Entities.Municipality", "Municipality")
@@ -18054,7 +18346,14 @@ namespace FTCERP.Host.Migrations
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformancePeriodTarget", b =>
                 {
+                    b.Navigation("RatioDefinition");
+
                     b.Navigation("Revisions");
+                });
+
+            modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRatioDefinition", b =>
+                {
+                    b.Navigation("Segments");
                 });
 
             modelBuilder.Entity("FTCERP.Host.Domain.Entities.PerformanceRfi", b =>

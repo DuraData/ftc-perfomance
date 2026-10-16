@@ -30,6 +30,11 @@ describe('PerformancePeriodTargetEditor', () => {
       opmsUnits: [
         { publicId: 'unit-number', code: 'NUMBER', name: 'Number', inputControlType: 'NUMERIC', valueDataType: 'DECIMAL', decimalPlaces: 2, minValue: 0, supportsAutoVariance: true, defaultPerformanceDirectionPublicId: 'direction-target-or-higher', requiresComponentUi: false, isQualitative: false, engineUnitKind: 2, isActive: true },
         { publicId: 'unit-date', code: 'DATE', name: 'Date', inputControlType: 'DATE', valueDataType: 'DATE', supportsAutoVariance: true, defaultPerformanceDirectionPublicId: 'direction-on-or-before', requiresComponentUi: false, isQualitative: false, engineUnitKind: 10, isActive: true },
+        { publicId: 'unit-ratio', code: 'RATIO', name: 'Ratio', inputControlType: 'RATIO', valueDataType: 'TEXT', decimalPlaces: 6, minValue: 0, supportsAutoVariance: true, defaultPerformanceDirectionPublicId: 'direction-target-or-higher', requiresComponentUi: true, isQualitative: false, engineUnitKind: 8, isActive: true },
+      ],
+      ratioComparisonMethods: [
+        { publicId: 'ratio-normalized', code: 'NORMALIZED_RATIO', name: 'Normalized ratio', description: 'Normalize two segments.', supportsAutoCalculation: true, isActive: true },
+        { publicId: 'ratio-manual', code: 'MANUAL', name: 'Manual', description: 'Manual assessment.', supportsAutoCalculation: false, isActive: true },
       ],
       performanceDirections: [
         { publicId: 'direction-target-or-higher', code: 'TARGET_OR_HIGHER', name: 'Target or higher', description: 'At least target.', engineDirection: 1, isActive: true },
@@ -46,6 +51,7 @@ describe('PerformancePeriodTargetEditor', () => {
     api.getPerformanceTargetRevisionsPage.mockResolvedValue({ success: true, data: { items: [
       { publicId: 'revision-1', fieldName: 'TargetValue', originalValue: '20', revisedValue: '25', reason: 'Council adjustment', approvalReference: 'COUNCIL-1', effectiveAt: '2026-10-01T00:00:00Z', revisedByUserPublicId: 'user-public-id', revisedByName: 'Revision User', recordedAt: '2026-10-01T00:00:00Z' },
     ], page: 1, pageSize: 10, totalCount: 1, totalPages: 1 } });
+    api.revisePerformancePeriodTarget.mockResolvedValue({ success: true, data: {} });
   });
 
   it('loads canonical values and opens governed revision history', async () => {
@@ -84,5 +90,41 @@ describe('PerformancePeriodTargetEditor', () => {
     expect(screen.queryByText('Households connected')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Add period/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Revise/i })).not.toBeInTheDocument();
+  });
+
+  it('edits governed ratio labels and sends the definition row version', async () => {
+    api.getPerformancePeriodTargets.mockResolvedValue({ success: true, data: [{
+      publicId: 'ratio-value', reportingPeriodPublicId: 'period-q1', periodCode: 'Q1', periodType: 1,
+      unitKind: 8, direction: 1, opmsUnitPublicId: 'unit-ratio', opmsUnitCode: 'RATIO',
+      performanceDirectionPublicId: 'direction-target-or-higher', performanceDirectionCode: 'TARGET_OR_HIGHER',
+      targetValue: '4:3000', originalUnitKind: 8, originalOpmsUnitPublicId: 'unit-ratio', originalOpmsUnitCode: 'RATIO',
+      originalTargetValue: '4:3000', isTargetRevised: false, isBudgetRevised: false, isActive: true, rowVersion: 'AQ==',
+      ratioDefinition: {
+        publicId: 'ratio-definition', ratioSegmentCount: 2, ratioComparisonMethodPublicId: 'ratio-normalized',
+        ratioComparisonMethodCode: 'NORMALIZED_RATIO', ratioComparisonMethodName: 'Normalized ratio', isActive: true, rowVersion: 'Ag==',
+        segments: [
+          { publicId: 'segment-1', segmentPosition: 1, segmentLabel: 'Officers', decimalPlaces: 0, minValue: 0, isActive: true, rowVersion: 'Aw==' },
+          { publicId: 'segment-2', segmentPosition: 2, segmentLabel: 'Population', decimalPlaces: 0, minValue: 1, isActive: true, rowVersion: 'BA==' },
+        ],
+      },
+    }] });
+
+    render(<PerformancePeriodTargetEditor kind={1} targetPublicId="target-public-id" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Revise/i }));
+    expect(await screen.findByRole('spinbutton', { name: 'Revised target value Officers' })).toHaveValue(4);
+    expect(screen.getByRole('spinbutton', { name: 'Revised target value Population' })).toHaveValue(3000);
+    fireEvent.change(screen.getByLabelText(/Segment 1 label/i), { target: { value: 'Municipal officers' } });
+    fireEvent.change(screen.getByLabelText(/approval reference/i), { target: { value: 'COUNCIL-RATIO-1' } });
+    fireEvent.change(screen.getByLabelText(/revision reason/i), { target: { value: 'Clarify ratio labels' } });
+    fireEvent.click(screen.getByRole('button', { name: /Record revision/i }));
+
+    await waitFor(() => expect(api.revisePerformancePeriodTarget).toHaveBeenCalledWith('ratio-value', expect.objectContaining({
+      ratioDefinition: expect.objectContaining({
+        ratioSegmentCount: 2,
+        ratioComparisonMethodPublicId: 'ratio-normalized',
+        rowVersion: 'Ag==',
+        segments: expect.arrayContaining([expect.objectContaining({ segmentPosition: 1, segmentLabel: 'Municipal officers' })]),
+      }),
+    })));
   });
 });
