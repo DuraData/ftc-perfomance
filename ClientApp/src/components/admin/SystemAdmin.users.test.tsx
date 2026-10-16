@@ -20,7 +20,7 @@ vi.mock('../../api/api', async importOriginal => ({
   ...api,
 }));
 vi.mock('../../context/AppContext', () => ({
-  useApp: () => ({ permissions: [], pushToast: vi.fn() }),
+  useApp: () => ({ permissions: [], pushToast: vi.fn(), currentMunicipalityPublicId: 'municipality-public' }),
 }));
 vi.mock('../../context/SecurityContext', () => ({
   useSecurity: () => ({
@@ -101,5 +101,61 @@ describe('User administration member permissions', () => {
 
     await waitFor(() => expect(api.deactivateUser).toHaveBeenCalledWith(
       '11111111-1111-1111-1111-111111111111', 'AQID', 'Approved temporary account suspension'));
+  });
+
+  it('marks managed-account fields so saved administrator credentials are not offered to the new user form', async () => {
+    security.enabled = true;
+    api.getUsersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getSecurityRolesPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+
+    render(<AdminUsersPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add User' }));
+
+    expect(screen.getByLabelText('First Name*')).toHaveAttribute('autocomplete', 'off');
+    expect(screen.getByLabelText('Last Name*')).toHaveAttribute('autocomplete', 'off');
+    expect(screen.getByLabelText('Email*')).toHaveAttribute('autocomplete', 'off');
+    expect(screen.getByLabelText('Phone Number')).toHaveAttribute('autocomplete', 'off');
+    expect(screen.getByLabelText('Phone Number')).toHaveAttribute('type', 'tel');
+    expect(screen.getByLabelText('Password*')).toHaveAttribute('autocomplete', 'new-password');
+  });
+
+  it('scopes a new role assignment to the active municipality', async () => {
+    security.enabled = true;
+    api.getUsersPage.mockResolvedValue({
+      success: true,
+      data: { items: [{
+        user: {
+          publicId: '11111111-1111-1111-1111-111111111111', rowVersion: 'AQID', userName: 'governed@example.test',
+          firstName: 'Governed', lastName: 'User', fullName: 'Governed User', email: 'governed@example.test',
+          phoneNumber: null, isActive: true, mustChangePassword: false,
+        },
+        roles: [],
+      }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    api.getSecurityRolesPage.mockResolvedValue({
+      success: true,
+      data: { items: [{ publicId: 'role-public', name: 'Reviewer', isSystemRole: true }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    api.getSecurityUserRoles.mockResolvedValue({
+      success: true,
+      data: { userPublicId: '11111111-1111-1111-1111-111111111111', userName: 'Governed User', assignments: [] },
+    });
+    api.saveSecurityUserRoles.mockResolvedValue({ success: true, data: true });
+
+    render(<AdminUsersPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Roles' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Reviewer' }));
+    fireEvent.change(screen.getByRole('textbox', { name: /Governance reason/i }), { target: { value: 'Approved tenant role assignment' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(api.saveSecurityUserRoles).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      expect.anything(),
+      [expect.objectContaining({
+        rolePublicId: 'role-public',
+        municipalityPublicId: 'municipality-public',
+        effectiveFrom: expect.any(String),
+      })],
+      'Approved tenant role assignment'));
   });
 });

@@ -49,7 +49,7 @@ export function AdminUsersPage() {
   const canEditPhone = canEditField('USER', 'PhoneNumber');
   const canAssignRoles = canExecute('ROLE.ASSIGN');
   const canViewEffective = canExecute('SECURITY.VIEW_EFFECTIVE');
-  const { pushToast } = useApp();
+  const { pushToast, currentMunicipalityPublicId } = useApp();
   const [rows, setRows] = useState<AdminUserDetail[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
@@ -247,7 +247,11 @@ export function AdminUsersPage() {
         unitPublicId: existing.unitPublicId,
         effectiveFrom: existing.effectiveFrom,
         effectiveTo: existing.effectiveTo,
-      } : { rolePublicId };
+      } : {
+        rolePublicId,
+        municipalityPublicId: currentMunicipalityPublicId ?? undefined,
+        effectiveFrom: new Date().toISOString(),
+      };
     });
     const res = await saveSecurityUserRoles(selectedUserForRoles.user.publicId, currentRoleConfiguration, assignments, roleReason.trim());
     if (!res.success) {
@@ -371,12 +375,12 @@ export function AdminUsersPage() {
                 icon={<UserRound className="h-5 w-5" />}
               >
                 <FormRow cols={2}>
-                  <Input label="First Name" value={form.firstName} error={formErrors.firstName} onChange={(e) => setForm(prev => ({ ...prev, firstName: e.target.value }))} required />
-                  <Input label="Last Name" value={form.lastName} error={formErrors.lastName} onChange={(e) => setForm(prev => ({ ...prev, lastName: e.target.value }))} required />
+                  <Input label="First Name" name="managed-user-first-name" autoComplete="off" value={form.firstName} error={formErrors.firstName} onChange={(e) => setForm(prev => ({ ...prev, firstName: e.target.value }))} required />
+                  <Input label="Last Name" name="managed-user-last-name" autoComplete="off" value={form.lastName} error={formErrors.lastName} onChange={(e) => setForm(prev => ({ ...prev, lastName: e.target.value }))} required />
                 </FormRow>
                 <FormRow cols={2}>
-                  {(canReadEmail || !editing) && <Input label="Email" type="email" value={form.email} error={formErrors.email} onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))} required disabled={!!editing || !canEditField('USER', 'Email')} />}
-                  {canReadPhone && <Input label="Phone Number" value={form.phoneNumber} onChange={(e) => setForm(prev => ({ ...prev, phoneNumber: e.target.value }))} disabled={!canEditPhone} />}
+                  {(canReadEmail || !editing) && <Input label="Email" name="managed-user-email" type="email" autoComplete="off" value={form.email} error={formErrors.email} onChange={(e) => setForm(prev => ({ ...prev, email: e.target.value }))} required disabled={!!editing || !canEditField('USER', 'Email')} />}
+                  {canReadPhone && <Input label="Phone Number" name="managed-user-phone" type="tel" autoComplete="off" value={form.phoneNumber} onChange={(e) => setForm(prev => ({ ...prev, phoneNumber: e.target.value }))} disabled={!canEditPhone} />}
                 </FormRow>
               </FormPanel>
               <FormPanel
@@ -386,7 +390,7 @@ export function AdminUsersPage() {
               >
                 {!editing ? (
                   <>
-                    <Input label="Password" type="password" value={form.password} error={formErrors.password} onChange={(e) => setForm(prev => ({ ...prev, password: e.target.value }))} required />
+                    <Input label="Password" name="managed-user-new-password" type="password" autoComplete="new-password" value={form.password} error={formErrors.password} onChange={(e) => setForm(prev => ({ ...prev, password: e.target.value }))} required />
                     <div className="rounded-xl border border-secondary-200 bg-secondary-50 px-4 py-3 dark:border-secondary-700 dark:bg-secondary-800/60">
                       <Badge variant="default">Must change password on first login</Badge>
                     </div>
