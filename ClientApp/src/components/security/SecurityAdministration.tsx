@@ -150,7 +150,13 @@ export function SecurityAdministrationPage() {
       return;
     }
     const refreshed = await getRoleSecurityConfiguration(roleId);
-    if (refreshed.data) setRoleVersion(refreshed.data.roleRowVersion);
+    if (refreshed.data) {
+      const refreshedRoleVersion = refreshed.data.roleRowVersion;
+      setRoleVersion(refreshedRoleVersion);
+      setRoles(current => current.map(role => role.publicId === roleId
+        ? { ...role, rowVersion: refreshedRoleVersion }
+        : role));
+    }
     setPermissionReason('');
     setMessage('Security configuration saved and audited. Affected users must refresh their session.');
     setBusy(false);
@@ -308,12 +314,14 @@ export function SecurityAdministrationPage() {
           })}</div>
           <div className="mt-4 space-y-3">{assignmentDrafts.map((assignment, index) => {
             const role = roles.find(item => item.publicId === assignment.rolePublicId);
+            const persistedAssignment = userRoles.assignments.find(item => item.rolePublicId === assignment.rolePublicId);
+            const roleName = role?.name ?? persistedAssignment?.roleName ?? 'Assigned role';
             return <div key={assignment.rolePublicId} className="grid gap-2 rounded bg-gray-50 p-3 md:grid-cols-2 lg:grid-cols-5">
-              <div className="text-sm font-medium text-gray-800">{role?.name ?? assignment.rolePublicId}<div className="font-mono text-xs text-gray-500">{role?.roleCode}</div></div>
-              <OrganizationMasterPicker kind="department" label={`${role?.name} department`} value={assignment.departmentPublicId ?? ''} selectedLabel={assignment.departmentName} emptyLabel="All permitted departments" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, departmentPublicId: value || undefined, departmentName: option?.name, unitPublicId: undefined, unitName: undefined } : item))} />
-              <OrganizationMasterPicker kind="unit" label={`${role?.name} unit`} value={assignment.unitPublicId ?? ''} selectedLabel={assignment.unitName} departmentPublicId={assignment.departmentPublicId} emptyLabel="All permitted units" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, unitPublicId: value || undefined, unitName: option?.name } : item))} />
-              <label className="text-xs text-gray-600">Effective from<input aria-label={`${role?.name} effective from`} type="datetime-local" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={toLocalDateTime(assignment.effectiveFrom)} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, effectiveFrom: event.target.value } : item))} /></label>
-              <label className="text-xs text-gray-600">Effective to<input aria-label={`${role?.name} effective to`} type="datetime-local" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={toLocalDateTime(assignment.effectiveTo)} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, effectiveTo: event.target.value || undefined } : item))} /></label>
+              <div className="text-sm font-medium text-gray-800">{roleName}<div className="font-mono text-xs text-gray-500">{role?.roleCode}</div></div>
+              <OrganizationMasterPicker kind="department" label={`${roleName} department`} value={assignment.departmentPublicId ?? ''} selectedLabel={assignment.departmentName} emptyLabel="All permitted departments" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, departmentPublicId: value || undefined, departmentName: option?.name, unitPublicId: undefined, unitName: undefined } : item))} />
+              <OrganizationMasterPicker kind="unit" label={`${roleName} unit`} value={assignment.unitPublicId ?? ''} selectedLabel={assignment.unitName} departmentPublicId={assignment.departmentPublicId} emptyLabel="All permitted units" onChange={(value, option) => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, unitPublicId: value || undefined, unitName: option?.name } : item))} />
+              <label className="text-xs text-gray-600">Effective from<input aria-label={`${roleName} effective from`} type="datetime-local" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={toLocalDateTime(assignment.effectiveFrom)} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, effectiveFrom: event.target.value } : item))} /></label>
+              <label className="text-xs text-gray-600">Effective to<input aria-label={`${roleName} effective to`} type="datetime-local" className="mt-1 w-full rounded border border-gray-300 p-2 text-sm" value={toLocalDateTime(assignment.effectiveTo)} onChange={event => setAssignmentDrafts(current => current.map((item, itemIndex) => itemIndex === index ? { ...item, effectiveTo: event.target.value || undefined } : item))} /></label>
             </div>;
           })}</div>
           <label className="mt-3 block text-xs text-gray-600">Governance reason<textarea aria-label="Role assignment governance reason" className="mt-1 min-h-20 w-full rounded border border-gray-300 p-2 text-sm" value={assignmentReason} onChange={event => setAssignmentReason(event.target.value)} /></label>

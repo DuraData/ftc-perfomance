@@ -72,6 +72,24 @@ describe('SecurityAdministrationPage role assignments', () => {
     ]), 'Approved quarterly permission review'));
   });
 
+  it('refreshes the role RowVersion after saving security rules so a following role edit is not stale', async () => {
+    render(<SecurityAdministrationPage />);
+    await screen.findByDisplayValue('Department Reviewer');
+    await waitFor(() => expect(api.getRoleSecurityConfiguration).toHaveBeenCalled());
+    api.getRoleSecurityConfiguration.mockClear();
+    api.getRoleSecurityConfiguration.mockResolvedValue({ success: true, data: { rolePublicId: 'role-public', name: 'Department Reviewer', roleRowVersion: 'Ag==', permissions: [] } });
+    fireEvent.change(screen.getByLabelText('Role permission governance reason'), { target: { value: 'Approved permission review' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save role security' }));
+    await waitFor(() => expect(api.getRoleSecurityConfiguration).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText('Role change governance reason'), { target: { value: 'Approved role details review' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save role details' }));
+
+    await waitFor(() => expect(api.updateSecurityRole).toHaveBeenCalledWith(
+      expect.objectContaining({ publicId: 'role-public', rowVersion: 'Ag==' }),
+      expect.objectContaining({ reason: 'Approved role details review' })));
+  });
+
   it('requires and submits governance reasons for role creation and edits', async () => {
     render(<SecurityAdministrationPage />);
 
@@ -101,5 +119,24 @@ describe('SecurityAdministrationPage role assignments', () => {
     expect(userOption).toHaveTextContent('Review User');
     expect(userOption).not.toHaveTextContent('null');
     expect(userOption).not.toHaveTextContent('undefined');
+  });
+
+  it('uses persisted role names for assignments outside the filtered role page', async () => {
+    api.getSecurityUserRoles.mockResolvedValue({ success: true, data: {
+      userPublicId: 'user-public', userName: 'Review User', assignments: [{
+        publicId: 'assignment-public', rolePublicId: 'existing-role-public', roleName: 'Existing Performance Role',
+        municipalityPublicId: 'municipality-public', effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==',
+      }],
+    } });
+
+    render(<SecurityAdministrationPage />);
+    const userSelect = (await screen.findAllByRole('combobox'))[1];
+    fireEvent.change(userSelect, { target: { value: 'user-public' } });
+
+    expect(await screen.findByText('Existing Performance Role')).toBeInTheDocument();
+    expect(screen.getByLabelText('Existing Performance Role department')).toBeInTheDocument();
+    expect(screen.getByLabelText('Existing Performance Role unit')).toBeInTheDocument();
+    expect(screen.getByLabelText('Existing Performance Role effective from')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/undefined/)).not.toBeInTheDocument();
   });
 });
