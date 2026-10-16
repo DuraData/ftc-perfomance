@@ -172,6 +172,28 @@ public class OpmsTargetsController : ControllerBase
         var query = _context.OpmsTargets.AsNoTracking().Where(item => !item.IsWithdrawn);
         if (!scope.Unrestricted)
             query = query.Where(item => (item.DepartmentId.HasValue && scope.DepartmentIds.Contains(item.DepartmentId.Value)) || (item.UnitId.HasValue && scope.UnitIds.Contains(item.UnitId.Value)) || (item.AssignedUserId != null && scope.OwnerUserIds.Contains(item.AssignedUserId)) || scope.TargetIds.Contains(item.Id) || scope.KpiIds.Contains(item.Id));
+        if (request.StrategicRiskPublicId.HasValue)
+        {
+            var riskWindow = await _context.StrategicRisks.AsNoTracking()
+                .Where(item => item.PublicId == request.StrategicRiskPublicId.Value && item.IsActive)
+                .Select(item => new
+                {
+                    Start = item.EffectiveFromMunicipalityFinancialYear != null
+                        ? (DateTime?)item.EffectiveFromMunicipalityFinancialYear.FinancialYear.StartDate
+                        : null,
+                    End = item.EffectiveToMunicipalityFinancialYear != null
+                        ? (DateTime?)item.EffectiveToMunicipalityFinancialYear.FinancialYear.EndDate
+                        : null
+                })
+                .SingleOrDefaultAsync();
+            if (riskWindow == null)
+                return Ok(new ApiResponse<PagedResponse<PerformanceTargetOptionResponse>>(true,
+                    PagedResponse<PerformanceTargetOptionResponse>.Empty(request.Page, request.PageSize)));
+
+            query = query.Where(item => item.SdbipLayer != null
+                && (!riskWindow.Start.HasValue || riskWindow.Start <= item.SdbipLayer.MunicipalityFinancialYear.FinancialYear.StartDate)
+                && (!riskWindow.End.HasValue || riskWindow.End >= item.SdbipLayer.MunicipalityFinancialYear.FinancialYear.EndDate));
+        }
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || (item.RevisedIndicatorNumber != null && item.RevisedIndicatorNumber.Contains(request.NormalizedSearch)) || item.TargetName.Contains(request.NormalizedSearch) || (item.RevisedTargetName != null && item.RevisedTargetName.Contains(request.NormalizedSearch)) || item.KpiDescription.Contains(request.NormalizedSearch) || (item.RevisedKpiDescription != null && item.RevisedKpiDescription.Contains(request.NormalizedSearch)));
 

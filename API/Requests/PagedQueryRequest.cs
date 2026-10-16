@@ -20,6 +20,8 @@ public sealed class PagedQueryRequest
 
     public Guid? RelatedOpmsTargetPublicId { get; init; }
 
+    public Guid? StrategicRiskPublicId { get; init; }
+
     public Guid? DepartmentPublicId { get; init; }
 
     public Guid? MunicipalityFinancialYearPublicId { get; init; }

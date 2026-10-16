@@ -93,7 +93,7 @@ public sealed class StrategicRiskOperationsController(
         if (!ValidScore(request.InherentLikelihood) || !ValidScore(request.InherentImpact)
             || !ValidScore(request.ResidualLikelihood) || !ValidScore(request.ResidualImpact))
             return BadRequest(Fail<StrategicRiskAssessmentDto>("Likelihood and impact values must be between 1 and 5."));
-        if (request.AssessedAt == default || request.AssessedAt > DateTime.UtcNow.AddMinutes(5))
+        if (request.AssessedAt == default || request.AssessedAt.Date > DateTime.UtcNow.Date)
             return BadRequest(Fail<StrategicRiskAssessmentDto>("Assessment date is required and cannot be in the future."));
         if (reason.Length is < 10 or > 1000 || controls?.Length > 4000)
             return BadRequest(Fail<StrategicRiskAssessmentDto>("A substantive reason is required and assessment text must fit the allowed lengths."));
@@ -102,10 +102,11 @@ public sealed class StrategicRiskOperationsController(
         var risk = await context.StrategicRisks.SingleOrDefaultAsync(item => item.PublicId == request.StrategicRiskPublicId);
         if (risk == null) return NotFound(Fail<StrategicRiskAssessmentDto>("Strategic risk not found."));
         var now = DateTime.UtcNow;
+        var assessedAt = DateTime.SpecifyKind(request.AssessedAt.Date, DateTimeKind.Utc);
         var entity = new StrategicRiskAssessment
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value, StrategicRiskId = risk.Id,
-            AssessedAt = request.AssessedAt.ToUniversalTime(), InherentLikelihood = request.InherentLikelihood,
+            AssessedAt = assessedAt, InherentLikelihood = request.InherentLikelihood,
             InherentImpact = request.InherentImpact, ResidualLikelihood = request.ResidualLikelihood,
             ResidualImpact = request.ResidualImpact, ControlAssessment = controls, Reason = reason,
             AssessedByUserId = session.User!.Id, CreatedAt = now
@@ -271,7 +272,7 @@ public sealed class StrategicRiskOperationsController(
         if (session.Error != null) return session.Error;
         var outcome = request.Outcome?.Trim() ?? string.Empty;
         var reason = request.Reason?.Trim() ?? string.Empty;
-        if (request.ReviewedAt == default || request.ReviewedAt > DateTime.UtcNow.AddMinutes(5)
+        if (request.ReviewedAt == default || request.ReviewedAt.Date > DateTime.UtcNow.Date
             || request.NextReviewAt.HasValue && request.NextReviewAt.Value <= request.ReviewedAt)
             return BadRequest(Fail<StrategicRiskReviewDto>("Review date is required, cannot be in the future, and the next review must be later."));
         if (outcome.Length is < 3 or > 4000 || reason.Length is < 10 or > 1000)
@@ -281,10 +282,11 @@ public sealed class StrategicRiskOperationsController(
         var risk = await context.StrategicRisks.SingleOrDefaultAsync(item => item.PublicId == request.StrategicRiskPublicId);
         if (risk == null) return NotFound(Fail<StrategicRiskReviewDto>("Strategic risk not found."));
         var now = DateTime.UtcNow;
+        var reviewedAt = DateTime.SpecifyKind(request.ReviewedAt.Date, DateTimeKind.Utc);
         var entity = new StrategicRiskReview
         {
             MunicipalityId = tenantContext.MunicipalityId!.Value, StrategicRiskId = risk.Id,
-            ReviewedAt = request.ReviewedAt.ToUniversalTime(), Outcome = outcome,
+            ReviewedAt = reviewedAt, Outcome = outcome,
             NextReviewAt = request.NextReviewAt?.ToUniversalTime(), Reason = reason, ReviewedByUserId = session.User!.Id,
             CreatedAt = now
         };

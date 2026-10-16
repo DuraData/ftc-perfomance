@@ -14,6 +14,7 @@ type TargetPickerProps = {
   error?: string;
   disabled?: boolean;
   relatedOpmsTargetPublicId?: string;
+  strategicRiskPublicId?: string;
 };
 
 export function TargetPicker({
@@ -26,6 +27,7 @@ export function TargetPicker({
   error: validationError,
   disabled,
   relatedOpmsTargetPublicId,
+  strategicRiskPublicId,
 }: TargetPickerProps) {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -49,7 +51,7 @@ export function TargetPicker({
     const load = async () => {
       setIsLoading(true);
       setError(null);
-      const query = { page, pageSize: 25, search, sortBy: 'indicatorNumber', sortDirection: 'asc' as const, relatedOpmsTargetPublicId };
+      const query = { page, pageSize: 25, search, sortBy: 'indicatorNumber', sortDirection: 'asc' as const, relatedOpmsTargetPublicId, strategicRiskPublicId };
       const result = kind === 'opms' ? await getOpmsTargetOptions(query) : await getIpmsTargetOptions(query);
       if (cancelled) return;
       if (!result.success || !result.data) {
@@ -82,7 +84,7 @@ export function TargetPicker({
     };
     void load();
     return () => { cancelled = true; };
-  }, [kind, page, relatedOpmsTargetPublicId, search, value]);
+  }, [kind, page, relatedOpmsTargetPublicId, search, strategicRiskPublicId, value]);
 
   const selectOptions = [
     { value: '', label: emptyLabel },

@@ -2356,6 +2356,7 @@ export type RegisterPageQuery = {
   sortDirection?: 'asc' | 'desc';
   targetPublicId?: string;
   relatedOpmsTargetPublicId?: string;
+  strategicRiskPublicId?: string;
   departmentPublicId?: string;
   municipalityFinancialYearPublicId?: string;
   reportingPeriodPublicId?: string;
@@ -2373,6 +2374,7 @@ function registerPageQuery(query: RegisterPageQuery): string {
   if (query.sortDirection) parameters.set('sortDirection', query.sortDirection);
   if (query.targetPublicId?.trim()) parameters.set('targetPublicId', query.targetPublicId.trim());
   if (query.relatedOpmsTargetPublicId?.trim()) parameters.set('relatedOpmsTargetPublicId', query.relatedOpmsTargetPublicId.trim());
+  if (query.strategicRiskPublicId?.trim()) parameters.set('strategicRiskPublicId', query.strategicRiskPublicId.trim());
   if (query.departmentPublicId?.trim()) parameters.set('departmentPublicId', query.departmentPublicId.trim());
   if (query.municipalityFinancialYearPublicId?.trim()) parameters.set('municipalityFinancialYearPublicId', query.municipalityFinancialYearPublicId.trim());
   if (query.reportingPeriodPublicId?.trim()) parameters.set('reportingPeriodPublicId', query.reportingPeriodPublicId.trim());

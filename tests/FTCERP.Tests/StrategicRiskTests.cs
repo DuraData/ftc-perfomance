@@ -2,6 +2,7 @@ using FTCERP.Host.API.Controllers;
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
+using FTCERP.Host.Domain.Services;
 using FTCERP.Host.Infrastructure.Persistence;
 using FTCERP.Host.Infrastructure.Persistence.Seed;
 using FTCERP.Host.Infrastructure.Security;
@@ -67,6 +68,67 @@ public sealed class StrategicRiskTests
             .ToArrayAsync();
         audits.Select(item => item.Action).Should().Equal("Create", "Update");
         audits.Select(item => item.Reason).Should().Equal("Risk committee resolution", "Approved wording");
+    }
+
+    [Fact]
+    public async Task Kpi_option_selector_excludes_targets_without_a_governed_year_or_outside_the_selected_risk_window()
+    {
+        const long municipalityId = 9122;
+        var user = IdpTestFixture.CreateUser("risk-option-user");
+        await using var context = IdpTestFixture.CreateRelationalContext(IdpTestFixture.Tenant(municipalityId, user.Id));
+        var seed = await SeedAsync(context, municipalityId, user);
+        var risk = Data(await Controller(context, user, municipalityId).Create(
+            Request("SELECTOR", "Bounded selector risk", seed.Year.PublicId)));
+
+        var laterFinancialYear = new FinancialYear
+        {
+            Code = "2028/29", Name = "2028/29", StartDate = new(2028, 7, 1), EndDate = new(2029, 6, 30), IsActive = true
+        };
+        var laterYear = new MunicipalityFinancialYear
+        {
+            MunicipalityId = municipalityId, FinancialYear = laterFinancialYear, IsActive = true,
+            EffectiveFrom = laterFinancialYear.StartDate
+        };
+        var laterLayer = new SdbipLayer
+        {
+            MunicipalityId = municipalityId, MunicipalityFinancialYear = laterYear,
+            Code = "TOP-2028", Name = "Top Layer 2028", IsActive = true
+        };
+        var outsideWindow = new OpmsTarget
+        {
+            Id = "risk-target-outside-window", MunicipalityId = municipalityId, SdbipLayer = laterLayer,
+            IndicatorNumber = "KPI-OUTSIDE", TargetName = "Outside risk window", KpiDescription = "Outside",
+            AnnualTargetDescription = "Meet target"
+        };
+        var legacyWithoutYear = new OpmsTarget
+        {
+            Id = "risk-target-without-year", MunicipalityId = municipalityId,
+            IndicatorNumber = "KPI-LEGACY", TargetName = "Missing governed year", KpiDescription = "Legacy",
+            AnnualTargetDescription = "Meet target"
+        };
+        context.AddRange(laterFinancialYear, laterYear, laterLayer, outsideWindow, legacyWithoutYear);
+        await context.SaveChangesAsync();
+
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
+            .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
+        var targets = new OpmsTargetsController(context, IdpTestFixture.CreateUserManagerMock(user).Object, access.Object,
+            Mock.Of<IWorkflowGovernanceService>(), IdpTestFixture.Tenant(municipalityId, user.Id), new PerformanceUnitEngine())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) }
+            }
+        };
+
+        var result = await targets.GetTargetOptions(new PagedQueryRequest
+        {
+            StrategicRiskPublicId = risk.PublicId, PageSize = 25, SortBy = "indicatorNumber", SortDirection = "asc"
+        });
+
+        var page = Data(result);
+        page.Items.Should().ContainSingle().Which.PublicId.Should().Be(seed.Target.PublicId);
+        page.Items.Should().NotContain(item => item.PublicId == outsideWindow.PublicId || item.PublicId == legacyWithoutYear.PublicId);
     }
 
     [Fact]
@@ -628,11 +690,16 @@ public sealed class StrategicRiskTests
         risk.OwnerUserPublicId.Should().Be(user.PublicId);
 
         var operations = OperationsController(context, user, municipalityId);
+        var todayAtEndOfDay = DateTime.UtcNow.Date.AddDays(1).AddTicks(-1);
         var assessment = Data(await operations.RecordAssessment(new RecordStrategicRiskAssessmentRequest(
-            risk.PublicId, DateTime.UtcNow.AddDays(-1), 5, 4, 3, 3, "Drainage maintenance and early warning controls",
+            risk.PublicId, todayAtEndOfDay, 5, 4, 3, 3, "Drainage maintenance and early warning controls",
             "Quarterly risk committee assessment")));
         assessment.InherentScore.Should().Be(20);
         assessment.ResidualScore.Should().Be(9);
+        assessment.AssessedAt.Should().Be(DateTime.UtcNow.Date);
+        var futureAssessment = await operations.RecordAssessment(new RecordStrategicRiskAssessmentRequest(
+            risk.PublicId, DateTime.UtcNow.Date.AddDays(1), 5, 4, 3, 3, null, "Future assessment is invalid"));
+        futureAssessment.Result.Should().BeOfType<BadRequestObjectResult>();
 
         var treatment = Data(await operations.CreateTreatment(new SaveStrategicRiskTreatmentRequest(
             risk.PublicId, "Clear high-risk drainage channels", "Prioritised preventative maintenance", user.PublicId,
@@ -649,9 +716,14 @@ public sealed class StrategicRiskTests
         context.ChangeTracker.Clear();
 
         var review = Data(await operations.RecordReview(new RecordStrategicRiskReviewRequest(
-            risk.PublicId, DateTime.UtcNow.AddHours(-1), "Controls reduced exposure; treatment remains in progress.",
+            risk.PublicId, todayAtEndOfDay, "Controls reduced exposure; treatment remains in progress.",
             DateTime.UtcNow.AddMonths(3), "Scheduled quarterly governance review")));
         review.NextReviewAt.Should().NotBeNull();
+        review.ReviewedAt.Should().Be(DateTime.UtcNow.Date);
+        var futureReview = await operations.RecordReview(new RecordStrategicRiskReviewRequest(
+            risk.PublicId, DateTime.UtcNow.Date.AddDays(1), "Future review", DateTime.UtcNow.Date.AddDays(2),
+            "Future review is invalid"));
+        futureReview.Result.Should().BeOfType<BadRequestObjectResult>();
 
         var heatmap = Data(await operations.GetHeatmap());
         heatmap.ActiveRisks.Should().Be(1);

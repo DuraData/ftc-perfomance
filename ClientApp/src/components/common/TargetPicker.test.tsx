@@ -50,4 +50,13 @@ describe('TargetPicker', () => {
     expect(selector).toHaveAccessibleDescription('Select a target.');
     expect(screen.getByRole('alert')).toHaveTextContent('Select a target.');
   });
+
+  it('requests only KPI options eligible for the selected strategic risk', async () => {
+    render(<TargetPicker kind="opms" label="OPMS KPI" value="" onChange={vi.fn()} strategicRiskPublicId="risk-public-id" />);
+
+    await screen.findByRole('option', { name: 'KPI-001 · Water reliability · Infrastructure' });
+    expect(api.getOpmsTargetOptions).toHaveBeenCalledWith(expect.objectContaining({
+      strategicRiskPublicId: 'risk-public-id',
+    }));
+  });
 });
