@@ -87,6 +87,24 @@ describe('TenantEmployeeAdministration', () => {
     })));
   });
 
+  it('updates a selected employee profile through protected member and RowVersion controls', async () => {
+    render(<TenantEmployeeAdministration />);
+    const employeeButton = await screen.findByRole('button', { name: /Ada Mokoena/ });
+    fireEvent.click(employeeButton);
+    await waitFor(() => expect(employeeButton).toHaveClass('border-primary-500'));
+    fireEvent.change(await screen.findByLabelText(/Profile first name/), { target: { value: 'Adelaide' } });
+    fireEvent.change(screen.getByLabelText('Profile salary reference'), { target: { value: 'SAL-009' } });
+    fireEvent.change(screen.getByLabelText('Profile email'), { target: { value: 'adelaide@example.test' } });
+    fireEvent.change(screen.getByLabelText(/Profile governance reason/), { target: { value: 'Correct approved employee profile details' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save profile changes' }));
+
+    await waitFor(() => expect(api.updateMunicipalEmployee).toHaveBeenCalledWith('employee-1', expect.objectContaining({
+      firstName: 'Adelaide', lastName: 'Mokoena', salaryReference: 'SAL-009', salaryReferenceSpecified: true,
+      emailAddress: 'adelaide@example.test', emailAddressSpecified: true, isActive: true, rowVersion: 'AQ==',
+      reason: 'Correct approved employee profile details',
+    })));
+  });
+
   it('searches and pages retained placement history with authoritative totals', async () => {
     api.getEmployeeAssignmentsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'assignment-1', employeePublicId: 'employee-1', departmentPublicId: 'department-1', departmentName: 'Finance', unitPublicId: 'unit-1', unitName: 'Budget', positionCode: 'CFO', positionName: 'Chief Financial Officer', effectiveFrom: '2026-07-01T00:00:00Z', effectiveTo: null, isPrimary: true, isActive: true, rowVersion: 'Ag==' }], page: 1, pageSize: 10, totalCount: 11, totalPages: 2 } });
     render(<TenantEmployeeAdministration />);

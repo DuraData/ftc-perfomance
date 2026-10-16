@@ -50,6 +50,7 @@ export function TenantEmployeeAdministration() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [employee, setEmployee] = useState({ employeeNumber: '', salaryReference: '', firstName: '', lastName: '', emailAddress: '', identityUserPublicId: '', effectiveFrom: today(), reason: '' });
+  const [profile, setProfile] = useState({ salaryReference: '', firstName: '', lastName: '', emailAddress: '', identityUserPublicId: '', effectiveFrom: today(), effectiveTo: '', reason: '' });
   const [deactivationReason, setDeactivationReason] = useState('');
   const [assignment, setAssignment] = useState({ departmentPublicId: '', unitPublicId: '', positionPublicId: '', effectiveFrom: today(), effectiveTo: '', isPrimary: true });
   const [closure, setClosure] = useState({ effectiveTo: today(), reason: '' });
@@ -90,6 +91,12 @@ export function TenantEmployeeAdministration() {
   }, []);
 
   const selectEmployee = async (publicId: string) => {
+    const item = employees.find(employeeItem => employeeItem.publicId === publicId);
+    if (item) setProfile({
+      salaryReference: item.salaryReference ?? '', firstName: item.firstName, lastName: item.lastName,
+      emailAddress: item.emailAddress ?? '', identityUserPublicId: item.identityUserPublicId ?? '',
+      effectiveFrom: item.effectiveFrom.slice(0, 10), effectiveTo: item.effectiveTo?.slice(0, 10) ?? '', reason: '',
+    });
     setSelectedId(publicId);
     setAssignmentSearch('');
     setAssignmentSearchInput('');
@@ -122,6 +129,30 @@ export function TenantEmployeeAdministration() {
     const result = await updateMunicipalEmployee(selected.publicId, { firstName: selected.firstName, lastName: selected.lastName, salaryReference: null, salaryReferenceSpecified: false, emailAddress: null, emailAddressSpecified: false, identityUserPublicId: null, identityUserPublicIdSpecified: false, isActive: false, effectiveFrom: selected.effectiveFrom, effectiveTo: new Date().toISOString(), reason: deactivationReason.trim(), rowVersion: selected.rowVersion });
     if (!result.success) setError(result.message ?? 'Employee could not be deactivated.');
     else { pushToast('success', 'Employee deactivated without deleting placement history'); setDeactivationReason(''); setSelectedId(''); setAssignments([]); await loadEmployees(); }
+    setBusy(false);
+  };
+
+  const saveProfile = async () => {
+    if (!selected) return;
+    if (!profile.firstName.trim() || !profile.lastName.trim() || profile.reason.trim().length < 10) {
+      setError('First name, last name, and a governance reason of at least 10 characters are required.'); return;
+    }
+    setBusy(true); setError(null);
+    const canEditEmail = security.canEditField('EMPLOYEE', 'EmailAddress');
+    const result = await updateMunicipalEmployee(selected.publicId, {
+      firstName: profile.firstName, lastName: profile.lastName,
+      salaryReference: canEditSalaryReference ? profile.salaryReference || null : null,
+      salaryReferenceSpecified: canEditSalaryReference,
+      emailAddress: canEditEmail ? profile.emailAddress || null : null,
+      emailAddressSpecified: canEditEmail,
+      identityUserPublicId: canEditIdentityLink ? profile.identityUserPublicId || null : null,
+      identityUserPublicIdSpecified: canEditIdentityLink,
+      isActive: selected.isActive,
+      effectiveFrom: atUtc(profile.effectiveFrom), effectiveTo: profile.effectiveTo ? atUtc(profile.effectiveTo) : null,
+      reason: profile.reason.trim(), rowVersion: selected.rowVersion,
+    });
+    if (!result.success) setError(result.message ?? 'Employee profile could not be updated.');
+    else { pushToast('success', 'Employee profile updated with audit history'); setProfile(current => ({ ...current, reason: '' })); await loadEmployees(); }
     setBusy(false);
   };
 
@@ -171,7 +202,17 @@ export function TenantEmployeeAdministration() {
           {totalPages > 1 && <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>Page {page} of {totalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous</Button><Button size="sm" variant="outline" disabled={busy || page >= totalPages} onClick={() => setPage(value => value + 1)}>Next</Button></div></div>}
         </Card>
       </div>
-      {selected && <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+      {selected && <div className="space-y-5">
+        {security.canUpdate('EMPLOYEE') && <FormPanel title={`Edit employee profile · ${selected.employeeNumber ?? 'protected number'}`} description="Profile corrections require a reason and the current concurrency version." icon={<UserRound className="h-5 w-5" />}>
+          <div className="grid gap-3 md:grid-cols-2"><Input label="Profile first name" value={profile.firstName} onChange={event => setProfile(current => ({ ...current, firstName: event.target.value }))} required /><Input label="Profile last name" value={profile.lastName} onChange={event => setProfile(current => ({ ...current, lastName: event.target.value }))} required /></div>
+          {canReadSalaryReference && <Input label="Profile salary reference" value={profile.salaryReference} disabled={!canEditSalaryReference} onChange={event => setProfile(current => ({ ...current, salaryReference: event.target.value }))} />}
+          {security.canReadField('EMPLOYEE', 'EmailAddress') && <Input label="Profile email" type="email" value={profile.emailAddress} disabled={!security.canEditField('EMPLOYEE', 'EmailAddress')} onChange={event => setProfile(current => ({ ...current, emailAddress: event.target.value }))} />}
+          {canReadIdentityLink && <Select label="Profile linked login" value={profile.identityUserPublicId} disabled={!canEditIdentityLink} placeholder="No linked login" options={users.filter(item => item.user.isActive).map(item => ({ value: item.user.publicId, label: `${item.user.fullName} · ${item.user.email ?? 'protected email'}` }))} onChange={event => setProfile(current => ({ ...current, identityUserPublicId: event.target.value }))} />}
+          <div className="grid gap-3 md:grid-cols-2"><Input label="Profile effective from" type="date" value={profile.effectiveFrom} onChange={event => setProfile(current => ({ ...current, effectiveFrom: event.target.value }))} /><Input label="Profile effective to" type="date" value={profile.effectiveTo} onChange={event => setProfile(current => ({ ...current, effectiveTo: event.target.value }))} /></div>
+          <Textarea label="Profile governance reason" value={profile.reason} onChange={event => setProfile(current => ({ ...current, reason: event.target.value }))} required />
+          <Button onClick={() => void saveProfile()} disabled={busy}>Save profile changes</Button>
+        </FormPanel>}
+        <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         {security.canCreate('EMPLOYEE_ASSIGNMENT') && selected.isActive && <FormPanel title={`New placement · ${selected.firstName} ${selected.lastName}`} description="Overlapping effective dates are rejected by the server." icon={<Briefcase className="h-5 w-5" />}>
           <OrganizationMasterPicker kind="department" label="Department" value={assignment.departmentPublicId} onChange={value => setAssignment(current => ({ ...current, departmentPublicId: value, unitPublicId: '', positionPublicId: '' }))} required />
           <OrganizationMasterPicker kind="unit" label="Unit" value={assignment.unitPublicId} departmentPublicId={assignment.departmentPublicId || undefined} emptyLabel="No unit" disabled={!assignment.departmentPublicId} onChange={value => setAssignment(current => ({ ...current, unitPublicId: value, positionPublicId: '' }))} />
@@ -181,6 +222,7 @@ export function TenantEmployeeAdministration() {
           <Button onClick={() => void saveAssignment()} disabled={busy}>Create placement</Button>
         </FormPanel>}
         <Card className="p-4"><div className="flex flex-wrap items-end justify-between gap-2"><div><h3 className="font-semibold">Placement history</h3><p className="text-xs text-secondary-500">{selected.employeeNumber ?? 'Protected employee number'} · {assignmentTotalCount} retained placement{assignmentTotalCount === 1 ? '' : 's'}</p></div><Input aria-label="Search placement history" placeholder="Position, department, or unit" value={assignmentSearchInput} onChange={event => setAssignmentSearchInput(event.target.value)} /></div>{security.canUpdate('EMPLOYEE') && selected.isActive && <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg bg-secondary-50 p-3 dark:bg-secondary-800"><div className="min-w-64 flex-1"><Textarea label="Employee deactivation reason" value={deactivationReason} onChange={event => setDeactivationReason(event.target.value)} required /></div><Button size="sm" variant="outline" onClick={() => void deactivateEmployee()} disabled={busy}>Deactivate employee</Button></div>}<div className="mt-3 space-y-2">{assignments.map(item => <div key={item.publicId} className="rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div className="flex justify-between gap-3"><div><p className="font-medium">{item.positionName}</p><p className="text-xs text-secondary-500">{item.positionCode} · {item.departmentName}{item.unitName ? ` / ${item.unitName}` : ''}</p></div><Badge variant={item.isActive ? 'success' : 'default'}>{item.isPrimary ? 'Primary' : 'Additional'}</Badge></div><p className="mt-1 text-xs text-secondary-500">{new Date(item.effectiveFrom).toLocaleDateString()} — {item.effectiveTo ? new Date(item.effectiveTo).toLocaleDateString() : 'Current'}</p>{item.isActive && security.canUpdate('EMPLOYEE_ASSIGNMENT') && <div className="mt-3 space-y-2 rounded-lg bg-secondary-50 p-3 dark:bg-secondary-800"><p className="text-xs font-semibold text-secondary-700 dark:text-secondary-200">End this placement</p><Input label="Placement end date" type="date" value={closure.effectiveTo} onChange={event => setClosure(current => ({ ...current, effectiveTo: event.target.value }))} /><Input label="Closure reason" value={closure.reason} onChange={event => setClosure(current => ({ ...current, reason: event.target.value }))} required /><Button size="sm" variant="outline" onClick={() => void closeAssignment(item)} disabled={busy}>End placement</Button></div>}</div>)}{!assignments.length && <p className="text-sm text-secondary-500">No placements match the current history search.</p>}</div>{assignmentTotalPages > 1 && <div className="mt-3 flex items-center justify-between text-xs text-secondary-500"><span>Placement page {assignmentPage} of {assignmentTotalPages}</span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy || assignmentPage <= 1} onClick={() => void loadAssignments(selected.publicId, assignmentPage - 1, assignmentSearch)}>Previous placements</Button><Button size="sm" variant="outline" disabled={busy || assignmentPage >= assignmentTotalPages} onClick={() => void loadAssignments(selected.publicId, assignmentPage + 1, assignmentSearch)}>Next placements</Button></div></div>}</Card>
+        </div>
       </div>}
     </div>
   </AppShell>;
