@@ -606,9 +606,18 @@ public sealed record SubmissionWorkflowProjectionResponse(
     IReadOnlyList<SubmissionWorkflowStageResponse> Stages,
     string? CurrentStageCode,
     bool Completed,
-    bool CurrentActorEligible);
+    bool CurrentActorEligible,
+    bool CurrentActorEligibleForBypass,
+    string? State);
 
-public sealed record SubmissionWorkflowStageResponse(string Code, string Name, int Sequence, bool IsTerminal);
+public sealed record SubmissionWorkflowStageResponse(
+    string Code,
+    string Name,
+    int Sequence,
+    bool IsTerminal,
+    string RequiredActionCode,
+    bool IsOptional,
+    bool AllowBypass);
 
 public sealed record PerformanceSuggestionEventResponse(
     Guid PublicId,

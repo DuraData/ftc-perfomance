@@ -90,7 +90,7 @@ interface SubmissionWorkspaceProps {
   /** @deprecated Evidence is loaded and mutated by the bounded workspace register. */
   onDisposeAttachment?: (attachmentId: string, approvalReference: string, reason: string, rowVersion: string) => void;
   onWorkflowAction?: (
-    action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit',
+    action: 'submit' | 'resubmit' | 'correct' | 'verify' | 'verify-reject' | 'approve' | 'approve-bypass' | 'reject' | 'review' | 'audit',
     payload: { comment?: string; score?: number },
   ) => void;
   onExtendDueDate?: (payload: { extendedDueDate: string; reason: string }) => void;
@@ -646,14 +646,28 @@ export function SubmissionWorkspace({
   const canReadAuditorObservation = security.canReadField(resourceCode, 'InternalAuditObservation');
   const canReadAuditorComment = security.canReadField(resourceCode, 'InternalAuditComment');
   const currentActorEligible = currentSubmission.workflow?.currentActorEligible ?? true;
+  const currentWorkflowStage = currentSubmission.workflow?.stages.find(
+    stage => stage.code === currentSubmission.workflow?.currentStageCode,
+  );
+  const isWorkflowRework = currentSubmission.workflow?.state === 'Rework';
   const canSubmit = ['draft', 'returned_for_info', 'verify_rejected', 'rejected'].includes(currentSubmission.status)
+    && !isWorkflowRework
     && security.canExecute(`${submissionType}_SUBMISSION.SUBMIT`) && currentActorEligible;
+  const canResubmit = currentSubmission.baseState === 'IN_PROGRESS' && isWorkflowRework
+    && security.canExecute(`${submissionType}_SUBMISSION.RESUBMIT`);
+  const canCorrect = currentSubmission.baseState === 'SUBMITTED' && !currentSubmission.workflow?.completed
+    && security.canExecute(`${submissionType}_SUBMISSION.CORRECT`) && canEditWorkflowComment;
   const canVerify = ['submitted', 'pending_verification'].includes(currentSubmission.status)
     && security.canExecute(`${submissionType}_SUBMISSION.VERIFY`) && currentActorEligible;
   const canVerifyReject = ['submitted', 'pending_verification'].includes(currentSubmission.status)
     && security.canExecute(`${submissionType}_SUBMISSION.VERIFY_REJECT`) && currentActorEligible;
   const canApprove = ['verified', 'pending_approval'].includes(currentSubmission.status)
     && security.canExecute(`${submissionType}_SUBMISSION.APPROVE`) && currentActorEligible;
+  const canApproveBypass = ['submitted', 'pending_verification'].includes(currentSubmission.status)
+    && currentWorkflowStage?.isOptional === true
+    && currentWorkflowStage.allowBypass === true
+    && currentSubmission.workflow?.currentActorEligibleForBypass === true
+    && security.canExecute(`${submissionType}_SUBMISSION.APPROVE_BYPASS`);
   const canReject = ['verified', 'pending_approval'].includes(currentSubmission.status)
     && security.canExecute(`${submissionType}_SUBMISSION.REJECT`) && currentActorEligible;
   const canReview = currentSubmission.status === 'approved'
@@ -664,7 +678,8 @@ export function SubmissionWorkspace({
     && security.canExecute(`${submissionType}_SUBMISSION.EXTEND_DUE_DATE`)
     && security.canEditField(resourceCode, 'DueDate')
     && security.canEditField(resourceCode, 'DueDateExtensionReason');
-  const hasWorkflowAction = canSubmit || canVerify || canVerifyReject || canApprove || canReject || canReview || canAudit;
+  const hasWorkflowAction = canSubmit || canResubmit || canCorrect || canVerify || canVerifyReject
+    || canApprove || canApproveBypass || canReject || canReview || canAudit;
   const canEditActual = security.canUpdate(resourceCode) && security.canEditField(resourceCode, 'ActualPerformance');
   const canReadVariance = security.canReadField(resourceCode, 'Variance');
   const canReadVarianceReason = security.canReadField(resourceCode, 'VarianceReason');
@@ -787,7 +802,7 @@ export function SubmissionWorkspace({
     refreshEvidence();
   };
 
-  const triggerWorkflowAction = (action: 'submit' | 'verify' | 'verify-reject' | 'approve' | 'reject' | 'review' | 'audit') => {
+  const triggerWorkflowAction = (action: 'submit' | 'resubmit' | 'correct' | 'verify' | 'verify-reject' | 'approve' | 'approve-bypass' | 'reject' | 'review' | 'audit') => {
     const parsedScore = canEditWorkflowRating && workflowScore.trim() !== '' ? Number(workflowScore) : undefined;
     onWorkflowAction?.(action, {
       comment: canEditWorkflowComment ? workflowComment || undefined : undefined,
@@ -1298,6 +1313,12 @@ export function SubmissionWorkspace({
             {canSubmit && <Button variant="primary" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('submit')}>
               Submit
             </Button>}
+            {canResubmit && <Button variant="primary" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('resubmit')}>
+              Resubmit
+            </Button>}
+            {canCorrect && <Button variant="outline" size="sm" disabled={workflowBusy || !workflowComment.trim()} onClick={() => triggerWorkflowAction('correct')}>
+              Reopen for Correction
+            </Button>}
             {canVerify && <Button variant="outline" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('verify')}>
               Verify
             </Button>}
@@ -1306,6 +1327,9 @@ export function SubmissionWorkspace({
             </Button>}
             {canApprove && <Button variant="success" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('approve')}>
               Approve
+            </Button>}
+            {canApproveBypass && <Button variant="success" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('approve-bypass')}>
+              Approve (Bypass Verification)
             </Button>}
             {canReject && <Button variant="error" size="sm" disabled={workflowBusy} onClick={() => triggerWorkflowAction('reject')}>
               Reject

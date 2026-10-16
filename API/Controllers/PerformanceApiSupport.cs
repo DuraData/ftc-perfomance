@@ -9,8 +9,19 @@ namespace FTCERP.Host.API.Controllers;
 
 public static class PerformanceApiSupport
 {
-    internal static string ResolveWorkflowStatus(string requestedStatus, SubmissionWorkflowInstance? instance) =>
-        instance?.State == WorkflowInstanceState.Completed ? "completed" : requestedStatus;
+    internal static string ResolveWorkflowStatus(string requestedStatus, SubmissionWorkflowInstance? instance)
+    {
+        if (instance == null) return requestedStatus;
+        if (instance.State == WorkflowInstanceState.Completed) return "completed";
+        if (instance.State == WorkflowInstanceState.Cancelled) return "cancelled";
+        if (instance.State == WorkflowInstanceState.Rework) return "returned_for_info";
+        var requiredAction = instance.CurrentStage?.RequiredActionCode;
+        if (requiredAction?.EndsWith(".VERIFY", StringComparison.OrdinalIgnoreCase) == true) return "pending_verification";
+        if (requiredAction?.EndsWith(".APPROVE", StringComparison.OrdinalIgnoreCase) == true) return "pending_approval";
+        if (requiredAction?.EndsWith(".PMS_REVIEW", StringComparison.OrdinalIgnoreCase) == true) return "approved";
+        if (requiredAction?.EndsWith(".INTERNAL_AUDIT", StringComparison.OrdinalIgnoreCase) == true) return "reviewed";
+        return requestedStatus;
+    }
 
     internal static IQueryable<OpmsSubmissionStatusProjection> ProjectCanonicalStatuses(
         ApplicationDbContext context,

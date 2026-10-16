@@ -1,7 +1,18 @@
 namespace FTCERP.Host.Domain.Entities;
 
 public enum WorkflowInstanceState { Active = 1, Rework = 2, Completed = 3, Cancelled = 4 }
-public enum WorkflowActionOutcome { Submit = 1, Approve = 2, Reject = 3, RaiseRfi = 4, RespondRfi = 5, Bypass = 6, Complete = 7 }
+public enum WorkflowActionOutcome
+{
+    Submit = 1,
+    Approve = 2,
+    Reject = 3,
+    RaiseRfi = 4,
+    RespondRfi = 5,
+    Bypass = 6,
+    Complete = 7,
+    Reopen = 8,
+    Resubmit = 9
+}
 
 public class WorkflowDefinition
 {

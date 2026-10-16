@@ -190,6 +190,67 @@ public sealed class ConfigurableWorkflowTests
     }
 
     [Fact]
+    public async Task Workflow_ApproverCanBypassConfiguredOptionalVerifierWithOneAuditableAction()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var year = new MunicipalityFinancialYear { Id = 701, MunicipalityId = 7, FinancialYearId = 1, EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        var period = new ReportingPeriod { Id = 710, MunicipalityFinancialYearId = year.Id, Code = "Q1-BYPASS", Name = "Quarter 1", StartDate = DateTime.UtcNow.AddDays(-10), EndDate = DateTime.UtcNow.AddDays(10) };
+        var definition = new WorkflowDefinition { Id = 720, MunicipalityId = 7, MunicipalityFinancialYearId = year.Id, SubmissionKind = SubmissionKind.Opms, Code = "BYPASS", Name = "Optional verification", EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        definition.Stages.Add(new WorkflowStageDefinition { Id = 721, MunicipalityId = 7, Code = "SUBMIT", Name = "Submit", Sequence = 1, RequiredActionCode = "OPMS_SUBMISSION.SUBMIT", RequiredPermissionCode = "OPMS_SUBMISSION.SUBMIT" });
+        definition.Stages.Add(new WorkflowStageDefinition { Id = 722, MunicipalityId = 7, Code = "VERIFY", Name = "Verify", Sequence = 2, RequiredActionCode = "OPMS_SUBMISSION.VERIFY", RequiredPermissionCode = "OPMS_SUBMISSION.VERIFY", IsOptional = true, AllowBypass = true });
+        definition.Stages.Add(new WorkflowStageDefinition { Id = 723, MunicipalityId = 7, Code = "APPROVE", Name = "Approve", Sequence = 3, RequiredActionCode = "OPMS_SUBMISSION.APPROVE", RequiredPermissionCode = "OPMS_SUBMISSION.APPROVE", IsTerminal = true, RequireDifferentActorFromSubmitter = true });
+        context.AddRange(year, period, definition);
+        await context.SaveChangesAsync();
+        var service = new ConfigurableWorkflowService(context);
+
+        (await service.PrepareActionAsync(SubmissionKind.Opms, "submission-bypass", period.Id, "submitter", "submitter", "OPMS_SUBMISSION.SUBMIT", WorkflowActionOutcome.Submit, null, null, "trace-submit")).Allowed.Should().BeTrue();
+        await context.SaveChangesAsync();
+        (await service.GetProjectionAsync(SubmissionKind.Opms, "submission-bypass", period.Id, "submitter", "approver"))
+            .ActorEligibleForBypass.Should().BeTrue();
+        (await service.GetProjectionAsync(SubmissionKind.Opms, "submission-bypass", period.Id, "submitter", "submitter"))
+            .ActorEligibleForBypass.Should().BeFalse();
+        var bypassed = await service.PrepareActionAsync(SubmissionKind.Opms, "submission-bypass", period.Id, "submitter", "approver", "OPMS_SUBMISSION.APPROVE_BYPASS", WorkflowActionOutcome.Bypass, "Approved without verifier delay", null, "trace-bypass");
+
+        bypassed.Allowed.Should().BeTrue();
+        bypassed.Instance!.State.Should().Be(WorkflowInstanceState.Completed);
+        bypassed.Action!.FromStageId.Should().Be(722);
+        bypassed.Action.ToStageId.Should().BeNull();
+        bypassed.Action.ActionCode.Should().Be("OPMS_SUBMISSION.APPROVE_BYPASS");
+        bypassed.Action.Outcome.Should().Be(WorkflowActionOutcome.Bypass);
+    }
+
+    [Fact]
+    public async Task Workflow_ReopenAndResubmitPreserveStageAndAppendDistinctActions()
+    {
+        await using var context = IdpTestFixture.CreateContext();
+        var year = new MunicipalityFinancialYear { Id = 801, MunicipalityId = 7, FinancialYearId = 1, EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        var period = new ReportingPeriod { Id = 810, MunicipalityFinancialYearId = year.Id, Code = "Q1-CORRECT", Name = "Quarter 1", StartDate = DateTime.UtcNow.AddDays(-10), EndDate = DateTime.UtcNow.AddDays(10) };
+        var definition = new WorkflowDefinition { Id = 820, MunicipalityId = 7, MunicipalityFinancialYearId = year.Id, SubmissionKind = SubmissionKind.Opms, Code = "CORRECT", Name = "Correction", EffectiveFrom = DateTime.UtcNow.AddDays(-1) };
+        definition.Stages.Add(new WorkflowStageDefinition { Id = 821, MunicipalityId = 7, Code = "SUBMIT", Name = "Submit", Sequence = 1, RequiredActionCode = "OPMS_SUBMISSION.SUBMIT", RequiredPermissionCode = "OPMS_SUBMISSION.SUBMIT" });
+        definition.Stages.Add(new WorkflowStageDefinition { Id = 822, MunicipalityId = 7, Code = "VERIFY", Name = "Verify", Sequence = 2, RequiredActionCode = "OPMS_SUBMISSION.VERIFY", RequiredPermissionCode = "OPMS_SUBMISSION.VERIFY" });
+        definition.Stages.Add(new WorkflowStageDefinition { Id = 823, MunicipalityId = 7, Code = "APPROVE", Name = "Approve", Sequence = 3, RequiredActionCode = "OPMS_SUBMISSION.APPROVE", RequiredPermissionCode = "OPMS_SUBMISSION.APPROVE", IsTerminal = true });
+        context.AddRange(year, period, definition);
+        await context.SaveChangesAsync();
+        var service = new ConfigurableWorkflowService(context);
+
+        (await service.PrepareActionAsync(SubmissionKind.Opms, "submission-correct", period.Id, "submitter", "submitter", "OPMS_SUBMISSION.SUBMIT", WorkflowActionOutcome.Submit, null, null, "trace-submit")).Allowed.Should().BeTrue();
+        await context.SaveChangesAsync();
+        var reopened = await service.PrepareActionAsync(SubmissionKind.Opms, "submission-correct", period.Id, "submitter", "approver", "OPMS_SUBMISSION.CORRECT", WorkflowActionOutcome.Reopen, "Correct the actual value", null, "trace-reopen");
+        reopened.Allowed.Should().BeTrue();
+        reopened.Instance!.State.Should().Be(WorkflowInstanceState.Rework);
+        reopened.Instance.CurrentStageId.Should().Be(822);
+        await context.SaveChangesAsync();
+
+        var resubmitted = await service.PrepareActionAsync(SubmissionKind.Opms, "submission-correct", period.Id, "submitter", "submitter", "OPMS_SUBMISSION.RESUBMIT", WorkflowActionOutcome.Resubmit, "Corrected", null, "trace-resubmit");
+        resubmitted.Allowed.Should().BeTrue(resubmitted.Reason);
+        resubmitted.Instance!.State.Should().Be(WorkflowInstanceState.Active);
+        resubmitted.Instance.CurrentStageId.Should().Be(822);
+        resubmitted.Action!.Outcome.Should().Be(WorkflowActionOutcome.Resubmit);
+        resubmitted.Instance.Actions.Append(resubmitted.Action).Select(action => action.ActionCode)
+            .Should().ContainInOrder("OPMS_SUBMISSION.SUBMIT", "OPMS_SUBMISSION.CORRECT", "OPMS_SUBMISSION.RESUBMIT");
+    }
+
+    [Fact]
     public void WorkflowComparison_ReportsAddedRemovedAndModifiedStages()
     {
         var from = new WorkflowDefinition();

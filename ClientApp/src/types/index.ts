@@ -740,10 +740,20 @@ export interface IPMSSubmission {
 }
 
 export interface SubmissionWorkflowProjection {
-  stages: Array<{ code: string; name: string; sequence: number; isTerminal: boolean }>;
+  stages: Array<{
+    code: string;
+    name: string;
+    sequence: number;
+    isTerminal: boolean;
+    requiredActionCode: string;
+    isOptional: boolean;
+    allowBypass: boolean;
+  }>;
   currentStageCode?: string | null;
   completed: boolean;
   currentActorEligible: boolean;
+  currentActorEligibleForBypass?: boolean;
+  state?: 'Active' | 'Rework' | 'Completed' | 'Cancelled' | null;
 }
 
 // Supporting Types

@@ -29,12 +29,21 @@ public sealed class ReportingWindowService(ApplicationDbContext context) : IRepo
 }
 
 public sealed record WorkflowTransitionResult(bool Allowed, string Reason, SubmissionWorkflowInstance? Instance, SubmissionWorkflowAction? Action);
-public sealed record WorkflowStageProjection(string Code, string Name, int Sequence, bool IsTerminal);
+public sealed record WorkflowStageProjection(
+    string Code,
+    string Name,
+    int Sequence,
+    bool IsTerminal,
+    string RequiredActionCode,
+    bool IsOptional,
+    bool AllowBypass);
 public sealed record SubmissionWorkflowProjection(
     IReadOnlyList<WorkflowStageProjection> Stages,
     string? CurrentStageCode,
     bool Completed,
-    bool ActorEligible);
+    bool ActorEligible,
+    bool ActorEligibleForBypass,
+    WorkflowInstanceState? State);
 
 public interface IConfigurableWorkflowService
 {
@@ -47,7 +56,7 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
     public async Task<SubmissionWorkflowProjection> GetProjectionAsync(SubmissionKind kind, string submissionId, long reportingPeriodId, string submitterUserId, string actorUserId)
     {
         var period = await context.ReportingPeriods.AsNoTracking().SingleOrDefaultAsync(x => x.Id == reportingPeriodId);
-        if (period == null) return new([], null, false, false);
+        if (period == null) return new([], null, false, false, false, null);
         var instance = await context.SubmissionWorkflowInstances.AsNoTracking()
             .Include(x => x.CurrentStage)
             .Include(x => x.Actions)
@@ -59,18 +68,28 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
                 && x.EffectiveFrom <= DateTime.UtcNow && (!x.EffectiveTo.HasValue || x.EffectiveTo > DateTime.UtcNow))
             .OrderByDescending(x => x.Version)
             .FirstOrDefaultAsync();
-        if (definition == null) return new([], null, false, false);
+        if (definition == null) return new([], null, false, false, false, null);
         var stages = definition.Stages.Where(x => x.IsActive).OrderBy(x => x.Sequence).ToArray();
         var currentStage = instance?.CurrentStage ?? (instance == null ? stages.FirstOrDefault() : null);
         var previousActor = instance?.Actions.OrderByDescending(x => x.Sequence).Select(x => x.ActorUserId).FirstOrDefault();
         var actorEligible = currentStage != null
             && !(currentStage.RequireDifferentActorFromSubmitter && string.Equals(actorUserId, submitterUserId, StringComparison.OrdinalIgnoreCase))
             && !(currentStage.RequireDifferentActorFromPreviousStage && string.Equals(actorUserId, previousActor, StringComparison.OrdinalIgnoreCase));
+        var bypassStage = currentStage is { IsOptional: true, AllowBypass: true }
+            ? stages.FirstOrDefault(x => x.Sequence > currentStage.Sequence)
+            : null;
+        var actorEligibleForBypass = bypassStage != null
+            && bypassStage.RequiredActionCode.EndsWith(".APPROVE", StringComparison.OrdinalIgnoreCase)
+            && !(bypassStage.RequireDifferentActorFromSubmitter && string.Equals(actorUserId, submitterUserId, StringComparison.OrdinalIgnoreCase))
+            && !(bypassStage.RequireDifferentActorFromPreviousStage && string.Equals(actorUserId, previousActor, StringComparison.OrdinalIgnoreCase));
         return new(
-            stages.Select(x => new WorkflowStageProjection(x.Code, x.Name, x.Sequence, x.IsTerminal)).ToArray(),
+            stages.Select(x => new WorkflowStageProjection(
+                x.Code, x.Name, x.Sequence, x.IsTerminal, x.RequiredActionCode, x.IsOptional, x.AllowBypass)).ToArray(),
             currentStage?.Code,
             instance?.State == WorkflowInstanceState.Completed,
-            actorEligible);
+            actorEligible,
+            actorEligibleForBypass,
+            instance?.State);
     }
 
     public async Task<WorkflowTransitionResult> PrepareActionAsync(SubmissionKind kind, string submissionId, long reportingPeriodId, string submitterUserId, string actorUserId, string actionCode, WorkflowActionOutcome outcome, string? comment, decimal? rating, string? correlationId)
@@ -100,20 +119,43 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
         var stage = instance.CurrentStage ?? stages.SingleOrDefault(x => x.Id == instance.CurrentStageId);
         if (stage == null) return new(false, "Current workflow stage is invalid.", instance, null);
         var bypass = outcome == WorkflowActionOutcome.Bypass;
-        if (!IsActionAllowedAtStage(stage.RequiredActionCode, actionCode, outcome) && !(bypass && stage.IsOptional && stage.AllowBypass))
+        var reopen = outcome == WorkflowActionOutcome.Reopen;
+        var resubmit = outcome == WorkflowActionOutcome.Resubmit;
+        var actionPrefix = kind == SubmissionKind.Opms ? "OPMS_SUBMISSION." : "IPMS_SUBMISSION.";
+        var expectedBypassCode = $"{actionPrefix}APPROVE_BYPASS";
+        var expectedReopenCode = $"{actionPrefix}CORRECT";
+        var expectedResubmitCode = $"{actionPrefix}RESUBMIT";
+        if (bypass && (!stage.IsOptional || !stage.AllowBypass || !string.Equals(actionCode, expectedBypassCode, StringComparison.OrdinalIgnoreCase)))
+            return new(false, $"Stage '{stage.Code}' does not allow the requested approver bypass.", instance, null);
+        if (reopen && (!string.Equals(actionCode, expectedReopenCode, StringComparison.OrdinalIgnoreCase)
+            || instance.State != WorkflowInstanceState.Active))
+            return new(false, "Only an active submitted workflow can be reopened for correction.", instance, null);
+        if (resubmit && (!string.Equals(actionCode, expectedResubmitCode, StringComparison.OrdinalIgnoreCase) || instance.State != WorkflowInstanceState.Rework))
+            return new(false, "Only a submission in rework can be resubmitted.", instance, null);
+        if (!bypass && !reopen && !resubmit && !IsActionAllowedAtStage(stage.RequiredActionCode, actionCode, outcome))
             return new(false, $"Action '{actionCode}' is not valid at stage '{stage.Code}'.", instance, null);
-        if (stage.RequireDifferentActorFromSubmitter && string.Equals(actorUserId, submitterUserId, StringComparison.OrdinalIgnoreCase) && outcome != WorkflowActionOutcome.Submit)
+        var decisionStage = stage;
+        if (bypass)
+        {
+            decisionStage = stages.FirstOrDefault(x => x.Sequence > stage.Sequence);
+            if (decisionStage == null || !decisionStage.RequiredActionCode.EndsWith(".APPROVE", StringComparison.OrdinalIgnoreCase))
+                return new(false, "An optional stage can be bypassed only into its immediately following approval stage.", instance, null);
+        }
+        if (!reopen && !resubmit && decisionStage.RequireDifferentActorFromSubmitter
+            && string.Equals(actorUserId, submitterUserId, StringComparison.OrdinalIgnoreCase)
+            && outcome != WorkflowActionOutcome.Submit)
             return new(false, "Segregation of duties prevents the submitter from acting at this stage.", instance, null);
         var previousActor = instance.Actions.OrderByDescending(x => x.Sequence).Select(x => x.ActorUserId).FirstOrDefault();
-        if (stage.RequireDifferentActorFromPreviousStage && string.Equals(previousActor, actorUserId, StringComparison.OrdinalIgnoreCase))
+        if (!reopen && !resubmit && decisionStage.RequireDifferentActorFromPreviousStage
+            && string.Equals(previousActor, actorUserId, StringComparison.OrdinalIgnoreCase))
             return new(false, "Segregation of duties requires a different actor from the previous stage.", instance, null);
         decimal? achievementPercent = null;
-        if (stage.RequiresRating || rating.HasValue)
+        if (decisionStage.RequiresRating || rating.HasValue)
             achievementPercent = await GetAchievementPercentAsync(kind, submissionId);
         RatingSchemeValue? selectedRating = null;
-        if (stage.RequiresRating && !rating.HasValue)
+        if (decisionStage.RequiresRating && !rating.HasValue)
         {
-            var automatic = ResolveAchievementRating(stage, achievementPercent);
+            var automatic = ResolveAchievementRating(decisionStage, achievementPercent);
             if (automatic.Error != null)
                 return new(false, automatic.Error, instance, null);
             selectedRating = automatic.Value!;
@@ -121,17 +163,19 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
         }
         else if (rating.HasValue)
         {
-            if (stage.RatingScheme == null || !stage.RatingScheme.IsActive)
-                return new(false, $"Stage '{stage.Code}' is not assigned an active rating scheme.", instance, null);
-            selectedRating = stage.RatingScheme.Values.SingleOrDefault(x => x.Value == rating.Value);
+            if (decisionStage.RatingScheme == null || !decisionStage.RatingScheme.IsActive)
+                return new(false, $"Stage '{decisionStage.Code}' is not assigned an active rating scheme.", instance, null);
+            selectedRating = decisionStage.RatingScheme.Values.SingleOrDefault(x => x.Value == rating.Value);
             if (selectedRating == null)
-                return new(false, $"Rating '{rating.Value}' is not a configured value in scheme '{stage.RatingScheme.Code}'.", instance, null);
+                return new(false, $"Rating '{rating.Value}' is not a configured value in scheme '{decisionStage.RatingScheme.Code}'.", instance, null);
         }
 
         WorkflowStageDefinition? next;
-        if (outcome == WorkflowActionOutcome.Reject && !string.IsNullOrWhiteSpace(stage.RejectionStageCode)) next = stages.SingleOrDefault(x => string.Equals(x.Code, stage.RejectionStageCode, StringComparison.OrdinalIgnoreCase));
-        else next = stages.FirstOrDefault(x => x.Sequence > stage.Sequence);
-        var completed = stage.IsTerminal || next == null || outcome == WorkflowActionOutcome.Complete;
+        if (reopen) next = stage;
+        else if (resubmit && !stage.RequiredActionCode.EndsWith(".SUBMIT", StringComparison.OrdinalIgnoreCase)) next = stage;
+        else if (outcome == WorkflowActionOutcome.Reject && !string.IsNullOrWhiteSpace(stage.RejectionStageCode)) next = stages.SingleOrDefault(x => string.Equals(x.Code, stage.RejectionStageCode, StringComparison.OrdinalIgnoreCase));
+        else next = stages.FirstOrDefault(x => x.Sequence > decisionStage.Sequence);
+        var completed = !reopen && !resubmit && (decisionStage.IsTerminal || next == null || outcome == WorkflowActionOutcome.Complete);
         var action = new SubmissionWorkflowAction
         {
             MunicipalityId = definition.MunicipalityId, SubmissionWorkflowInstance = instance, Sequence = instance.NextSequence++, FromStageId = stage.Id,
@@ -146,10 +190,10 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
                 MunicipalityId = definition.MunicipalityId,
                 SubmissionWorkflowInstance = instance,
                 SubmissionWorkflowAction = action,
-                WorkflowStageDefinitionId = stage.Id,
-                WorkflowStageDefinition = stage,
-                RatingSchemeId = stage.RatingScheme!.Id,
-                RatingScheme = stage.RatingScheme,
+                WorkflowStageDefinitionId = decisionStage.Id,
+                WorkflowStageDefinition = decisionStage,
+                RatingSchemeId = decisionStage.RatingScheme!.Id,
+                RatingScheme = decisionStage.RatingScheme,
                 RatingSchemeValueId = selectedRating.Id,
                 RatingSchemeValue = selectedRating,
                 Value = selectedRating.Value,
@@ -163,7 +207,9 @@ public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : 
         }
         instance.CurrentStageId = completed ? null : next!.Id;
         instance.CurrentStage = completed ? null : next;
-        instance.State = completed ? WorkflowInstanceState.Completed : outcome == WorkflowActionOutcome.Reject ? WorkflowInstanceState.Rework : WorkflowInstanceState.Active;
+        instance.State = completed ? WorkflowInstanceState.Completed
+            : outcome is WorkflowActionOutcome.Reject or WorkflowActionOutcome.Reopen ? WorkflowInstanceState.Rework
+            : WorkflowInstanceState.Active;
         if (completed) instance.CompletedAt = action.OccurredAt;
         return new(true, completed ? "Workflow completed." : $"Workflow advanced to '{next!.Code}'.", instance, action);
     }

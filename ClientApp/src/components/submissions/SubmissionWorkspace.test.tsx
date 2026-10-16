@@ -332,6 +332,45 @@ describe('SubmissionWorkspace member security', () => {
     });
   });
 
+  it('exposes approver bypass only for a configured optional bypassable stage', () => {
+    security.canExecute.mockImplementation((code: string) => code === 'OPMS_SUBMISSION.APPROVE_BYPASS');
+    const onWorkflowAction = vi.fn();
+    const submitted = {
+      ...submission,
+      status: 'pending_verification',
+      baseState: 'SUBMITTED',
+      workflow: {
+        stages: [{ code: 'VERIFY', name: 'Verify', sequence: 2, isTerminal: false, requiredActionCode: 'OPMS_SUBMISSION.VERIFY', isOptional: true, allowBypass: true }],
+        currentStageCode: 'VERIFY', completed: false, currentActorEligible: true, currentActorEligibleForBypass: true, state: 'Active',
+      },
+    } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={submitted} submissionType="OPMS" onWorkflowAction={onWorkflowAction} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve (Bypass Verification)' }));
+
+    expect(onWorkflowAction).toHaveBeenCalledWith('approve-bypass', { comment: undefined, score: undefined });
+  });
+
+  it('uses explicit correction and resubmission actions for rework', () => {
+    security.canExecute.mockImplementation((code: string) => code === 'OPMS_SUBMISSION.RESUBMIT');
+    const onWorkflowAction = vi.fn();
+    const rework = {
+      ...submission,
+      status: 'returned_for_info',
+      baseState: 'IN_PROGRESS',
+      workflow: {
+        stages: [{ code: 'VERIFY', name: 'Verify', sequence: 2, isTerminal: false, requiredActionCode: 'OPMS_SUBMISSION.VERIFY', isOptional: false, allowBypass: false }],
+        currentStageCode: 'VERIFY', completed: false, currentActorEligible: false, state: 'Rework',
+      },
+    } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={rework} submissionType="OPMS" onWorkflowAction={onWorkflowAction} />);
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Resubmit' }));
+
+    expect(onWorkflowAction).toHaveBeenCalledWith('resubmit', { comment: undefined, score: undefined });
+  });
+
   it('requires both the withdrawal action and exact reason update before exposing withdrawal', () => {
     security.canExecute.mockImplementation((code: string) => code === 'OPMS_SUBMISSION.WITHDRAW');
     const onWithdraw = vi.fn();

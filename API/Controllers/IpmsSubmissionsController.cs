@@ -977,6 +977,18 @@ public class IpmsSubmissionsController : ControllerBase
     public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Approve(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
         ApplyWorkflowAction(id, "IPMS_SUBMISSION.APPROVE", "approved", "Approve", NotificationType.Approval, request);
 
+    [HttpPost("{id:guid}/approve-bypass")]
+    public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> ApproveBypass(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
+        ApplyWorkflowAction(id, "IPMS_SUBMISSION.APPROVE_BYPASS", "approved", "ApproveBypass", NotificationType.Approval, request);
+
+    [HttpPost("{id:guid}/correct")]
+    public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> ReopenForCorrection(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
+        ApplyWorkflowAction(id, "IPMS_SUBMISSION.CORRECT", "reopened", "ReopenForCorrection", NotificationType.Rejection, request);
+
+    [HttpPost("{id:guid}/resubmit")]
+    public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Resubmit(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
+        ApplyWorkflowAction(id, "IPMS_SUBMISSION.RESUBMIT", "resubmitted", "Resubmit", NotificationType.Submission, request);
+
     [HttpPost("{id:guid}/reject")]
     public Task<ActionResult<ApiResponse<IpmsSubmissionResponse>>> Reject(string id, [FromBody] SubmissionWorkflowActionRequest request) =>
         ApplyWorkflowAction(id, "IPMS_SUBMISSION.REJECT", "rejected", "Reject", NotificationType.Rejection, request);
@@ -1088,12 +1100,18 @@ public class IpmsSubmissionsController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<IpmsSubmissionResponse>(false, null, "IPMS submission not found"));
         if (!entity.MunicipalityId.HasValue) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "The IPMS submission must be reconciled to a municipality before governance history can be recorded."));
         if (entity.IsDisabled) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "A withdrawn IPMS submission cannot transition workflow."));
+        if (permissionCode == "IPMS_SUBMISSION.CORRECT" && string.IsNullOrWhiteSpace(request.Comment))
+            return BadRequest(new ApiResponse<IpmsSubmissionResponse>(false, null, "A correction reason is required."));
+        if (permissionCode == "IPMS_SUBMISSION.CORRECT" && SubmissionBaseStates.Normalize(entity.BaseState) != SubmissionBaseStates.Submitted)
+            return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "Only a submitted workflow can be reopened for correction."));
+        if (permissionCode == "IPMS_SUBMISSION.RESUBMIT" && SubmissionBaseStates.Normalize(entity.BaseState) != SubmissionBaseStates.InProgress)
+            return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "Only an in-progress correction can be resubmitted."));
 
         var decision = await _accessControlService.CheckPermissionAsync(user, permissionCode, BuildScope(entity));
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, decision.Reason));
         var memberDenial = await WorkflowActionMemberPermissionDenialAsync(user, BuildScope(entity), status, request);
         if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<IpmsSubmissionResponse>(false, null, memberDenial));
-        if (string.Equals(permissionCode, "IPMS_SUBMISSION.SUBMIT", StringComparison.OrdinalIgnoreCase))
+        if (permissionCode is "IPMS_SUBMISSION.SUBMIT" or "IPMS_SUBMISSION.RESUBMIT")
         {
             var validation = await _submissionValidation.ValidateAsync(entity);
             if (!validation.IsValid)
@@ -1104,12 +1122,20 @@ public class IpmsSubmissionsController : ControllerBase
         if (!configurable)
             return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, "No effective configured workflow exists for this municipality, financial year, and submission type."));
         {
-            if (string.Equals(permissionCode, "IPMS_SUBMISSION.SUBMIT", StringComparison.OrdinalIgnoreCase))
+            if (permissionCode is "IPMS_SUBMISSION.SUBMIT" or "IPMS_SUBMISSION.RESUBMIT")
             {
                 var window = await _reportingWindows.CheckAsync(SubmissionKind.Ipms, entity.ReportingPeriodId!.Value, user.Id, entity.IpmsTarget.DepartmentId, entity.IpmsTarget.UnitId, DateTime.UtcNow);
                 if (!window.Allowed) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, window.Reason));
             }
-            var outcome = status is "rejected" or "verify_rejected" ? WorkflowActionOutcome.Reject : status == "submitted" ? WorkflowActionOutcome.Submit : WorkflowActionOutcome.Approve;
+            var outcome = status switch
+            {
+                "rejected" or "verify_rejected" => WorkflowActionOutcome.Reject,
+                "submitted" => WorkflowActionOutcome.Submit,
+                "approved" when permissionCode == "IPMS_SUBMISSION.APPROVE_BYPASS" => WorkflowActionOutcome.Bypass,
+                "reopened" => WorkflowActionOutcome.Reopen,
+                "resubmitted" => WorkflowActionOutcome.Resubmit,
+                _ => WorkflowActionOutcome.Approve
+            };
             var transition = await _configurableWorkflow.PrepareActionAsync(SubmissionKind.Ipms, entity.Id, entity.ReportingPeriodId!.Value, entity.SubmittedByUserId ?? entity.CreatedBy ?? user.Id, user.Id, permissionCode, outcome, request.Comment, request.Score, HttpContext.TraceIdentifier);
             if (!transition.Allowed) return Conflict(new ApiResponse<IpmsSubmissionResponse>(false, null, transition.Reason));
             resultingStatus = PerformanceApiSupport.ResolveWorkflowStatus(status, transition.Instance);
@@ -1118,11 +1144,11 @@ public class IpmsSubmissionsController : ControllerBase
 
         var before = await FindSubmissionAsync(id);
         entity.Status = resultingStatus;
-        if (string.Equals(status, "submitted", StringComparison.OrdinalIgnoreCase)) entity.BaseState = SubmissionBaseStates.Submitted;
-        else if (status is "rejected" or "verify_rejected") entity.BaseState = SubmissionBaseStates.InProgress;
+        if (status is "submitted" or "resubmitted") entity.BaseState = SubmissionBaseStates.Submitted;
+        else if (status is "rejected" or "verify_rejected" or "reopened") entity.BaseState = SubmissionBaseStates.InProgress;
         entity.UpdatedBy = user.Id;
         entity.UpdatedOn = DateTime.UtcNow;
-        if (string.Equals(status, "submitted", StringComparison.OrdinalIgnoreCase))
+        if (status is "submitted" or "resubmitted")
         {
             entity.SubmittedAt = DateTime.UtcNow;
             entity.SubmittedByUserId = user.Id;
@@ -1228,12 +1254,6 @@ public class IpmsSubmissionsController : ControllerBase
 
     private static bool CanMutateInProgressSubmission(string actorUserId, string? baseState, string? submittedByUserId, string? assignedUserId, out string reason)
     {
-        if (!IsSubmissionOwner(actorUserId, submittedByUserId, assignedUserId))
-        {
-            reason = "Only the submission owner can edit or delete this submission.";
-            return false;
-        }
-
         var normalizedState = SubmissionBaseStates.Normalize(baseState);
         if (!string.Equals(normalizedState, SubmissionBaseStates.InProgress, StringComparison.OrdinalIgnoreCase))
         {
@@ -1372,8 +1392,11 @@ public class IpmsSubmissionsController : ControllerBase
             WithdrawnByUserPublicId = withdrawnActor?.PublicId,
             WithdrawnByName = withdrawnActor == null ? null : $"{withdrawnActor.FirstName} {withdrawnActor.LastName}".Trim(),
             Workflow = workflow == null ? null : new SubmissionWorkflowProjectionResponse(
-                workflow.Stages.Select(stage => new SubmissionWorkflowStageResponse(stage.Code, stage.Name, stage.Sequence, stage.IsTerminal)).ToArray(),
-                workflow.CurrentStageCode, workflow.Completed, workflow.ActorEligible)
+                workflow.Stages.Select(stage => new SubmissionWorkflowStageResponse(
+                    stage.Code, stage.Name, stage.Sequence, stage.IsTerminal,
+                    stage.RequiredActionCode, stage.IsOptional, stage.AllowBypass)).ToArray(),
+                workflow.CurrentStageCode, workflow.Completed, workflow.ActorEligible,
+                workflow.ActorEligibleForBypass, workflow.State?.ToString())
         };
     }
 
