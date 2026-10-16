@@ -188,6 +188,31 @@ describe('SubmissionWorkspace member security', () => {
     expect(security.canEditField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'DueDateExtensionReason');
   });
 
+  it('uses the configured workflow projection and hides actions when segregation of duties blocks the actor', () => {
+    security.canExecute.mockReturnValue(true);
+    const submitted = {
+      ...submission,
+      status: 'pending_verification',
+      workflow: {
+        stages: [
+          { code: 'SUBMIT', name: 'Submit', sequence: 1, isTerminal: false },
+          { code: 'VERIFY', name: 'Verify', sequence: 2, isTerminal: true },
+        ],
+        currentStageCode: 'VERIFY',
+        completed: false,
+        currentActorEligible: false,
+      },
+    } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={submitted} submissionType="OPMS" onWorkflowAction={vi.fn()} />);
+
+    expect(screen.getByText('Submit')).toBeInTheDocument();
+    expect(screen.getByText('Verify')).toBeInTheDocument();
+    expect(screen.queryByText('PMS Review')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Verify' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Verify Reject' })).not.toBeInTheDocument();
+  });
+
   it('keeps the due-date extension controls hidden until both exact member updates are granted', () => {
     security.canExecute.mockImplementation((code: string) => code === 'OPMS_SUBMISSION.EXTEND_DUE_DATE');
     security.canEditField.mockImplementation((_resource: string, member: string) => member === 'DueDate');

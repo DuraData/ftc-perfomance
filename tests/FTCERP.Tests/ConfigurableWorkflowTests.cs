@@ -46,6 +46,13 @@ public sealed class ConfigurableWorkflowTests
         submitted.Instance!.CurrentStageId.Should().Be(22);
         await context.SaveChangesAsync();
 
+        var submitterProjection = await service.GetProjectionAsync(SubmissionKind.Opms, "submission-1", period.Id, "submitter", "submitter");
+        submitterProjection.Stages.Select(stage => stage.Name).Should().Equal("Submit", "Verify");
+        submitterProjection.CurrentStageCode.Should().Be("VERIFY");
+        submitterProjection.ActorEligible.Should().BeFalse();
+        (await service.GetProjectionAsync(SubmissionKind.Opms, "submission-1", period.Id, "submitter", "verifier"))
+            .ActorEligible.Should().BeTrue();
+
         var selfVerify = await service.PrepareActionAsync(SubmissionKind.Opms, "submission-1", period.Id, "submitter", "submitter", "OPMS_SUBMISSION.VERIFY", WorkflowActionOutcome.Approve, null, null, "trace-2");
         selfVerify.Allowed.Should().BeFalse();
         selfVerify.Reason.Should().Contain("Segregation");

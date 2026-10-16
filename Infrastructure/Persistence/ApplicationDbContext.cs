@@ -2616,8 +2616,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && parent.State == EntityState.Modified
                 && parent.CurrentValues.GetValue<string>(nameof(OpmsSubmission.Id)) == extension.Entity.SubmissionId
                 && parent.OriginalValues.GetValue<long?>(nameof(OpmsSubmission.MunicipalityId)) == extension.Entity.MunicipalityId);
-            var actor = ChangeTracker.Entries<ApplicationUser>().SingleOrDefault(candidate =>
-                candidate.State != EntityState.Deleted && candidate.Entity.Id == row.ApprovedByUserId)?.Entity;
+            var actorMunicipalityId = ResolveIdentityUserMunicipalityId(row.ApprovedByUserId);
             if (string.IsNullOrWhiteSpace(row.Id)
                 || !row.MunicipalityId.HasValue
                 || string.IsNullOrWhiteSpace(row.SubmissionId)
@@ -2627,7 +2626,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || string.IsNullOrWhiteSpace(row.ApprovedByUserId)
                 || row.ApprovedAt == default
                 || row.ApprovedAt > DateTime.UtcNow.AddMinutes(5)
-                || actor?.MunicipalityId != row.MunicipalityId
+                || !SubmissionLedgerActorMatchesTenant(row.ApprovedByUserId, actorMunicipalityId, row.MunicipalityId)
                 || !hasModifiedParent)
                 throw new InvalidOperationException("A due-date extension ledger requires complete ordered evidence, a same-tenant actor and its exact governed parent-submission mutation.");
         }
@@ -2644,8 +2643,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 && parent.State == EntityState.Modified
                 && parent.CurrentValues.GetValue<string>(nameof(OpmsSubmission.Id)) == row.SubmissionId
                 && parent.OriginalValues.GetValue<long?>(nameof(OpmsSubmission.MunicipalityId)) == row.MunicipalityId);
-            var actor = ChangeTracker.Entries<ApplicationUser>().SingleOrDefault(candidate =>
-                candidate.State != EntityState.Deleted && candidate.Entity.Id == row.CommentedByUserId)?.Entity;
+            var actorMunicipalityId = ResolveIdentityUserMunicipalityId(row.CommentedByUserId);
             if (string.IsNullOrWhiteSpace(row.Id)
                 || !row.MunicipalityId.HasValue
                 || string.IsNullOrWhiteSpace(row.SubmissionId)
@@ -2653,7 +2651,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
                 || string.IsNullOrWhiteSpace(row.CommentedByUserId)
                 || row.CommentedAt == default
                 || row.CommentedAt > DateTime.UtcNow.AddMinutes(5)
-                || actor?.MunicipalityId != row.MunicipalityId
+                || !SubmissionLedgerActorMatchesTenant(row.CommentedByUserId, actorMunicipalityId, row.MunicipalityId)
                 || !hasModifiedParent)
                 throw new InvalidOperationException("A review-comment ledger requires complete chronological evidence, a same-tenant actor and its exact governed parent-submission mutation.");
         }
@@ -4360,6 +4358,28 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         return tracked ?? Users.IgnoreQueryFilters().AsNoTracking()
             .Where(candidate => candidate.Id == identityUserId)
             .Select(candidate => (Guid?)candidate.PublicId).SingleOrDefault();
+    }
+
+    private long? ResolveIdentityUserMunicipalityId(string? identityUserId)
+    {
+        if (string.IsNullOrWhiteSpace(identityUserId)) return null;
+        var tracked = ChangeTracker.Entries<ApplicationUser>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == identityUserId)
+            .Select(candidate => candidate.Entity.MunicipalityId).SingleOrDefault();
+        return tracked ?? Users.IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == identityUserId)
+            .Select(candidate => candidate.MunicipalityId).SingleOrDefault();
+    }
+
+    private bool SubmissionLedgerActorMatchesTenant(string actorUserId, long? actorMunicipalityId, long? ledgerMunicipalityId)
+    {
+        if (!ledgerMunicipalityId.HasValue) return false;
+        if (actorMunicipalityId == ledgerMunicipalityId) return true;
+        return actorMunicipalityId == null
+            && _tenantContext is { IsSystem: true, MunicipalityId: not null }
+            && _tenantContext.MunicipalityId == ledgerMunicipalityId
+            && string.Equals(_tenantContext.UserId, actorUserId, StringComparison.Ordinal);
     }
 
     private AuthenticationPolicy? ResolveAuthenticationPolicy(long configurationId)

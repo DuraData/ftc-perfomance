@@ -5,12 +5,22 @@ const pushToast = vi.hoisted(() => vi.fn());
 const app = vi.hoisted(() => ({ permissions: [] as string[] }));
 const api = vi.hoisted(() => ({
   createOpmsSubmission: vi.fn(),
+  getOpmsSubmission: vi.fn(),
   getOpmsSubmissionsPage: vi.fn(),
   getOpmsTarget: vi.fn(),
   getOpmsTargetOptions: vi.fn(),
 }));
 
 vi.mock('../../context/AppContext', () => ({ useApp: () => ({ permissions: app.permissions, pushToast }) }));
+vi.mock('../../context/SecurityContext', () => ({
+  useSecurity: () => ({
+    canRead: () => true,
+    canUpdate: () => true,
+    canReadField: () => true,
+    canEditField: () => true,
+    canExecute: () => true,
+  }),
+}));
 vi.mock('../../api/api', async importOriginal => ({
   ...(await importOriginal<typeof import('../../api/api')>()),
   ...api,
@@ -22,6 +32,7 @@ vi.mock('../layout/AppShell', () => ({
 describe('OPMS submission creation validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Element.prototype.scrollIntoView = vi.fn();
     app.permissions = [
       'OPMS_SUBMISSION.CREATE',
       'OPMS_SUBMISSION.DueDate.READ',
@@ -124,6 +135,57 @@ describe('OPMS submission creation validation', () => {
     const cells = within(row).getAllByRole('cell');
     expect(cells[4]).toHaveTextContent('-2');
     expect(cells[4]).not.toHaveTextContent('-2%');
+  });
+
+  it('loads submission details before opening the workspace so configured workflow stages are used', async () => {
+    app.permissions = [...app.permissions, 'OPMS_SUBMISSION.WORKFLOW.VERIFY'];
+    const registerSubmission = {
+      id: 'submission-workflow',
+      publicId: 'submission-workflow',
+      target: {
+        id: 'target-1',
+        targetName: 'Road maintenance',
+        indicatorNumber: 'KPI-001',
+        period: { fiscalYear: '2026/27' },
+        department: { name: 'Infrastructure' },
+        unitOfMeasure: { name: 'Count', symbol: '' },
+      },
+      quarter: 'Q1' as const,
+      dueDate: '',
+      actualPerformance: '8',
+      variance: -2,
+      status: 'pending_verification' as const,
+      submitterStatus: 'Submitted',
+      attachments: [],
+      createdAt: '2026-10-16T00:00:00Z',
+    };
+    api.getOpmsSubmissionsPage.mockResolvedValue({
+      success: true,
+      data: { items: [registerSubmission], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    api.getOpmsSubmission.mockResolvedValue({
+      success: true,
+      data: {
+        ...registerSubmission,
+        workflow: {
+          stages: [
+            { code: 'SUBMIT', name: 'Submit', sequence: 1, isTerminal: false },
+            { code: 'VERIFY', name: 'Verify', sequence: 2, isTerminal: true },
+          ],
+          currentStageCode: 'VERIFY',
+          completed: false,
+          currentActorEligible: false,
+        },
+      },
+    });
+
+    render(<OPMSSubmissionsList />);
+    fireEvent.click(await screen.findByRole('button', { name: 'View submission' }));
+
+    await waitFor(() => expect(api.getOpmsSubmission).toHaveBeenCalledWith('submission-workflow'));
+    expect(await screen.findByText('Submit')).toBeInTheDocument();
+    expect(screen.getByText('Verify')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Verify$/ })).not.toBeInTheDocument();
   });
 
   it('allows a create-authorized user to start a blank draft without exposing a denied Actual Performance member', async () => {

@@ -147,7 +147,7 @@ public class IpmsSubmissionsController : ControllerBase
         var itemsById = items.ToDictionary(item => item.Id, StringComparer.Ordinal);
         var responses = new List<IpmsSubmissionResponse>(pageRows.Count);
         foreach (var row in pageRows)
-            responses.Add(await ToAuthorizedResponseAsync(itemsById[row.Id], user, row.Status));
+            responses.Add(await ToAuthorizedResponseAsync(itemsById[row.Id], user, row.Status, includeWorkflowProjection: false));
         return Ok(new ApiResponse<PagedResponse<IpmsSubmissionResponse>>(true,
             PagedResponse<IpmsSubmissionResponse>.Create(responses, request.Page, request.PageSize, totalCount)));
     }
@@ -1295,7 +1295,7 @@ public class IpmsSubmissionsController : ControllerBase
         return null;
     }
 
-    private async Task<IpmsSubmissionResponse> ToAuthorizedResponseAsync(IpmsSubmission submission, ApplicationUser user, string? canonicalStatus = null)
+    private async Task<IpmsSubmissionResponse> ToAuthorizedResponseAsync(IpmsSubmission submission, ApplicationUser user, string? canonicalStatus = null, bool includeWorkflowProjection = true)
     {
         canonicalStatus ??= await PerformanceApiSupport.ProjectCanonicalStatuses(
                 _context,
@@ -1311,6 +1311,10 @@ public class IpmsSubmissionsController : ControllerBase
                 .Where(item => item.Id == submission.WithdrawnByUserId)
                 .Select(item => new { item.PublicId, item.FirstName, item.LastName })
                 .SingleOrDefaultAsync()
+            : null;
+        var workflow = includeWorkflowProjection && submission.ReportingPeriodId.HasValue
+            ? await _configurableWorkflow.GetProjectionAsync(SubmissionKind.Ipms, submission.Id, submission.ReportingPeriodId.Value,
+                submission.SubmittedByUserId ?? submission.CreatedBy ?? user.Id, user.Id)
             : null;
         return response with
         {
@@ -1351,7 +1355,10 @@ public class IpmsSubmissionsController : ControllerBase
             DueDateExtendedDays = projectionAccess.Contains("DueDate") ? response.DueDateExtendedDays : null,
             WithdrawalReason = projectionAccess.Contains("WithdrawalReason") ? response.WithdrawalReason : null,
             WithdrawnByUserPublicId = withdrawnActor?.PublicId,
-            WithdrawnByName = withdrawnActor == null ? null : $"{withdrawnActor.FirstName} {withdrawnActor.LastName}".Trim()
+            WithdrawnByName = withdrawnActor == null ? null : $"{withdrawnActor.FirstName} {withdrawnActor.LastName}".Trim(),
+            Workflow = workflow == null ? null : new SubmissionWorkflowProjectionResponse(
+                workflow.Stages.Select(stage => new SubmissionWorkflowStageResponse(stage.Code, stage.Name, stage.Sequence, stage.IsTerminal)).ToArray(),
+                workflow.CurrentStageCode, workflow.Completed, workflow.ActorEligible)
         };
     }
 

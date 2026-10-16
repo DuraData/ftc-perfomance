@@ -27,6 +27,7 @@ import type {
   SubmissionStatus,
   PerformanceSuggestionEvent,
   DueDateExtensionHistoryEntry,
+  SubmissionWorkflowProjection,
 } from '../../types';
 import {
   generateIpmsConsolidationSuggestion,
@@ -296,13 +297,20 @@ function Field({
   );
 }
 
-function WorkflowRail({ status }: { status: SubmissionStatus }) {
-  const currentIndex = statusStepMap[status];
+function WorkflowRail({ status, workflow }: { status: SubmissionStatus; workflow?: SubmissionWorkflowProjection }) {
+  const projectedSteps = workflow?.stages.length
+    ? workflow.stages.map(stage => ({ id: stage.code, label: stage.name }))
+    : workflowSteps;
+  const currentIndex = workflow?.completed
+    ? projectedSteps.length
+    : workflow?.currentStageCode
+      ? Math.max(0, projectedSteps.findIndex(step => step.id === workflow.currentStageCode))
+      : statusStepMap[status];
 
   return (
     <div className="rounded-xl border border-secondary-200 bg-white px-4 py-4 dark:border-secondary-700 dark:bg-secondary-900">
       <div className="flex items-center gap-2 overflow-x-auto">
-        {workflowSteps.map((step, index) => {
+        {projectedSteps.map((step, index) => {
           const complete = index < currentIndex;
           const current = index === currentIndex;
 
@@ -324,7 +332,7 @@ function WorkflowRail({ status }: { status: SubmissionStatus }) {
                   {step.label}
                 </span>
               </div>
-              {index < workflowSteps.length - 1 && (
+              {index < projectedSteps.length - 1 && (
                 <div className="h-0.5 min-w-12 flex-1 rounded bg-secondary-200 dark:bg-secondary-700">
                   <div
                     className={`h-0.5 rounded ${index < currentIndex ? 'bg-success-600' : 'bg-secondary-200 dark:bg-secondary-700'}`}
@@ -633,20 +641,21 @@ export function SubmissionWorkspace({
   const canReadAuditorIdentity = security.canReadField(resourceCode, 'InternalAuditAssessedBy');
   const canReadAuditorObservation = security.canReadField(resourceCode, 'InternalAuditObservation');
   const canReadAuditorComment = security.canReadField(resourceCode, 'InternalAuditComment');
+  const currentActorEligible = currentSubmission.workflow?.currentActorEligible ?? true;
   const canSubmit = ['draft', 'returned_for_info', 'verify_rejected', 'rejected'].includes(currentSubmission.status)
-    && security.canExecute(`${submissionType}_SUBMISSION.SUBMIT`);
+    && security.canExecute(`${submissionType}_SUBMISSION.SUBMIT`) && currentActorEligible;
   const canVerify = ['submitted', 'pending_verification'].includes(currentSubmission.status)
-    && security.canExecute(`${submissionType}_SUBMISSION.VERIFY`);
+    && security.canExecute(`${submissionType}_SUBMISSION.VERIFY`) && currentActorEligible;
   const canVerifyReject = ['submitted', 'pending_verification'].includes(currentSubmission.status)
-    && security.canExecute(`${submissionType}_SUBMISSION.VERIFY_REJECT`);
+    && security.canExecute(`${submissionType}_SUBMISSION.VERIFY_REJECT`) && currentActorEligible;
   const canApprove = ['verified', 'pending_approval'].includes(currentSubmission.status)
-    && security.canExecute(`${submissionType}_SUBMISSION.APPROVE`);
+    && security.canExecute(`${submissionType}_SUBMISSION.APPROVE`) && currentActorEligible;
   const canReject = ['verified', 'pending_approval'].includes(currentSubmission.status)
-    && security.canExecute(`${submissionType}_SUBMISSION.REJECT`);
+    && security.canExecute(`${submissionType}_SUBMISSION.REJECT`) && currentActorEligible;
   const canReview = currentSubmission.status === 'approved'
-    && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`);
+    && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`) && currentActorEligible;
   const canAudit = currentSubmission.status === 'reviewed'
-    && security.canExecute(`${submissionType}_WORKFLOW.INTERNAL_AUDIT`);
+    && security.canExecute(`${submissionType}_WORKFLOW.INTERNAL_AUDIT`) && currentActorEligible;
   const canExtendDueDate = !['completed', 'cancelled'].includes(currentSubmission.status)
     && security.canExecute(`${submissionType}_SUBMISSION.EXTEND_DUE_DATE`)
     && security.canEditField(resourceCode, 'DueDate')
@@ -905,7 +914,7 @@ export function SubmissionWorkspace({
 
           <div className="grid grid-cols-2 gap-4 rounded-xl border border-secondary-200 bg-secondary-50 px-4 py-3 dark:border-secondary-700 dark:bg-secondary-800/80 md:grid-cols-4">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Quarter</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary-500">Reporting Period</p>
               <p className="mt-1 text-base font-semibold text-secondary-900 dark:text-white">
                 {currentSubmission.quarter} {currentSubmission.target.period.fiscalYear}
               </p>
@@ -927,7 +936,7 @@ export function SubmissionWorkspace({
           </div>
         </div>
 
-        <WorkflowRail status={currentSubmission.status} />
+        <WorkflowRail status={currentSubmission.status} workflow={currentSubmission.workflow} />
       </Card>
       <GovernedWithdrawalDialog
         isOpen={showWithdrawal}
@@ -953,7 +962,7 @@ export function SubmissionWorkspace({
         <div className="space-y-4">
           <Section title="Reporting Period" icon={<TimerReset className="h-4 w-4" />}>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Quarter" value={`${currentSubmission.quarter} ${currentSubmission.target.period.fiscalYear}`} />
+              <Field label="Reporting Period" value={`${currentSubmission.quarter} ${currentSubmission.target.period.fiscalYear}`} />
               <Field label="Due Date" value={canReadDueDate ? formatDate(currentSubmission.dueDate) : 'Restricted'} />
               <Field label="Extended Due Date" value={canReadDueDate ? formatDate(currentSubmission.extendedDueDate) : 'Restricted'} />
             </div>

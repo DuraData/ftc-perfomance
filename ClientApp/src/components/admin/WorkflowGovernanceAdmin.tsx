@@ -320,7 +320,16 @@ export function WorkflowGovernanceAdminPage() {
               <Input label="Code" value={definition.code} onChange={event => setDefinition(current => ({ ...current, code: event.target.value }))} required />
               <Input label="Name" value={definition.name} onChange={event => setDefinition(current => ({ ...current, name: event.target.value }))} required />
               <CalendarMasterPicker kind="municipality-financial-year" label="Municipality financial year" value={workflowYearId} onChange={setWorkflowYearId} required />
-              <Select label="Submission type" value={definition.submissionKind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => setDefinition(current => ({ ...current, submissionKind: Number(event.target.value) }))} />
+              <Select label="Submission type" value={definition.submissionKind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => {
+                const submissionKind = Number(event.target.value);
+                const prefix = submissionKind === 1 ? 'OPMS' : 'IPMS';
+                setDefinition(current => ({ ...current, submissionKind }));
+                setStages(current => current.map(stage => ({
+                  ...stage,
+                  requiredActionCode: stage.requiredActionCode.replace(/^OPMS|^IPMS/, prefix),
+                  requiredPermissionCode: stage.requiredPermissionCode.replace(/^OPMS|^IPMS/, prefix),
+                })));
+              }} />
               <Input label="Effective from" type="datetime-local" value={definition.effectiveFrom} onChange={event => setDefinition(current => ({ ...current, effectiveFrom: event.target.value }))} />
               <Textarea label="Version reason" value={definition.reason} onChange={event => setDefinition(current => ({ ...current, reason: event.target.value }))} required />
             </div>

@@ -29,14 +29,50 @@ public sealed class ReportingWindowService(ApplicationDbContext context) : IRepo
 }
 
 public sealed record WorkflowTransitionResult(bool Allowed, string Reason, SubmissionWorkflowInstance? Instance, SubmissionWorkflowAction? Action);
+public sealed record WorkflowStageProjection(string Code, string Name, int Sequence, bool IsTerminal);
+public sealed record SubmissionWorkflowProjection(
+    IReadOnlyList<WorkflowStageProjection> Stages,
+    string? CurrentStageCode,
+    bool Completed,
+    bool ActorEligible);
 
 public interface IConfigurableWorkflowService
 {
     Task<WorkflowTransitionResult> PrepareActionAsync(SubmissionKind kind, string submissionId, long reportingPeriodId, string submitterUserId, string actorUserId, string actionCode, WorkflowActionOutcome outcome, string? comment, decimal? rating, string? correlationId);
+    Task<SubmissionWorkflowProjection> GetProjectionAsync(SubmissionKind kind, string submissionId, long reportingPeriodId, string submitterUserId, string actorUserId);
 }
 
 public sealed class ConfigurableWorkflowService(ApplicationDbContext context) : IConfigurableWorkflowService
 {
+    public async Task<SubmissionWorkflowProjection> GetProjectionAsync(SubmissionKind kind, string submissionId, long reportingPeriodId, string submitterUserId, string actorUserId)
+    {
+        var period = await context.ReportingPeriods.AsNoTracking().SingleOrDefaultAsync(x => x.Id == reportingPeriodId);
+        if (period == null) return new([], null, false, false);
+        var instance = await context.SubmissionWorkflowInstances.AsNoTracking()
+            .Include(x => x.CurrentStage)
+            .Include(x => x.Actions)
+            .Include(x => x.WorkflowDefinition).ThenInclude(x => x.Stages)
+            .SingleOrDefaultAsync(x => x.SubmissionKind == kind && x.SubmissionId == submissionId);
+        var definition = instance?.WorkflowDefinition ?? await context.WorkflowDefinitions.AsNoTracking()
+            .Include(x => x.Stages)
+            .Where(x => x.MunicipalityFinancialYearId == period.MunicipalityFinancialYearId && x.SubmissionKind == kind && x.IsActive
+                && x.EffectiveFrom <= DateTime.UtcNow && (!x.EffectiveTo.HasValue || x.EffectiveTo > DateTime.UtcNow))
+            .OrderByDescending(x => x.Version)
+            .FirstOrDefaultAsync();
+        if (definition == null) return new([], null, false, false);
+        var stages = definition.Stages.Where(x => x.IsActive).OrderBy(x => x.Sequence).ToArray();
+        var currentStage = instance?.CurrentStage ?? (instance == null ? stages.FirstOrDefault() : null);
+        var previousActor = instance?.Actions.OrderByDescending(x => x.Sequence).Select(x => x.ActorUserId).FirstOrDefault();
+        var actorEligible = currentStage != null
+            && !(currentStage.RequireDifferentActorFromSubmitter && string.Equals(actorUserId, submitterUserId, StringComparison.OrdinalIgnoreCase))
+            && !(currentStage.RequireDifferentActorFromPreviousStage && string.Equals(actorUserId, previousActor, StringComparison.OrdinalIgnoreCase));
+        return new(
+            stages.Select(x => new WorkflowStageProjection(x.Code, x.Name, x.Sequence, x.IsTerminal)).ToArray(),
+            currentStage?.Code,
+            instance?.State == WorkflowInstanceState.Completed,
+            actorEligible);
+    }
+
     public async Task<WorkflowTransitionResult> PrepareActionAsync(SubmissionKind kind, string submissionId, long reportingPeriodId, string submitterUserId, string actorUserId, string actionCode, WorkflowActionOutcome outcome, string? comment, decimal? rating, string? correlationId)
     {
         var period = await context.ReportingPeriods.AsNoTracking().SingleOrDefaultAsync(x => x.Id == reportingPeriodId);

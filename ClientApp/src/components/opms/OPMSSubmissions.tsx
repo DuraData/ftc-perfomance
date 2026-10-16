@@ -22,8 +22,10 @@ import {
   withdrawOpmsSubmission,
   extendIpmsSubmissionDueDate,
   extendOpmsSubmissionDueDate,
+  getIpmsSubmission,
   getIpmsSubmissionsPage,
   getIpmsTarget,
+  getOpmsSubmission,
   getOpmsSubmissionsPage,
   getOpmsTarget,
   uploadIpmsSubmissionAttachment,
@@ -206,7 +208,15 @@ export function OPMSSubmissionsList() {
     void loadData();
   }, [loadData]);
 
-  const openSubmission = (submission: OPMSSubmission) => setSelectedSubmission(submission);
+  const openSubmission = async (submission: OPMSSubmission) => {
+    const result = await getOpmsSubmission(submission.id);
+    if (!result.success || !result.data) {
+      pushToast('error', result.message ?? 'Failed to load the OPMS submission');
+      return;
+    }
+
+    setSelectedSubmission({ ...result.data, attachments: submission.attachments });
+  };
 
   const resetForm = () => {
     setForm({
@@ -219,7 +229,7 @@ export function OPMSSubmissionsList() {
 
   const columns = [
     { id: 'target', sortKey: 'indicatorNumber', header: 'Target', accessor: (row: OPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
-    { id: 'quarter', sortKey: 'quarter', header: 'Quarter', accessor: (row: OPMSSubmission) => row.quarter },
+    { id: 'quarter', sortKey: 'quarter', header: 'Reporting Period', accessor: (row: OPMSSubmission) => row.quarter },
     ...(canReadDueDate ? [{ id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => <span className={row.dueDate && new Date(row.dueDate) < new Date() && row.status === 'draft' ? 'text-error-600' : ''}>{formatOptionalDate(row.dueDate)}</span> }] : []),
     ...(canReadActualPerformance ? [{ id: 'actual', header: 'Actual', accessor: (row: OPMSSubmission) => row.actualPerformance?.trim() || '-' }] : []),
     ...(canReadVariance ? [{ id: 'variance', header: 'Var', accessor: (row: OPMSSubmission) => <span className={row.variance != null && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{formatVariance(row.variance)}</span> }] : []),
@@ -228,7 +238,7 @@ export function OPMSSubmissionsList() {
 
   const actions = (row: OPMSSubmission) => (
     <div className="flex items-center justify-end gap-0.5">
-      <button onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
+      <button aria-label="View submission" title="View submission" onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
     </div>
   );
 
@@ -568,7 +578,15 @@ export function IPMSSubmissionsList() {
     void loadData();
   }, [loadData]);
 
-  const openSubmission = (submission: IPMSSubmission) => setSelectedSubmission(submission);
+  const openSubmission = async (submission: IPMSSubmission) => {
+    const result = await getIpmsSubmission(submission.id);
+    if (!result.success || !result.data) {
+      pushToast('error', result.message ?? 'Failed to load the IPMS submission');
+      return;
+    }
+
+    setSelectedSubmission({ ...result.data, attachments: submission.attachments });
+  };
 
   const resetForm = () => {
     setForm({
@@ -581,7 +599,7 @@ export function IPMSSubmissionsList() {
 
   const columns = [
     { id: 'target', sortKey: 'indicatorNumber', header: 'Target', accessor: (row: IPMSSubmission) => <div><p className="font-medium">{row.target.targetName}</p><p className="text-[10px] text-secondary-500">{row.target.indicatorNumber}</p></div> },
-    { id: 'quarter', sortKey: 'quarter', header: 'Quarter', accessor: (row: IPMSSubmission) => row.quarter },
+    { id: 'quarter', sortKey: 'quarter', header: 'Reporting Period', accessor: (row: IPMSSubmission) => row.quarter },
     ...(canReadDueDate ? [{ id: 'due', header: 'Due', accessor: (row: IPMSSubmission) => formatOptionalDate(row.dueDate) }] : []),
     ...(canReadActualPerformance ? [{ id: 'actual', header: 'Actual', accessor: (row: IPMSSubmission) => row.actualPerformance?.trim() || '-' }] : []),
     ...(canReadVariance ? [{ id: 'variance', header: 'Var', accessor: (row: IPMSSubmission) => <span className={row.variance != null && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{formatVariance(row.variance)}</span> }] : []),
@@ -590,7 +608,7 @@ export function IPMSSubmissionsList() {
 
   const actions = (row: IPMSSubmission) => (
     <div className="flex items-center justify-end gap-0.5">
-      <button onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
+      <button aria-label="View submission" title="View submission" onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
     </div>
   );
 

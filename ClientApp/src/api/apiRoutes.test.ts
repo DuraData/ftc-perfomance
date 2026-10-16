@@ -774,6 +774,31 @@ describe('versioned API routes', () => {
     expect(target?.periodTargets[0]).toMatchObject({ periodType: 6, unitKind: 2, direction: 1, originalUnitKind: 2 });
   });
 
+  it('normalizes canonical submission period codes without fabricating Q1', async () => {
+    const page = {
+      items: [
+        {
+          publicId: 'submission-annual', rowVersion: 'AQ==', baseState: 'IN_PROGRESS', ipmsTargetPublicId: 'target-live',
+          targetName: 'Annual KPI', targetIndicatorNumber: 'IPMS-ANNUAL', quarter: 'ANNUAL', status: 'draft', createdAt: '2026-08-01T00:00:00Z',
+        },
+        {
+          publicId: 'submission-mid-term', rowVersion: 'Ag==', baseState: 'IN_PROGRESS', ipmsTargetPublicId: 'target-live',
+          targetName: 'Mid-term KPI', targetIndicatorNumber: 'IPMS-MID', quarter: 'MID_TERM', status: 'draft', createdAt: '2026-08-01T00:00:00Z',
+        },
+        {
+          publicId: 'submission-unknown', rowVersion: 'Aw==', baseState: 'IN_PROGRESS', ipmsTargetPublicId: 'target-live',
+          targetName: 'Unreconciled KPI', targetIndicatorNumber: 'IPMS-UNKNOWN', quarter: '', status: 'draft', createdAt: '2026-08-01T00:00:00Z',
+        },
+      ],
+      page: 1, pageSize: 25, totalCount: 3, totalPages: 1,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: page }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+
+    const submissions = await getIpmsSubmissionsPage();
+
+    expect(submissions.data?.items.map(item => item.quarter)).toEqual(['Annual', 'Mid-Year', 'Unknown']);
+  });
+
   it('projects submission actors and evidence uploaders only from API DTOs', async () => {
     const page = {
       items: [{

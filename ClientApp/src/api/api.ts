@@ -269,9 +269,17 @@ function coerceTargetUnitType(value?: string | null): TargetUnitType {
 }
 
 function coerceQuarter(value?: string | null): Quarter {
-  const normalized = (value ?? '').trim() as Quarter;
-  const knownQuarters: Quarter[] = ['Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'];
-  return knownQuarters.includes(normalized) ? normalized : 'Q1';
+  const normalized = (value ?? '').trim().replace(/[\s_-]+/g, '').toUpperCase();
+  const periodByCode: Record<string, Quarter> = {
+    Q1: 'Q1',
+    Q2: 'Q2',
+    MIDTERM: 'Mid-Year',
+    MIDYEAR: 'Mid-Year',
+    Q3: 'Q3',
+    Q4: 'Q4',
+    ANNUAL: 'Annual',
+  };
+  return periodByCode[normalized] ?? 'Unknown';
 }
 
 function coerceSubmissionStatus(value?: string | null): SubmissionStatus {
@@ -971,6 +979,7 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto): OPMSSubmission {
     attachments: [],
     comments: [],
     history: [],
+    workflow: dto.workflow ?? undefined,
   };
 }
 
@@ -1056,6 +1065,7 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto): IPMSSubmission {
     attachments: [],
     comments: [],
     history: [],
+    workflow: dto.workflow ?? undefined,
   };
 }
 

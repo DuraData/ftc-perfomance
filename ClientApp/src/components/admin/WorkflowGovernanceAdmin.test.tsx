@@ -93,6 +93,30 @@ describe('WorkflowGovernanceAdminPage', () => {
     api.getUnitMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.compareWorkflowDefinitions.mockResolvedValue({ success: false, message: 'not configured' });
     api.retireWorkflowDefinition.mockResolvedValue({ success: true, data: null });
+    api.createWorkflowDefinition.mockResolvedValue({ success: true, data: null });
+  });
+
+  it('updates visible stage permissions when changing the workflow submission type', async () => {
+    render(<WorkflowGovernanceAdminPage />);
+
+    await screen.findByRole('option', { name: /2026\/27 · 2026\/27 · Current/ });
+    fireEvent.change(screen.getByLabelText('Municipality financial year*'), { target: { value: 'year-1' } });
+    fireEvent.change(screen.getByLabelText('Submission type'), { target: { value: '2' } });
+
+    const permissions = screen.getAllByLabelText('Registered action / permission');
+    expect(permissions[0]).toHaveValue('IPMS_SUBMISSION.SUBMIT');
+    expect(permissions[1]).toHaveValue('IPMS_SUBMISSION.VERIFY');
+
+    fireEvent.change(screen.getByLabelText('Version reason*'), { target: { value: 'Configure the governed IPMS verification workflow' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create version' }));
+
+    await waitFor(() => expect(api.createWorkflowDefinition).toHaveBeenCalledWith(expect.objectContaining({
+      submissionKind: 2,
+      stages: [
+        expect.objectContaining({ requiredActionCode: 'IPMS_SUBMISSION.SUBMIT', requiredPermissionCode: 'IPMS_SUBMISSION.SUBMIT' }),
+        expect.objectContaining({ requiredActionCode: 'IPMS_SUBMISSION.VERIFY', requiredPermissionCode: 'IPMS_SUBMISSION.VERIFY' }),
+      ],
+    })));
   });
 
   it('opens municipality notification policy and working-calendar administration', async () => {

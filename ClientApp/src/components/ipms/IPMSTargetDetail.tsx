@@ -254,7 +254,7 @@ function SubmissionsTab({
   const openSubmission = (submission: IPMSSubmission) => setSelectedSubmission(submission);
 
   const columns = [
-    { id: 'quarter', header: 'Quarter', accessor: (row: IPMSSubmission) => row.quarter },
+    { id: 'quarter', header: 'Reporting Period', accessor: (row: IPMSSubmission) => row.quarter },
     { id: 'due', header: 'Due', accessor: (row: IPMSSubmission) => new Date(row.dueDate).toLocaleDateString() },
     { id: 'actual', header: 'Actual', accessor: (row: IPMSSubmission) => row.actual?.toLocaleString() ?? '-' },
     { id: 'variance', header: 'Var', accessor: (row: IPMSSubmission) => <span className={row.variance && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{row.variance ? `${row.variance > 0 ? '+' : ''}${row.variance}%` : '-'}</span> },

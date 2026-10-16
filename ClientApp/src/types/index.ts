@@ -61,7 +61,7 @@ export type TargetUnitType =
   | 'ReverseCumulative'
   | 'ReverseNonCumulative';
 
-export type Quarter = 'Q1' | 'Q2' | 'Mid-Year' | 'Q3' | 'Q4' | 'Annual';
+export type Quarter = 'Q1' | 'Q2' | 'Mid-Year' | 'Q3' | 'Q4' | 'Annual' | 'Unknown';
 
 export type XafUnitValue =
   | 'None'
@@ -653,6 +653,7 @@ export interface OPMSSubmission {
   attachments: Attachment[];
   comments: SubmissionComment[];
   history: SubmissionHistory[];
+  workflow?: SubmissionWorkflowProjection;
 }
 
 export interface IPMSSubmission {
@@ -729,6 +730,14 @@ export interface IPMSSubmission {
   attachments: Attachment[];
   comments: SubmissionComment[];
   history: SubmissionHistory[];
+  workflow?: SubmissionWorkflowProjection;
+}
+
+export interface SubmissionWorkflowProjection {
+  stages: Array<{ code: string; name: string; sequence: number; isTerminal: boolean }>;
+  currentStageCode?: string | null;
+  completed: boolean;
+  currentActorEligible: boolean;
 }
 
 // Supporting Types
@@ -2709,6 +2718,7 @@ export interface OpmsSubmissionDto {
   createdOn?: string | null;
   updatedOn?: string | null;
   organisationId?: string | null;
+  workflow?: SubmissionWorkflowProjection | null;
   createdAt: string;
 }
 
@@ -2794,6 +2804,7 @@ export interface IpmsSubmissionDto {
   createdOn?: string | null;
   updatedOn?: string | null;
   organisationId?: string | null;
+  workflow?: SubmissionWorkflowProjection | null;
   createdAt: string;
 }
 

@@ -475,6 +475,7 @@ public record OpmsSubmissionResponse(
     public DateTime? WithdrawnAt { get; init; }
     public Guid? WithdrawnByUserPublicId { get; init; }
     public string? WithdrawnByName { get; init; }
+    public SubmissionWorkflowProjectionResponse? Workflow { get; init; }
 }
 
 public record IpmsSubmissionResponse(
@@ -561,7 +562,16 @@ public record IpmsSubmissionResponse(
     public DateTime? WithdrawnAt { get; init; }
     public Guid? WithdrawnByUserPublicId { get; init; }
     public string? WithdrawnByName { get; init; }
+    public SubmissionWorkflowProjectionResponse? Workflow { get; init; }
 }
+
+public sealed record SubmissionWorkflowProjectionResponse(
+    IReadOnlyList<SubmissionWorkflowStageResponse> Stages,
+    string? CurrentStageCode,
+    bool Completed,
+    bool CurrentActorEligible);
+
+public sealed record SubmissionWorkflowStageResponse(string Code, string Name, int Sequence, bool IsTerminal);
 
 public sealed record PerformanceSuggestionEventResponse(
     Guid PublicId,

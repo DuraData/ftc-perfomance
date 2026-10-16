@@ -292,7 +292,7 @@ function SubmissionsTab({
   const openSubmission = (submission: OPMSSubmission) => setSelectedSubmission(submission);
 
   const columns = [
-    { id: 'quarter', header: 'Quarter', accessor: (row: OPMSSubmission) => row.quarter },
+    { id: 'quarter', header: 'Reporting Period', accessor: (row: OPMSSubmission) => row.quarter },
     { id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => new Date(row.dueDate).toLocaleDateString() },
     { id: 'actual', header: 'Actual', accessor: (row: OPMSSubmission) => row.actual?.toLocaleString() ?? '-' },
     { id: 'variance', header: 'Var', accessor: (row: OPMSSubmission) => <span className={row.variance && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{row.variance ? `${row.variance > 0 ? '+' : ''}${row.variance}%` : '-'}</span> },

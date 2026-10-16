@@ -3,6 +3,49 @@ namespace FTCERP.Tests;
 public sealed class SubmissionGovernanceTenantIsolationTests
 {
     [Fact]
+    public async Task Review_comment_accepts_a_persisted_system_actor_in_the_selected_tenant()
+    {
+        const long municipalityId = 9798;
+        var tenant = new Mock<ITenantContext>();
+        tenant.SetupGet(item => item.MunicipalityId).Returns(municipalityId);
+        tenant.SetupGet(item => item.IsSystem).Returns(true);
+        await using var context = IdpTestFixture.CreateRelationalContext(tenant.Object);
+        var municipality = new Municipality { Id = municipalityId, Code = "LEDGER-PERSISTED-ACTOR", Name = "Persisted Actor Municipality" };
+        var actor = IdpTestFixture.CreateUser("ledger-persisted-actor");
+        tenant.SetupGet(item => item.UserId).Returns(actor.Id);
+        var target = new IpmsTarget
+        {
+            Id = "persisted-actor-target", Municipality = municipality, IndicatorNumber = "IPMS-LEDGER-1",
+            TargetName = "Persisted actor target", KpiDescription = "Valid review-comment persistence"
+        };
+        var submission = new IpmsSubmission
+        {
+            Id = "persisted-actor-submission", Municipality = municipality, IpmsTarget = target,
+            Quarter = "ANNUAL", BaseState = SubmissionBaseStates.InProgress, Status = SubmissionBaseStates.InProgress,
+            CreatedBy = actor.Id, CreatedAt = DateTime.UtcNow
+        };
+        context.AddRange(municipality, actor, target, submission);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var persistedSubmission = await context.IpmsSubmissions.SingleAsync(item => item.Id == submission.Id);
+        context.Entry(persistedSubmission).Property(item => item.RowVersion).IsModified = true;
+        context.ReviewComments.Add(new ReviewComment
+        {
+            MunicipalityId = municipalityId,
+            SubmissionKind = SubmissionKind.Ipms,
+            SubmissionId = persistedSubmission.Id,
+            Comment = "Governed submission comment",
+            CommentedByUserId = actor.Id,
+            CommentedAt = DateTime.UtcNow
+        });
+
+        await context.SaveChangesAsync();
+
+        (await context.ReviewComments.SingleAsync()).Comment.Should().Be("Governed submission comment");
+    }
+
+    [Fact]
     public async Task Retired_score_and_orphan_due_date_ledgers_are_rejected()
     {
         const long municipalityId = 9799;
