@@ -551,6 +551,61 @@ public sealed class ControlledSeedSecurityTests
         (await context.RolePermissions.SingleAsync(item => item.RoleId == modernRole.Id && item.PermissionId == permission.Id)).IsAllowed.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Security_catalogue_seed_registers_and_grants_governance_audit_navigation()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+
+        await DbInitializer.SeedPermissionsAsync(context);
+        var legacyPermission = await context.Permissions.SingleAsync(item => item.Code == "Admin.Permissions.Manage");
+        var role = new ApplicationRole
+        {
+            Id = "governance-auditor",
+            Name = "Governance Auditor",
+            NormalizedName = "GOVERNANCE AUDITOR",
+            RoleCode = "GOVERNANCE_AUDITOR"
+        };
+        context.Roles.Add(role);
+        await context.SaveChangesAsync();
+        context.RolePermissions.Add(new RolePermission
+        {
+            RoleId = role.Id,
+            PermissionId = legacyPermission.Id,
+            IsAllowed = true,
+            IsActive = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+
+        await SecurityRegistrySeeder.SeedAsync(context);
+        await SecurityRegistrySeeder.SeedAsync(context);
+        context.ChangeTracker.Clear();
+
+        var expected = new Dictionary<string, (string Route, string Permission)>
+        {
+            ["NAV.ADMIN.ROLE_IMPLEMENTATION_AUDIT"] = ("/system-administration/role-implementation-audit", "RoleImplementationAudit.View"),
+            ["NAV.ADMIN.ROLE_ACCESS_MATRIX"] = ("/system-administration/role-access-matrix", "SystemAdministration.RoleAccessMatrix.View"),
+            ["NAV.ADMIN.PERMISSION_SIMULATION"] = ("/system-administration/permission-simulation", "SystemAdministration.PermissionSimulation.View"),
+            ["NAV.ADMIN.SYSTEM_COVERAGE_AUDIT"] = ("/system-administration/system-coverage-audit", "SystemAdministration.SystemCoverageAudit.View"),
+            ["NAV.ADMIN.ROLE_PERMISSION_CRUD_AUDIT"] = ("/system-administration/role-permission-crud-audit", "RoleImplementationAudit.View")
+        };
+
+        foreach (var (code, definition) in expected)
+        {
+            var navigation = await context.SecurityNavigationItems.SingleAsync(item => item.Code == code);
+            navigation.Route.Should().Be(definition.Route);
+            navigation.RequiredPermissionCode.Should().Be(definition.Permission);
+            (await context.SecurityNavigationItems.SingleAsync(item => item.Id == navigation.ParentId)).Code.Should().Be("NAV.ADMIN");
+
+            var requiredPermission = await context.Permissions.SingleAsync(item => item.Code == definition.Permission);
+            (await context.RolePermissions.SingleAsync(item => item.RoleId == role.Id && item.PermissionId == requiredPermission.Id)).IsAllowed.Should().BeTrue();
+        }
+    }
+
     private sealed class SystemTenantContext : ITenantContext
     {
         public long? MunicipalityId => null;

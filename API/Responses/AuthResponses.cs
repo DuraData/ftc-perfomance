@@ -113,6 +113,25 @@ public record SystemCoverageAuditResponse(
     bool AuditTrail,
     bool Notifications);
 
+public record RolePermissionCrudAuditResponse(
+    Guid RolePublicId,
+    string RoleCode,
+    string Role,
+    string Scope,
+    string Module,
+    bool Create,
+    bool Read,
+    bool View,
+    bool Edit,
+    bool DeleteArchive,
+    bool Submit,
+    bool Verify,
+    bool Approve,
+    bool Review,
+    bool Audit,
+    bool Report,
+    string Status);
+
 public record OpmsTargetTemplateResponse(
     Guid PublicId,
     string TemplateCode,

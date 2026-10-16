@@ -4,8 +4,8 @@ import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
 import { Input, Select } from '../common/Form';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
-import { getRoleAccessMatrixPage, getSecurityPermissionDefinitionsPage, getSystemCoverageAuditPage, getUsersPage, simulateAccess } from '../../api/api';
-import type { AccessSimulationResult, AdminUserDetail, RoleAccessMatrixRow, SecurityPermissionDefinition, SystemCoverageAuditRow } from '../../types';
+import { getRoleAccessMatrixPage, getRolePermissionCrudAuditPage, getSecurityPermissionDefinitionsPage, getSystemCoverageAuditPage, getUsersPage, simulateAccess } from '../../api/api';
+import type { AccessSimulationResult, AdminUserDetail, RoleAccessMatrixRow, RolePermissionCrudAuditRow, SecurityPermissionDefinition, SystemCoverageAuditRow } from '../../types';
 
 function BooleanPill({ value }: { value: boolean }) {
   return value ? (
@@ -18,6 +18,22 @@ function BooleanPill({ value }: { value: boolean }) {
       <XCircle className="h-4 w-4" />
       No
     </span>
+  );
+}
+
+function CollapsibleStringList({ items, singularLabel }: { items: string[]; singularLabel: string }) {
+  if (items.length === 0) return <span>-</span>;
+
+  const label = `${items.length} ${singularLabel}${items.length === 1 ? '' : 's'}`;
+  return (
+    <details className="min-w-36">
+      <summary className="cursor-pointer select-none font-medium text-primary-700 dark:text-primary-300">
+        {label}
+      </summary>
+      <p className="mt-2 max-h-48 min-w-64 overflow-y-auto break-words text-secondary-600 dark:text-secondary-300">
+        {items.join(', ')}
+      </p>
+    </details>
   );
 }
 
@@ -73,7 +89,7 @@ export function RoleAccessMatrixPage() {
           <div><div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
               <thead className="bg-secondary-50 dark:bg-secondary-800/60"><tr>{['Role', 'Permissions', 'Scope', 'Menus', 'Allowed Actions', 'Reports', 'Test User'].map(header => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">{header}</th>)}</tr></thead>
-              <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">{rows.map(row => <tr key={row.rolePublicId}><td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}<span className="block text-xs font-normal text-secondary-500">{row.roleCode}</span></td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.permissions.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.scope.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.menus.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.allowedActions.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.reports.join(', ') || '-'}</td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.testUser ?? '-'}</td></tr>)}</tbody>
+              <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">{rows.map(row => <tr key={row.rolePublicId}><td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}<span className="block text-xs font-normal text-secondary-500">{row.roleCode}</span></td><td className="px-4 py-4 text-xs"><CollapsibleStringList items={row.permissions} singularLabel="permission" /></td><td className="px-4 py-4 text-xs"><CollapsibleStringList items={row.scope} singularLabel="scope" /></td><td className="px-4 py-4 text-xs"><CollapsibleStringList items={row.menus} singularLabel="menu" /></td><td className="px-4 py-4 text-xs"><CollapsibleStringList items={row.allowedActions} singularLabel="action" /></td><td className="px-4 py-4 text-xs"><CollapsibleStringList items={row.reports} singularLabel="report" /></td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.testUser ?? '-'}</td></tr>)}</tbody>
             </table>
           </div><div className="flex items-center justify-between gap-3 border-t border-secondary-200 p-4 text-xs text-secondary-500 dark:border-secondary-700"><span>{totalCount} roles · Page {page} of {Math.max(totalPages, 1)}</span><span className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous roles</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next roles</Button></span></div></div>
         )}
@@ -244,7 +260,7 @@ export function PermissionSimulationPage() {
               </div>
               <div>
                 <p className="font-semibold text-secondary-900 dark:text-white">Effective Permissions</p>
-                <p className="text-secondary-600 dark:text-secondary-300">{result.effectivePermissions.join(', ') || '-'}</p>
+                <CollapsibleStringList items={result.effectivePermissions} singularLabel="permission" />
               </div>
             </div>
           ) : (
@@ -375,97 +391,13 @@ export function SystemCoverageAuditPage() {
   );
 }
 
-type CrudAuditStatus = 'Pass' | 'Partial' | 'Missing';
-
-interface RolePermissionCrudAuditRow {
-  rolePublicId: string;
-  roleCode: string;
-  role: string;
-  scope: string;
-  module: string;
-  create: boolean;
-  read: boolean;
-  view: boolean;
-  edit: boolean;
-  deleteArchive: boolean;
-  submit: boolean;
-  verify: boolean;
-  approve: boolean;
-  review: boolean;
-  audit: boolean;
-  report: boolean;
-  status: CrudAuditStatus;
-}
+type CrudAuditStatus = RolePermissionCrudAuditRow['status'];
 
 const statusTone: Record<CrudAuditStatus, 'success' | 'warning' | 'default'> = {
   Pass: 'success',
   Partial: 'warning',
   Missing: 'default',
 };
-
-function includesPermission(permissions: string[], matchers: RegExp[]) {
-  return permissions.some(permission => matchers.some(matcher => matcher.test(permission)));
-}
-
-function buildRolePermissionCrudRows(
-  roleRows: RoleAccessMatrixRow[],
-  coverageRows: SystemCoverageAuditRow[],
-): RolePermissionCrudAuditRow[] {
-  return roleRows.map(roleRow => {
-    const permissions = roleRow.permissions ?? [];
-    const coverage = coverageRows.find(item => item.rolePublicId === roleRow.rolePublicId);
-
-    const create = includesPermission(permissions, [
-      /\.Create$/i,
-      /^Admin\./i,
-      /^Configuration\.Manage$/i,
-      /^IDP\.(Plan|Hierarchy|Project|Kpi)\.Manage$/i,
-    ]);
-    const read = includesPermission(permissions, [/\.(Read|View)$/i, /^UserDirectory\.View$/i]);
-    const view = roleRow.menus.length > 0 || read;
-    const edit = includesPermission(permissions, [
-      /\.Edit$/i,
-      /\.Update$/i,
-      /\.Manage$/i,
-    ]);
-    const deleteArchive = includesPermission(permissions, [/\.Delete$/i, /\.Archive$/i]);
-    const submit = includesPermission(permissions, [/\.Submit$/i]);
-    const verify = includesPermission(permissions, [/\.Verify$/i, /\.VerifyReject$/i]);
-    const approve = includesPermission(permissions, [/\.Approve$/i, /AdditionalApprover/i]);
-    const review = includesPermission(permissions, [/\.Review$/i]);
-    const audit = includesPermission(permissions, [/^Audit\./i, /^Workflow\.Audit\.View$/i]);
-    const report = roleRow.reports.length > 0 || includesPermission(permissions, [/^Reports\./i]);
-
-    const implementedCount = [create, read, view, edit, deleteArchive, submit, verify, approve, review, audit, report].filter(Boolean).length;
-
-    let status: CrudAuditStatus = 'Partial';
-    if (implementedCount === 0) {
-      status = 'Missing';
-    } else if (coverage?.permissions && coverage.seededUser) {
-      status = 'Pass';
-    }
-
-    return {
-      rolePublicId: roleRow.rolePublicId,
-      roleCode: roleRow.roleCode,
-      role: roleRow.role,
-      scope: roleRow.scope.join(', ') || 'Not specified',
-      module: 'Cross-Module',
-      create,
-      read,
-      view,
-      edit,
-      deleteArchive,
-      submit,
-      verify,
-      approve,
-      review,
-      audit,
-      report,
-      status,
-    };
-  });
-}
 
 export function RolePermissionCrudAuditPage() {
   const [rows, setRows] = useState<RolePermissionCrudAuditRow[]>([]);
@@ -484,29 +416,19 @@ export function RolePermissionCrudAuditPage() {
 
     const load = async () => {
       setLoading(true);
-      const [matrixResponse, coverageResponse] = await Promise.all([
-        getRoleAccessMatrixPage({ page, pageSize: 25, search, sortBy, sortDirection }),
-        getSystemCoverageAuditPage({ page, pageSize: 25, search, sortBy, sortDirection }),
-      ]);
+      const response = await getRolePermissionCrudAuditPage({ page, pageSize: 25, search, sortBy, sortDirection });
       if (!active) return;
 
-      if (!matrixResponse.success || !matrixResponse.data) {
+      if (!response.success || !response.data) {
         setRows([]); setTotalCount(0); setTotalPages(0);
-        setError(matrixResponse.message ?? 'Failed to load role access matrix for CRUD audit.');
+        setError(response.message ?? 'Failed to load role permission and CRUD audit.');
         setLoading(false);
         return;
       }
 
-      if (!coverageResponse.success || !coverageResponse.data) {
-        setRows([]); setTotalCount(0); setTotalPages(0);
-        setError(coverageResponse.message ?? 'Failed to load system coverage audit for CRUD audit.');
-        setLoading(false);
-        return;
-      }
-
-      setRows(buildRolePermissionCrudRows(matrixResponse.data.items, coverageResponse.data.items));
-      setTotalCount(matrixResponse.data.totalCount);
-      setTotalPages(matrixResponse.data.totalPages);
+      setRows(response.data.items);
+      setTotalCount(response.data.totalCount);
+      setTotalPages(response.data.totalPages);
       setError(null);
       setLoading(false);
     };

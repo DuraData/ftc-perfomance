@@ -16,6 +16,7 @@ public interface IAccessControlService
     Task<MenuItemResponse[]> GetAuthorizedNavigationAsync(ApplicationUser user);
     Task<PagedResponse<RoleAccessMatrixResponse>> BuildRoleAccessMatrixPageAsync(PagedQueryRequest request);
     Task<PagedResponse<SystemCoverageAuditResponse>> BuildSystemCoverageAuditPageAsync(PagedQueryRequest request);
+    Task<PagedResponse<RolePermissionCrudAuditResponse>> BuildRolePermissionCrudAuditPageAsync(PagedQueryRequest request);
 }
 
 public sealed record AccessScopeContext(
@@ -436,6 +437,39 @@ public class AccessControlService : IAccessControlService
         }).ToArray();
         return PagedResponse<SystemCoverageAuditResponse>.Create(rows, request.Page, request.PageSize, totalCount);
     }
+
+    public async Task<PagedResponse<RolePermissionCrudAuditResponse>> BuildRolePermissionCrudAuditPageAsync(PagedQueryRequest request)
+    {
+        var matrixPage = await BuildRoleAccessMatrixPageAsync(request);
+        var coveragePage = await BuildSystemCoverageAuditPageAsync(request);
+        var coverageByRole = coveragePage.Items.ToDictionary(item => item.RolePublicId);
+        var rows = matrixPage.Items.Select(row =>
+        {
+            var permissions = row.Permissions;
+            var create = MatchesAny(permissions, @"\.Create$", @"^Admin\.", @"^Configuration\.Manage$", @"^IDP\.(Plan|Hierarchy|Project|Kpi)\.Manage$");
+            var read = MatchesAny(permissions, @"\.(Read|View)$", @"^UserDirectory\.View$");
+            var view = row.Menus.Length > 0 || read;
+            var edit = MatchesAny(permissions, @"\.Edit$", @"\.Update$", @"\.Manage$");
+            var deleteArchive = MatchesAny(permissions, @"\.Delete$", @"\.Archive$");
+            var submit = MatchesAny(permissions, @"\.Submit$");
+            var verify = MatchesAny(permissions, @"\.Verify$", @"\.VerifyReject$");
+            var approve = MatchesAny(permissions, @"\.Approve$", "AdditionalApprover");
+            var review = MatchesAny(permissions, @"\.Review$");
+            var audit = MatchesAny(permissions, @"^Audit\.", @"^Workflow\.Audit\.View$");
+            var report = row.Reports.Length > 0 || MatchesAny(permissions, @"^Reports\.");
+            var implementedCount = new[] { create, read, view, edit, deleteArchive, submit, verify, approve, review, audit, report }.Count(value => value);
+            coverageByRole.TryGetValue(row.RolePublicId, out var coverage);
+            var status = implementedCount == 0 ? "Missing" : coverage is { Permissions: true, SeededUser: true } ? "Pass" : "Partial";
+            return new RolePermissionCrudAuditResponse(
+                row.RolePublicId, row.RoleCode, row.Role, string.Join(", ", row.Scope.DefaultIfEmpty("Not specified")),
+                "Cross-Module", create, read, view, edit, deleteArchive, submit, verify, approve, review, audit, report, status);
+        }).ToArray();
+        return PagedResponse<RolePermissionCrudAuditResponse>.Create(rows, matrixPage.Page, matrixPage.PageSize, matrixPage.TotalCount);
+    }
+
+    private static bool MatchesAny(string[] permissions, params string[] patterns) =>
+        permissions.Any(permission => patterns.Any(pattern => System.Text.RegularExpressions.Regex.IsMatch(
+            permission, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)));
 
     private static bool ScopeMatches(UserScope current, AccessScopeContext requested)
     {

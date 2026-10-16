@@ -3,14 +3,64 @@ using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.Extensions.Options;
 using System.Reflection;
+using System.Security.Claims;
 
 namespace FTCERP.Tests;
 
 public sealed class AccessGovernanceContractTests
 {
+    [Fact]
+    public async Task Any_permission_policy_succeeds_when_one_dynamic_permission_is_allowed()
+    {
+        var user = IdpTestFixture.CreateUser("any-permission-user", "Any", "Permission");
+        var access = new Mock<IAccessControlService>();
+        access.Setup(item => item.CheckPermissionAsync(user, "FIRST", null))
+            .ReturnsAsync(new AccessDecisionResult(false, "Denied", [], [], []));
+        access.Setup(item => item.CheckPermissionAsync(user, "SECOND", null))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", ["SECOND"], [], []));
+        var handler = new AnyPermissionHandler(IdpTestFixture.CreateUserManagerMock(user).Object, access.Object);
+        var requirement = new AnyPermissionRequirement(["FIRST", "SECOND"]);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, user.Id)], "test"));
+        var authorization = new AuthorizationHandlerContext([requirement], principal, null);
+
+        await handler.HandleAsync(authorization);
+
+        Assert.True(authorization.HasSucceeded);
+        access.Verify(item => item.CheckPermissionAsync(user, "FIRST", null), Times.Once);
+        access.Verify(item => item.CheckPermissionAsync(user, "SECOND", null), Times.Once);
+    }
+
+    [Fact]
+    public async Task Governance_screen_policies_keep_direct_api_access_aligned_with_each_visible_screen()
+    {
+        var provider = new PermissionPolicyProvider(Options.Create(new AuthorizationOptions()));
+        var policy = await provider.GetPolicyAsync(
+            "PermissionAny:SystemAdministration.RoleAccessMatrix.View,RoleImplementationAudit.View");
+        var requirement = Assert.Single(policy!.Requirements.OfType<AnyPermissionRequirement>());
+        Assert.Equal(
+            ["SystemAdministration.RoleAccessMatrix.View", "RoleImplementationAudit.View"],
+            requirement.PermissionCodes);
+
+        AssertPolicy<AccessController>(nameof(AccessController.GetRoleAccessMatrixPage),
+            "Permission:SystemAdministration.RoleAccessMatrix.View");
+        AssertPolicy<AccessController>(nameof(AccessController.GetSystemCoverageAuditPage),
+            "Permission:SystemAdministration.SystemCoverageAudit.View");
+        AssertPolicy<AccessController>(nameof(AccessController.GetRolePermissionCrudAuditPage),
+            "Permission:RoleImplementationAudit.View");
+        AssertPolicy<SecurityAdministrationController>(nameof(SecurityAdministrationController.GetPermissionDefinitionsPage),
+            "PermissionAny:SECURITY.VIEW,SystemAdministration.PermissionSimulation.View");
+        AssertPolicy<OrganizationMastersController>(nameof(OrganizationMastersController.GetDepartmentsPage),
+            "PermissionAny:DEPARTMENT.READ,SystemAdministration.PermissionSimulation.View");
+        AssertPolicy<OrganizationMastersController>(nameof(OrganizationMastersController.GetUnitsPage),
+            "PermissionAny:UNIT.READ,SystemAdministration.PermissionSimulation.View");
+    }
+
     [Fact]
     public void Access_governance_is_versioned_and_simulation_contract_exposes_public_identifiers_only()
     {
@@ -204,6 +254,14 @@ public sealed class AccessGovernanceContractTests
     {
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status410Gone, objectResult.StatusCode);
+    }
+
+    private static void AssertPolicy<TController>(string methodName, string expected)
+    {
+        var method = typeof(TController).GetMethod(methodName);
+        Assert.NotNull(method);
+        var authorization = Assert.Single(method!.GetCustomAttributes<AuthorizeAttribute>());
+        Assert.Equal(expected, authorization.Policy);
     }
 
     private static void AssertPublicOnly(Type contract)

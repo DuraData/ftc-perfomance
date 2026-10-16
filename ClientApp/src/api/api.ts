@@ -18,6 +18,7 @@ import type {
   AccessSimulationResult,
   RoleAccessMatrixRow,
   SystemCoverageAuditRow,
+  RolePermissionCrudAuditRow,
   OPMSTarget,
   IPMSTarget,
   OPMSSubmission,
@@ -2247,6 +2248,10 @@ export async function getRoleAccessMatrixPage(query: RegisterPageQuery = {}): Pr
 
 export async function getSystemCoverageAuditPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<SystemCoverageAuditRow>>> {
   return get<PagedResult<SystemCoverageAuditRow>>(`/v1/access/system-coverage-audit/page${registerPageQuery(query)}`);
+}
+
+export async function getRolePermissionCrudAuditPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<RolePermissionCrudAuditRow>>> {
+  return get<PagedResult<RolePermissionCrudAuditRow>>(`/v1/access/role-permission-crud-audit/page${registerPageQuery(query)}`);
 }
 
 export async function simulateAccess(payload: {

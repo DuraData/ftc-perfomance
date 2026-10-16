@@ -436,6 +436,41 @@ public sealed class UsersControllerSecurityTests
     }
 
     [Fact]
+    public async Task Permission_simulation_can_select_tenant_users_without_receiving_protected_contact_members()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var tenant = new FixedTenantContext(111, "simulation-actor");
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, tenant);
+        await context.Database.EnsureCreatedAsync();
+        var municipality = new Municipality { Id = 111, Code = "M111", Name = "Municipality 111" };
+        var foreignMunicipality = new Municipality { Id = 112, Code = "M112", Name = "Municipality 112" };
+        var actor = User("simulation-actor", 111, "actor@example.test", "0111111111");
+        var subject = User("simulation-subject", 111, "subject@example.test", "0222222222");
+        var foreign = User("simulation-foreign", 112, "foreign@example.test", "0333333333");
+        context.AddRange(municipality, foreignMunicipality, actor, subject, foreign);
+        await context.SaveChangesAsync();
+        var controller = Controller(context, tenant, actor, new Dictionary<string, ApplicationUser>
+        {
+            [actor.Id] = actor,
+            [subject.Id] = subject,
+            [foreign.Id] = foreign
+        }, Access(actor, "SystemAdministration.PermissionSimulation.View").Object);
+
+        var result = await controller.GetUsersPage(new PagedQueryRequest { PageSize = 100, SortBy = "name" });
+
+        var envelope = Assert.IsType<ApiResponse<PagedResponse<UserDetailResponse>>>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(2, envelope.Data!.TotalCount);
+        Assert.DoesNotContain(envelope.Data.Items, item => item.User.PublicId == foreign.PublicId);
+        Assert.All(envelope.Data.Items, item =>
+        {
+            Assert.Null(item.User.Email);
+            Assert.Null(item.User.PhoneNumber);
+        });
+    }
+
+    [Fact]
     public async Task Direct_user_update_cannot_change_phone_when_member_update_is_denied()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

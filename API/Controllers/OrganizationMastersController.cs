@@ -26,7 +26,7 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
             "This unbounded route is retired. Use /api/v1/masters/departments/page."));
 
     [HttpGet("departments/page")]
-    [Authorize(Policy = "Permission:DEPARTMENT.READ")]
+    [Authorize(Policy = "PermissionAny:DEPARTMENT.READ,SystemAdministration.PermissionSimulation.View")]
     public async Task<ActionResult<ApiResponse<PagedResponse<DepartmentMasterDto>>>> GetDepartmentsPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null)
     {
         if (!HasTenant()) return TenantRequired<PagedResponse<DepartmentMasterDto>>();
@@ -87,7 +87,7 @@ public sealed class OrganizationMastersController(ApplicationDbContext context, 
             "This unbounded route is retired. Use /api/v1/masters/units/page."));
 
     [HttpGet("units/page")]
-    [Authorize(Policy = "Permission:UNIT.READ")]
+    [Authorize(Policy = "PermissionAny:UNIT.READ,SystemAdministration.PermissionSimulation.View")]
     public async Task<ActionResult<ApiResponse<PagedResponse<UnitMasterDto>>>> GetUnitsPage([FromQuery] PagedQueryRequest request, [FromQuery] bool? active = null, [FromQuery] Guid? departmentPublicId = null)
     {
         if (!HasTenant()) return TenantRequired<PagedResponse<UnitMasterDto>>();

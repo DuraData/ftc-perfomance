@@ -168,9 +168,21 @@ public class DynamicSecurityTests
         reviewerCoverage.AuditTrail.Should().BeTrue();
         reviewerCoverage.Notifications.Should().BeFalse();
         coverage.Items.Should().ContainSingle(item => item.RolePublicId == uncoveredRole.PublicId).Which.Dashboard.Should().BeFalse();
+        var crudAudit = await service.BuildRolePermissionCrudAuditPageAsync(new PagedQueryRequest { Page = 1, PageSize = 25, SortBy = "code" });
+        crudAudit.TotalCount.Should().Be(2);
+        var reviewerCrud = crudAudit.Items.Should().ContainSingle(item => item.RolePublicId == role.PublicId).Subject;
+        reviewerCrud.Scope.Should().Contain("Municipality:7");
+        reviewerCrud.Read.Should().BeTrue();
+        reviewerCrud.View.Should().BeTrue();
+        reviewerCrud.Report.Should().BeTrue();
+        reviewerCrud.Audit.Should().BeTrue();
+        reviewerCrud.Create.Should().BeFalse("the create permission is expired");
+        reviewerCrud.Status.Should().Be("Pass");
+        crudAudit.Items.Should().ContainSingle(item => item.RolePublicId == uncoveredRole.PublicId).Which.Status.Should().Be("Missing");
         var accessController = new AccessController(service, IdpTestFixture.CreateUserManagerMock(user).Object, context, tenant.Object);
         accessController.GetSystemCoverageAudit().Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status410Gone);
         (await accessController.GetSystemCoverageAuditPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
+        (await accessController.GetRolePermissionCrudAuditPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]

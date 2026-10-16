@@ -4,6 +4,7 @@ import { PermissionSimulationPage, RoleAccessMatrixPage, RolePermissionCrudAudit
 const api = vi.hoisted(() => ({
   getSecurityPermissionDefinitionsPage: vi.fn(),
   getRoleAccessMatrixPage: vi.fn(),
+  getRolePermissionCrudAuditPage: vi.fn(),
   getSystemCoverageAuditPage: vi.fn(),
   getUsersPage: vi.fn(),
   simulateAccess: vi.fn(),
@@ -40,6 +41,16 @@ describe('PermissionSimulationPage', () => {
       success: true,
       data: {
         items: [{ rolePublicId: `role-public-${page}`, roleCode: `ROLE_${page}`, role: `Role ${page}`, seededUser: true, dashboard: true, menu: true, permissions: true, scopeFiltering: true, crud: false, workflowActions: false, reports: false, auditTrail: false, notifications: false }],
+        page,
+        pageSize: 25,
+        totalCount: search ? 1 : 26,
+        totalPages: search ? 1 : 2,
+      },
+    }));
+    api.getRolePermissionCrudAuditPage.mockImplementation(async ({ page = 1, search = '' }) => ({
+      success: true,
+      data: {
+        items: [{ rolePublicId: `role-public-${page}`, roleCode: `ROLE_${page}`, role: `Role ${page}`, scope: 'Municipality:7', module: 'Cross-Module', create: true, read: true, view: true, edit: true, deleteArchive: false, submit: false, verify: false, approve: false, review: false, audit: false, report: false, status: 'Pass' }],
         page,
         pageSize: 25,
         totalCount: search ? 1 : 26,
@@ -84,7 +95,7 @@ describe('PermissionSimulationPage', () => {
   });
 
   it('submits public-only scope identifiers to the versioned permission simulator client', async () => {
-    api.simulateAccess.mockResolvedValue({ success: true, data: { allowed: true, reason: 'Allowed', effectivePermissions: [], matchedScopes: [], matchedAssignments: [] } });
+    api.simulateAccess.mockResolvedValue({ success: true, data: { allowed: true, reason: 'Allowed', effectivePermissions: ['OPMS_KPI.READ', 'NAV.DASHBOARD'], matchedScopes: [], matchedAssignments: [] } });
     render(<PermissionSimulationPage />);
 
     await screen.findByRole('option', { name: 'Governed User 1 (Reviewer)' });
@@ -104,12 +115,23 @@ describe('PermissionSimulationPage', () => {
     expect(payload).not.toHaveProperty('departmentId');
     expect(payload).not.toHaveProperty('unitId');
     expect(payload).not.toHaveProperty('targetId');
+
+    const permissionSummary = await screen.findByText('2 permissions');
+    const permissionDetails = permissionSummary.closest('details');
+    expect(permissionDetails).not.toHaveAttribute('open');
+    fireEvent.click(permissionSummary);
+    expect(permissionDetails).toHaveAttribute('open');
+    expect(screen.getByText('OPMS_KPI.READ, NAV.DASHBOARD')).toBeInTheDocument();
   });
 
   it('searches and pages the dynamic role access matrix', async () => {
     render(<RoleAccessMatrixPage />);
 
     expect(await screen.findByText('26 roles · Page 1 of 2')).toBeInTheDocument();
+    expect(screen.getByText('1 permission')).toBeInTheDocument();
+    expect(screen.getByText('1 scope')).toBeInTheDocument();
+    expect(screen.getByText('1 menu')).toBeInTheDocument();
+    expect(screen.getByText('1 action')).toBeInTheDocument();
     await waitFor(() => expect(api.getRoleAccessMatrixPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }));
     fireEvent.click(screen.getByRole('button', { name: 'Next roles' }));
     await waitFor(() => expect(api.getRoleAccessMatrixPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }));
@@ -117,15 +139,16 @@ describe('PermissionSimulationPage', () => {
     await waitFor(() => expect(api.getRoleAccessMatrixPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'reviewer', sortBy: 'name', sortDirection: 'asc' }));
   });
 
-  it('uses the same bounded role page for the merged CRUD audit', async () => {
+  it('uses the dedicated bounded backend projection for the merged CRUD audit', async () => {
     render(<RolePermissionCrudAuditPage />);
 
     expect(await screen.findByText('26 roles · Page 1 of 2')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next CRUD roles' }));
-    await waitFor(() => expect(api.getRoleAccessMatrixPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }));
+    await waitFor(() => expect(api.getRolePermissionCrudAuditPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }));
     fireEvent.change(screen.getByLabelText('Search role CRUD audit'), { target: { value: 'submitter' } });
-    await waitFor(() => expect(api.getRoleAccessMatrixPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'submitter', sortBy: 'name', sortDirection: 'asc' }));
-    await waitFor(() => expect(api.getSystemCoverageAuditPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'submitter', sortBy: 'name', sortDirection: 'asc' }));
+    await waitFor(() => expect(api.getRolePermissionCrudAuditPage).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, search: 'submitter', sortBy: 'name', sortDirection: 'asc' }));
+    expect(api.getRoleAccessMatrixPage).not.toHaveBeenCalled();
+    expect(api.getSystemCoverageAuditPage).not.toHaveBeenCalled();
   });
 
   it('searches and pages every current dynamic role in the system coverage audit', async () => {

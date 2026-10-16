@@ -43,7 +43,8 @@ public class UsersController : ControllerBase
     {
         var actor = await GetCurrentActorAsync();
         if (actor == null) return Unauthorized(Fail<PagedResponse<UserDetailResponse>>("User not found"));
-        if (!await IsAllowedAsync(actor, "USER.READ")) return Forbid();
+        if (!await IsAllowedAsync(actor, "USER.READ")
+            && !await IsAllowedAsync(actor, "SystemAdministration.PermissionSimulation.View")) return Forbid();
         var canReadEmail = await IsAllowedAsync(actor, "USER.Email.READ");
         var canReadPhone = await IsAllowedAsync(actor, "USER.PhoneNumber.READ");
         if (!UserSortFields.Contains(request.NormalizedSortBy))

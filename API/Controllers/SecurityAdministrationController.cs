@@ -765,7 +765,7 @@ public sealed class SecurityAdministrationController : ControllerBase
             "This unbounded route is retired. Use /api/v1/security/permissions/page."));
 
     [HttpGet("permissions/page")]
-    [Authorize(Policy = "Permission:SECURITY.VIEW")]
+    [Authorize(Policy = "PermissionAny:SECURITY.VIEW,SystemAdministration.PermissionSimulation.View")]
     public async Task<ActionResult<ApiResponse<PagedResponse<SecurityPermissionDefinitionDto>>>> GetPermissionDefinitionsPage(
         [FromQuery] PagedQueryRequest request,
         [FromQuery] string? kinds = null)

@@ -2508,6 +2508,26 @@ export interface SystemCoverageAuditRow {
   notifications: boolean;
 }
 
+export interface RolePermissionCrudAuditRow {
+  rolePublicId: string;
+  roleCode: string;
+  role: string;
+  scope: string;
+  module: string;
+  create: boolean;
+  read: boolean;
+  view: boolean;
+  edit: boolean;
+  deleteArchive: boolean;
+  submit: boolean;
+  verify: boolean;
+  approve: boolean;
+  review: boolean;
+  audit: boolean;
+  report: boolean;
+  status: 'Pass' | 'Partial' | 'Missing';
+}
+
 export interface OpmsTargetTemplateDto {
   publicId: string;
   templateCode: string;

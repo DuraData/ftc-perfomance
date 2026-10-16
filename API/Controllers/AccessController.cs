@@ -63,7 +63,7 @@ public class AccessController : ControllerBase
     }
 
     [HttpPost("simulate")]
-    [Authorize(Policy = "Permission:Admin.Users.Manage")]
+    [Authorize(Policy = "Permission:SystemAdministration.PermissionSimulation.View")]
     public async Task<ActionResult<ApiResponse<AccessSimulationResponse>>> Simulate([FromBody] SimulateAccessRequest request)
     {
         if (_tenantContext.MunicipalityId is not > 0)
@@ -121,7 +121,7 @@ public class AccessController : ControllerBase
     }
 
     [HttpGet("role-access-matrix/page")]
-    [Authorize(Policy = "Permission:RoleImplementationAudit.View")]
+    [Authorize(Policy = "Permission:SystemAdministration.RoleAccessMatrix.View")]
     public async Task<ActionResult<ApiResponse<PagedResponse<RoleAccessMatrixResponse>>>> GetRoleAccessMatrixPage([FromQuery] PagedQueryRequest request)
     {
         if (request.NormalizedSortBy is not ("name" or "code" or "createdat"))
@@ -131,7 +131,7 @@ public class AccessController : ControllerBase
     }
 
     [HttpGet("role-access-matrix")]
-    [Authorize(Policy = "Permission:RoleImplementationAudit.View")]
+    [Authorize(Policy = "Permission:SystemAdministration.RoleAccessMatrix.View")]
     public ActionResult<ApiResponse<RoleAccessMatrixResponse[]>> GetRoleAccessMatrix()
     {
         return StatusCode(StatusCodes.Status410Gone,
@@ -139,19 +139,29 @@ public class AccessController : ControllerBase
     }
 
     [HttpGet("system-coverage-audit")]
-    [Authorize(Policy = "Permission:RoleImplementationAudit.View")]
+    [Authorize(Policy = "Permission:SystemAdministration.SystemCoverageAudit.View")]
     [ApiExplorerSettings(IgnoreApi = true)]
     public ActionResult<ApiResponse<SystemCoverageAuditResponse[]>> GetSystemCoverageAudit() =>
         StatusCode(StatusCodes.Status410Gone, new ApiResponse<SystemCoverageAuditResponse[]>(false, null,
             "This unbounded fixed-role audit is retired. Use /api/v1/access/system-coverage-audit/page."));
 
     [HttpGet("system-coverage-audit/page")]
-    [Authorize(Policy = "Permission:RoleImplementationAudit.View")]
+    [Authorize(Policy = "Permission:SystemAdministration.SystemCoverageAudit.View")]
     public async Task<ActionResult<ApiResponse<PagedResponse<SystemCoverageAuditResponse>>>> GetSystemCoverageAuditPage([FromQuery] PagedQueryRequest request)
     {
         if (request.NormalizedSortBy is not ("name" or "code" or "createdat"))
             return BadRequest(new ApiResponse<PagedResponse<SystemCoverageAuditResponse>>(false, null, "SortBy must be name, code, or createdAt."));
         var page = await _accessControlService.BuildSystemCoverageAuditPageAsync(request);
         return Ok(new ApiResponse<PagedResponse<SystemCoverageAuditResponse>>(true, page));
+    }
+
+    [HttpGet("role-permission-crud-audit/page")]
+    [Authorize(Policy = "Permission:RoleImplementationAudit.View")]
+    public async Task<ActionResult<ApiResponse<PagedResponse<RolePermissionCrudAuditResponse>>>> GetRolePermissionCrudAuditPage([FromQuery] PagedQueryRequest request)
+    {
+        if (request.NormalizedSortBy is not ("name" or "code" or "createdat"))
+            return BadRequest(new ApiResponse<PagedResponse<RolePermissionCrudAuditResponse>>(false, null, "SortBy must be name, code, or createdAt."));
+        var page = await _accessControlService.BuildRolePermissionCrudAuditPageAsync(request);
+        return Ok(new ApiResponse<PagedResponse<RolePermissionCrudAuditResponse>>(true, page));
     }
 }

@@ -219,6 +219,7 @@ builder.Services.AddHostedService<IdempotencyCleanupWorker>();
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, PermissionHandler>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AnyPermissionHandler>();
 
 builder.Services.AddCors(options =>
 {
@@ -407,9 +408,52 @@ public sealed class PermissionHandler : AuthorizationHandler<PermissionRequireme
 
 }
 
+public sealed class AnyPermissionRequirement : IAuthorizationRequirement
+{
+    public AnyPermissionRequirement(IEnumerable<string> permissionCodes)
+    {
+        PermissionCodes = permissionCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public string[] PermissionCodes { get; }
+}
+
+public sealed class AnyPermissionHandler : AuthorizationHandler<AnyPermissionRequirement>
+{
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IAccessControlService _accessControl;
+
+    public AnyPermissionHandler(UserManager<ApplicationUser> userManager, IAccessControlService accessControl)
+    {
+        _userManager = userManager;
+        _accessControl = accessControl;
+    }
+
+    protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context, AnyPermissionRequirement requirement)
+    {
+        var userId = context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId) || requirement.PermissionCodes.Length == 0) return;
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null || !user.IsActive) return;
+
+        foreach (var permissionCode in requirement.PermissionCodes)
+        {
+            var decision = await _accessControl.CheckPermissionAsync(user, permissionCode);
+            if (!decision.Allowed) continue;
+            context.Succeed(requirement);
+            return;
+        }
+    }
+}
+
 public sealed class PermissionPolicyProvider : IAuthorizationPolicyProvider
 {
     private const string Prefix = "Permission:";
+    private const string AnyPrefix = "PermissionAny:";
     private readonly DefaultAuthorizationPolicyProvider _fallback;
 
     public PermissionPolicyProvider(IOptions<AuthorizationOptions> options)
@@ -423,6 +467,15 @@ public sealed class PermissionPolicyProvider : IAuthorizationPolicyProvider
 
     public Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
     {
+        if (policyName.StartsWith(AnyPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var codes = policyName[AnyPrefix.Length..].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var policy = new AuthorizationPolicyBuilder()
+                .AddRequirements(new AnyPermissionRequirement(codes))
+                .Build();
+            return Task.FromResult<AuthorizationPolicy?>(policy);
+        }
+
         if (policyName.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
         {
             var code = policyName[Prefix.Length..];
