@@ -258,9 +258,9 @@ function AppContent() {
       case '/admin/units-measure':
         return <StrategicPlanningAdministration kind="kpi-units-of-measure" />;
       case '/admin/kpas':
-        return <GlobalStrategicReferenceAdministration kind="national-kpas" />;
+        return <GlobalStrategicReferenceAdministration key="national-kpas" kind="national-kpas" />;
       case '/admin/back-to-basics-pillars':
-        return <GlobalStrategicReferenceAdministration kind="back-to-basics-pillars" />;
+        return <GlobalStrategicReferenceAdministration key="back-to-basics-pillars" kind="back-to-basics-pillars" />;
       case '/admin/municipal-kpas':
         return <StrategicPlanningAdministration kind="municipal-kpas" />;
       case '/admin/performance-objectives':
