@@ -786,17 +786,21 @@ describe('versioned API routes', () => {
           targetName: 'Mid-term KPI', targetIndicatorNumber: 'IPMS-MID', quarter: 'MID_TERM', status: 'draft', createdAt: '2026-08-01T00:00:00Z',
         },
         {
+          publicId: 'submission-mid', rowVersion: 'BA==', baseState: 'IN_PROGRESS', ipmsTargetPublicId: 'target-live',
+          targetName: 'Configured-code KPI', targetIndicatorNumber: 'IPMS-MID-CODE', quarter: 'MID', status: 'draft', createdAt: '2026-08-01T00:00:00Z',
+        },
+        {
           publicId: 'submission-unknown', rowVersion: 'Aw==', baseState: 'IN_PROGRESS', ipmsTargetPublicId: 'target-live',
           targetName: 'Unreconciled KPI', targetIndicatorNumber: 'IPMS-UNKNOWN', quarter: '', status: 'draft', createdAt: '2026-08-01T00:00:00Z',
         },
       ],
-      page: 1, pageSize: 25, totalCount: 3, totalPages: 1,
+      page: 1, pageSize: 25, totalCount: 4, totalPages: 1,
     };
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: page }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
 
     const submissions = await getIpmsSubmissionsPage();
 
-    expect(submissions.data?.items.map(item => item.quarter)).toEqual(['Annual', 'Mid-Year', 'Unknown']);
+    expect(submissions.data?.items.map(item => item.quarter)).toEqual(['Annual', 'Mid-Year', 'Mid-Year', 'Unknown']);
   });
 
   it('projects submission actors and evidence uploaders only from API DTOs', async () => {

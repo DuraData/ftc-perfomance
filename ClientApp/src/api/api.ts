@@ -274,6 +274,7 @@ function coerceQuarter(value?: string | null): Quarter {
   const periodByCode: Record<string, Quarter> = {
     Q1: 'Q1',
     Q2: 'Q2',
+    MID: 'Mid-Year',
     MIDTERM: 'Mid-Year',
     MIDYEAR: 'Mid-Year',
     Q3: 'Q3',
