@@ -82,13 +82,13 @@ public sealed class UsersControllerSecurityTests
                 .Where(item => item.ResourceCode == resourceCode)
                 .Select(item => item.MemberCode)
                 .ToArrayAsync();
-            submissionMembers.Should().Contain(["ActualPerformance", "Variance", "VarianceReason", "CorrectiveMeasure", "SubmittedDate",
+            submissionMembers.Should().Contain(["ActualPerformance", "Variance", "VarianceReason", "CorrectiveMeasure", "RequiredPoeDescription", "SubmittedDate",
                 "InternalAuditObservation", "InternalAuditComment", "InternalAuditFindings", "InternalAuditRecommendation",
                 "InternalAuditScore", "InternalAuditAssessedBy", "InternalAuditRfi", "SuggestionActor", "SuggestionReason", "SuggestionCorrelationId",
                 "SubmitterIdentity", "SubmitterScore", "VerifierIdentity", "VerifierComment", "VerifierScore",
                 "ApproverIdentity", "ApproverComment", "ApproverScore", "PmsIdentity", "PmsComment", "PmsRecommendation", "PmsScore", "PmsRfi",
                 "DueDate", "DueDateExtensionReason", "DueDateExtensionActor", "WithdrawalReason", "WithdrawalActor"]);
-            submissionMembers.Should().HaveCount(33);
+            submissionMembers.Should().HaveCount(34);
             var internalAuditMembers = await context.SecurityMemberDefinitions
                 .Where(item => item.ResourceCode == resourceCode && item.MemberCode.StartsWith("InternalAudit"))
                 .ToArrayAsync();
@@ -103,11 +103,13 @@ public sealed class UsersControllerSecurityTests
                 item.ResourceCode == resourceCode && item.MemberCode == "DueDateExtensionActor");
             extensionActor.IsSensitive.Should().BeTrue();
             extensionActor.IsSystemManaged.Should().BeTrue();
-            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(48);
+            (await context.Permissions.CountAsync(item => item.ResourceCode == resourceCode && item.MemberCode != null)).Should().Be(49);
         }
 
         foreach (var resourceCode in new[] { "OPMS_KPI", "IPMS_KPI" })
         {
+            (await context.SecurityMemberDefinitions.SingleAsync(item => item.ResourceCode == resourceCode && item.MemberCode == "PeriodRequiredPoe"))
+                .IsSystemManaged.Should().BeFalse();
             var revisionMembers = await context.SecurityMemberDefinitions
                 .Where(item => item.ResourceCode == resourceCode && item.MemberCode.StartsWith("Revision"))
                 .OrderBy(item => item.MemberCode)

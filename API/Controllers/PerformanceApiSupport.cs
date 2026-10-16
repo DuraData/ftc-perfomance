@@ -449,7 +449,9 @@ public static class PerformanceApiSupport
             RevisedUnitKind = target.RevisedUnitKind.HasValue ? (int)target.RevisedUnitKind.Value : null,
             RevisedTargetValue = memberAccess.TargetValue ? target.RevisedTargetValue : null,
             IsBudgetRevised = target.IsBudgetRevised,
-            RevisedBudgetValue = memberAccess.BudgetValue ? target.RevisedBudgetValue : null
+            RevisedBudgetValue = memberAccess.BudgetValue ? target.RevisedBudgetValue : null,
+            RequiredPoeDescription = memberAccess.RequiredPoe ? target.RequiredPoeDescription : null,
+            RequiresPoe = memberAccess.RequiredPoe && target.RequiresPoe
         };
 
     public static OpmsSubmissionResponse ToResponse(this OpmsSubmission submission) =>
@@ -536,6 +538,8 @@ public static class PerformanceApiSupport
             SuggestionEditReason = submission.SuggestionEditReason,
             AchievementPercent = submission.AchievementPercent,
             TargetAchieved = submission.TargetAchieved,
+            RequiredPoeDescription = submission.RequiredPoeDescription,
+            RequiresPoe = submission.RequiresPoe,
             RowVersion = Convert.ToBase64String(submission.RowVersion),
             WithdrawalReason = submission.WithdrawalReason,
             WithdrawnAt = submission.WithdrawnAt,
@@ -627,6 +631,8 @@ public static class PerformanceApiSupport
             SuggestionEditReason = submission.SuggestionEditReason,
             AchievementPercent = submission.AchievementPercent,
             TargetAchieved = submission.TargetAchieved,
+            RequiredPoeDescription = submission.RequiredPoeDescription,
+            RequiresPoe = submission.RequiresPoe,
             RowVersion = Convert.ToBase64String(submission.RowVersion),
             WithdrawalReason = submission.WithdrawalReason,
             WithdrawnAt = submission.WithdrawnAt,

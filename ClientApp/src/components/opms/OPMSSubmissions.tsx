@@ -324,7 +324,7 @@ export function OPMSSubmissionsList() {
     setWorkflowBusy(false);
 
     if (!result.success || !result.data) {
-      pushToast('error', result.message ?? `Failed to ${action} submission`);
+      pushToast('error', result.errors?.length ? result.errors.join(' ') : (result.message ?? `Failed to ${action} submission`));
       return;
     }
 
@@ -698,7 +698,7 @@ export function IPMSSubmissionsList() {
     setWorkflowBusy(false);
 
     if (!result.success || !result.data) {
-      pushToast('error', result.message ?? `Failed to ${action} submission`);
+      pushToast('error', result.errors?.length ? result.errors.join(' ') : (result.message ?? `Failed to ${action} submission`));
       return;
     }
 

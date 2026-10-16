@@ -154,6 +154,7 @@ public static class SecurityRegistrySeeder
             Member("OPMS_SUBMISSION", "Variance", "Variance", systemManaged: true),
             Member("OPMS_SUBMISSION", "VarianceReason", "Variance Reason"),
             Member("OPMS_SUBMISSION", "CorrectiveMeasure", "Corrective Measure"),
+            Member("OPMS_SUBMISSION", "RequiredPoeDescription", "Required POE Description", systemManaged: true),
             Member("OPMS_SUBMISSION", "SubmittedDate", "Submitted Date", systemManaged: true),
             Member("OPMS_SUBMISSION", "SubmitterIdentity", "Submission Actor Identity", sensitive: true, systemManaged: true),
             Member("OPMS_SUBMISSION", "SubmitterScore", "Submitter Score", sensitive: true, systemManaged: true),
@@ -191,6 +192,7 @@ public static class SecurityRegistrySeeder
             Member("OPMS_KPI", "PeriodTargetValue", "Reporting Period Target Value", sensitive: true),
             Member("OPMS_KPI", "PeriodBudgetValue", "Reporting Period Budget Value", sensitive: true),
             Member("OPMS_KPI", "PeriodDescription", "Reporting Period Target Description", sensitive: true),
+            Member("OPMS_KPI", "PeriodRequiredPoe", "Reporting Period Required POE Configuration", sensitive: true),
             Member("OPMS_KPI", "InternalReference", "Internal Reference", sensitive: true),
             Member("OPMS_KPI", "FmsLink", "Financial Management System Link", sensitive: true),
             Member("OPMS_KPI", "BudgetSourceAmounts", "Budget Source Allocation Amounts", sensitive: true),
@@ -211,6 +213,7 @@ public static class SecurityRegistrySeeder
             Member("IPMS_SUBMISSION", "Variance", "Variance", systemManaged: true),
             Member("IPMS_SUBMISSION", "VarianceReason", "Variance Reason"),
             Member("IPMS_SUBMISSION", "CorrectiveMeasure", "Corrective Measure"),
+            Member("IPMS_SUBMISSION", "RequiredPoeDescription", "Required POE Description", systemManaged: true),
             Member("IPMS_SUBMISSION", "SubmittedDate", "Submitted Date", systemManaged: true),
             Member("IPMS_SUBMISSION", "SubmitterIdentity", "Submission Actor Identity", sensitive: true, systemManaged: true),
             Member("IPMS_SUBMISSION", "SubmitterScore", "Submitter Score", sensitive: true, systemManaged: true),
@@ -248,6 +251,7 @@ public static class SecurityRegistrySeeder
             Member("IPMS_KPI", "PeriodTargetValue", "Reporting Period Target Value", sensitive: true),
             Member("IPMS_KPI", "PeriodBudgetValue", "Reporting Period Budget Value", sensitive: true),
             Member("IPMS_KPI", "PeriodDescription", "Reporting Period Target Description", sensitive: true),
+            Member("IPMS_KPI", "PeriodRequiredPoe", "Reporting Period Required POE Configuration", sensitive: true),
             Member("IPMS_KPI", "InternalReference", "Internal Reference", sensitive: true),
             Member("IPMS_KPI", "BudgetSourceAmounts", "Budget Source Allocation Amounts", sensitive: true),
             Member("IPMS_KPI", "WithdrawalReason", "KPI Withdrawal Governance Reason", sensitive: true),
@@ -693,6 +697,14 @@ public static class SecurityRegistrySeeder
             ["Reports.Export"] = ["OPMS_REPORT.EXPORT", "IPMS_REPORT.EXPORT"],
             ["IDP.Kpi.Manage"] = ["IDP_INDICATOR.CREATE", "IDP_INDICATOR.READ", "IDP_INDICATOR.UPDATE", "IDP_INDICATOR.IMPORT", "IDP_PLAN.ImportClientRequestId.READ", "IDP_PLAN.ImportSourceFileName.READ", "IDP_PLAN.ImportSourceHash.READ", "IDP_PLAN.ImportActor.READ", "IDP_PLAN.ImportRowPayload.READ", "IDP_PLAN.ImportErrorDetail.READ"]
         };
+        mappings["OPMS.Targets.View"] = [.. mappings["OPMS.Targets.View"], "OPMS_KPI.PeriodRequiredPoe.READ"];
+        mappings["OPMS.Targets.Create"] = [.. mappings["OPMS.Targets.Create"], "OPMS_KPI.PeriodRequiredPoe.UPDATE"];
+        mappings["OPMS.Targets.Edit"] = [.. mappings["OPMS.Targets.Edit"], "OPMS_KPI.PeriodRequiredPoe.UPDATE"];
+        mappings["OPMS.Submissions.View"] = [.. mappings["OPMS.Submissions.View"], "OPMS_SUBMISSION.RequiredPoeDescription.READ"];
+        mappings["IPMS.Targets.View"] = [.. mappings["IPMS.Targets.View"], "IPMS_KPI.PeriodRequiredPoe.READ"];
+        mappings["IPMS.Targets.Create"] = [.. mappings["IPMS.Targets.Create"], "IPMS_KPI.PeriodRequiredPoe.UPDATE"];
+        mappings["IPMS.Targets.Edit"] = [.. mappings["IPMS.Targets.Edit"], "IPMS_KPI.PeriodRequiredPoe.UPDATE"];
+        mappings["IPMS.Submissions.View"] = [.. mappings["IPMS.Submissions.View"], "IPMS_SUBMISSION.RequiredPoeDescription.READ"];
         mappings["NAV.SDBIP.REGISTER"] = ["NAV.SDBIP.DASHBOARD"];
         mappings["OPMS_RFI.RAISE"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.Question.UPDATE", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ", "OPMS_WORKFLOW.ActionComment.UPDATE"];
         mappings["OPMS_RFI.RESPOND"] = ["OPMS_RFI.Question.READ", "OPMS_RFI.RaisedBy.READ", "OPMS_RFI.Response.READ", "OPMS_RFI.Response.UPDATE", "OPMS_RFI.RespondedBy.READ", "OPMS_RFI.EvidenceMetadata.READ", "OPMS_RFI.EvidenceLinkedBy.READ", "OPMS_WORKFLOW.ActionComment.UPDATE"];

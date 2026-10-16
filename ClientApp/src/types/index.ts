@@ -605,6 +605,8 @@ export interface OPMSSubmission {
   variance?: number;
   varianceReason?: string;
   correctiveMeasure?: string;
+  requiredPoeDescription?: string;
+  requiresPoe?: boolean;
   actualPerformanceDescription?: string;
   submitterScore?: number;
   submitterStatus?: string;
@@ -684,6 +686,8 @@ export interface IPMSSubmission {
   variance?: number;
   varianceReason?: string;
   correctiveMeasure?: string;
+  requiredPoeDescription?: string;
+  requiresPoe?: boolean;
   submitterScore?: number;
   submitterStatus?: string;
   verifierStatus?: string;
@@ -1764,6 +1768,8 @@ export interface PerformancePeriodTargetDto {
   targetValue: string | null;
   budgetValue?: number | null;
   description?: string | null;
+  requiredPoeDescription?: string | null;
+  requiresPoe?: boolean;
   isActive: boolean;
   rowVersion: string;
   originalUnitKind: number;
@@ -2136,6 +2142,7 @@ export interface RatingValueDto {
   label: string;
   minimumAchievementPercent?: number | null;
   maximumAchievementPercent?: number | null;
+  requiresPoe: boolean;
   sortOrder: number;
 }
 
@@ -2739,6 +2746,8 @@ export interface OpmsSubmissionDto {
   variance?: number | null;
   varianceReason?: string | null;
   correctiveMeasure?: string | null;
+  requiredPoeDescription?: string | null;
+  requiresPoe?: boolean;
   submitterScore?: number | null;
   submittedAt?: string | null;
   submittedByUserPublicId?: string | null;
@@ -2826,6 +2835,8 @@ export interface IpmsSubmissionDto {
   variance?: number | null;
   varianceReason?: string | null;
   correctiveMeasure?: string | null;
+  requiredPoeDescription?: string | null;
+  requiresPoe?: boolean;
   submitterScore?: number | null;
   submittedAt?: string | null;
   submittedByUserPublicId?: string | null;

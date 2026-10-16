@@ -263,6 +263,7 @@ function Field({
   wide = false,
   editable = false,
   type = 'text',
+  maxLength,
   onChange,
 }: {
   label: string;
@@ -270,6 +271,7 @@ function Field({
   wide?: boolean;
   editable?: boolean;
   type?: string;
+  maxLength?: number;
   onChange?: (val: string) => void;
 }) {
   const inputId = React.useId();
@@ -285,6 +287,7 @@ function Field({
         <input
           id={inputId}
           type={type}
+          maxLength={maxLength}
           defaultValue={typeof value === 'string' || typeof value === 'number' ? value : ''}
           onChange={(e) => onChange?.(e.target.value)}
           className="w-full min-h-11 rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-900 dark:border-secondary-700 dark:bg-secondary-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -989,6 +992,15 @@ export function SubmissionWorkspace({
             </div>
           </Section>
 
+          {(currentSubmission.requiresPoe || currentSubmission.requiredPoeDescription) && (
+            <Section title="Required Proof of Evidence" icon={<FileBadge className="h-4 w-4" />}>
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Evidence Requirement" value={currentSubmission.requiresPoe ? <Badge variant="warning">Required before submission</Badge> : 'Conditionally required by rating outcome'} />
+                <Field label="Required POE Description" value={currentSubmission.requiredPoeDescription || 'Evidence requirements are determined by the achieved rating.'} wide />
+              </div>
+            </Section>
+          )}
+
           {isConsolidationPeriod && canReadActual && (
             <Section title="Governed Consolidation" icon={<Sparkles className="h-4 w-4" />}>
               <p className="text-sm text-secondary-600 dark:text-secondary-300">
@@ -1087,6 +1099,7 @@ export function SubmissionWorkspace({
                 label="Variance Reason"
                 value={getVarianceReason(currentSubmission) || ''}
                 editable={isEditing && canEditVarianceReason}
+                maxLength={4000}
                 onChange={(value) => updateDraftSubmission(current => 'varianceReason' in current ? { ...current, varianceReason: value } : current)}
               />}
               {canReadCorrectiveMeasure && <Field
@@ -1094,6 +1107,7 @@ export function SubmissionWorkspace({
                 value={getCorrectiveMeasure(currentSubmission) || ''}
                 wide
                 editable={isEditing && canEditCorrectiveMeasure}
+                maxLength={4000}
                 onChange={(value) => updateDraftSubmission(current => 'correctiveMeasure' in current ? { ...current, correctiveMeasure: value } : current)}
               />}
               {canReadSubmitterScore && <Field label="Submitter Score" value={scoreDisplay} />}

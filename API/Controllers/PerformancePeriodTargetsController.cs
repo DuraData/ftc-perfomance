@@ -68,6 +68,8 @@ public sealed class PerformancePeriodTargetsController(
         if (user == null) return Unauthorized(Fail<PerformancePeriodTargetDto>("User not found."));
         var period = await context.ReportingPeriods.Include(x => x.MunicipalityFinancialYear).SingleOrDefaultAsync(x => x.PublicId == request.ReportingPeriodPublicId && x.IsActive);
         if (period == null) return BadRequest(Fail<PerformancePeriodTargetDto>("Reporting period not found or inactive."));
+        var requiredPoeError = ValidateRequiredPoe(request.RequiresPoe, request.RequiredPoeDescription);
+        if (requiredPoeError != null) return BadRequest(Fail<PerformancePeriodTargetDto>(requiredPoeError));
         var configuration = await ResolveConfiguration(request.OpmsUnitPublicId, request.UnitKind, request.PerformanceDirectionPublicId, request.Direction);
         if (configuration.Error != null) return BadRequest(Fail<PerformancePeriodTargetDto>(configuration.Error));
         var normalized = unitEngine.Normalize(configuration.Unit!.EngineUnitKind, request.TargetValue);
@@ -111,7 +113,9 @@ public sealed class PerformancePeriodTargetsController(
             OpmsUnitId = configuration.Unit!.Id, OpmsUnit = configuration.Unit,
             PerformanceDirectionId = configuration.Direction!.Id, PerformanceDirectionDefinition = configuration.Direction,
             UnitKind = configuration.Unit.EngineUnitKind, Direction = configuration.Direction.EngineDirection, TargetValue = normalized.CanonicalValue!,
-            BudgetValue = request.BudgetValue, Description = request.Description?.Trim(), CreatedByUserId = user.Id, CreatedByUser = user
+            BudgetValue = request.BudgetValue, Description = request.Description?.Trim(),
+            RequiredPoeDescription = Clean(request.RequiredPoeDescription), RequiresPoe = request.RequiresPoe,
+            CreatedByUserId = user.Id, CreatedByUser = user
         };
         ApplyNewRatioDefinition(entity, ratioConfiguration, user);
         context.PerformancePeriodTargets.Add(entity);
@@ -141,6 +145,8 @@ public sealed class PerformancePeriodTargetsController(
         if (!(await accessControl.CheckPermissionAsync(user, permission, scope)).Allowed) return Forbid();
         if (!await CanUpdateAllMembers(user, resource, scope)) return Forbid();
         if (!TrySetVersion(entity, request.RowVersion)) return BadRequest(Fail<PerformancePeriodTargetDto>("A valid row version is required."));
+        var requiredPoeError = ValidateRequiredPoe(request.RequiresPoe, request.RequiredPoeDescription);
+        if (requiredPoeError != null) return BadRequest(Fail<PerformancePeriodTargetDto>(requiredPoeError));
         var configuration = await ResolveConfiguration(request.OpmsUnitPublicId, request.UnitKind, request.PerformanceDirectionPublicId, request.Direction);
         if (configuration.Error != null) return BadRequest(Fail<PerformancePeriodTargetDto>(configuration.Error));
         var normalized = unitEngine.Normalize(configuration.Unit!.EngineUnitKind, request.TargetValue);
@@ -164,6 +170,8 @@ public sealed class PerformancePeriodTargetsController(
             [nameof(entity.IsBudgetRevised)] = (entity.IsBudgetRevised.ToString(), request.IsBudgetRevised.ToString()),
             [nameof(entity.RevisedBudgetValue)] = (entity.RevisedBudgetValue?.ToString(CultureInfo.InvariantCulture), request.IsBudgetRevised ? request.BudgetValue?.ToString(CultureInfo.InvariantCulture) : null),
             [nameof(entity.Description)] = (entity.Description, request.Description?.Trim()),
+            [nameof(entity.RequiredPoeDescription)] = (entity.RequiredPoeDescription, Clean(request.RequiredPoeDescription)),
+            [nameof(entity.RequiresPoe)] = (entity.RequiresPoe.ToString(), request.RequiresPoe.ToString()),
             [nameof(entity.IsActive)] = (entity.IsActive.ToString(), request.IsActive.ToString())
         };
         foreach (var change in changes.Where(x => x.Value.Old != x.Value.New))
@@ -183,7 +191,9 @@ public sealed class PerformancePeriodTargetsController(
         entity.IsBudgetRevised = request.IsBudgetRevised;
         entity.RevisedBudgetValue = request.IsBudgetRevised ? request.BudgetValue : null;
         entity.PerformanceDirectionId = configuration.Direction!.Id; entity.PerformanceDirectionDefinition = configuration.Direction;
-        entity.Direction = configuration.Direction.EngineDirection; entity.Description = request.Description?.Trim(); entity.IsActive = request.IsActive;
+        entity.Direction = configuration.Direction.EngineDirection; entity.Description = request.Description?.Trim();
+        entity.RequiredPoeDescription = Clean(request.RequiredPoeDescription); entity.RequiresPoe = request.RequiresPoe;
+        entity.IsActive = request.IsActive;
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<PerformancePeriodTargetDto>("Target values changed since they were loaded. Refresh and try again.")); }
         return Ok(new ApiResponse<PerformancePeriodTargetDto>(true, ToDto(entity, await GetMemberAccess(user, resource, scope))));
@@ -272,12 +282,14 @@ public sealed class PerformancePeriodTargetsController(
     private async Task<PeriodTargetMemberAccess> GetMemberAccess(ApplicationUser user, string resource, AccessScopeContext scope) => new(
         (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodTargetValue.READ", scope)).Allowed,
         (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodBudgetValue.READ", scope)).Allowed,
-        (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodDescription.READ", scope)).Allowed);
+        (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodDescription.READ", scope)).Allowed,
+        (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodRequiredPoe.READ", scope)).Allowed);
 
     private async Task<bool> CanUpdateAllMembers(ApplicationUser user, string resource, AccessScopeContext scope) =>
         (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodTargetValue.UPDATE", scope)).Allowed
         && (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodBudgetValue.UPDATE", scope)).Allowed
-        && (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodDescription.UPDATE", scope)).Allowed;
+        && (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodDescription.UPDATE", scope)).Allowed
+        && (await accessControl.CheckPermissionAsync(user, $"{resource}.PeriodRequiredPoe.UPDATE", scope)).Allowed;
 
     private static PerformancePeriodTargetDto ToDto(PerformancePeriodTarget x, PeriodTargetMemberAccess memberAccess) => new(x.PublicId, x.ReportingPeriod.PublicId, x.ReportingPeriod.Code, (int)x.ReportingPeriod.PeriodType, (int)PerformanceRevisionResolver.EffectiveUnitKind(x), (int)x.Direction, memberAccess.TargetValue ? PerformanceRevisionResolver.EffectiveTargetValue(x) : null, memberAccess.BudgetValue ? PerformanceRevisionResolver.EffectiveBudgetValue(x) : null, memberAccess.Description ? x.Description : null, x.IsActive, Convert.ToBase64String(x.RowVersion))
     {
@@ -295,8 +307,19 @@ public sealed class PerformancePeriodTargetsController(
         RevisedTargetValue = memberAccess.TargetValue ? x.RevisedTargetValue : null,
         IsBudgetRevised = x.IsBudgetRevised,
         RevisedBudgetValue = memberAccess.BudgetValue ? x.RevisedBudgetValue : null,
+        RequiredPoeDescription = memberAccess.RequiredPoe ? x.RequiredPoeDescription : null,
+        RequiresPoe = memberAccess.RequiredPoe && x.RequiresPoe,
         RatioDefinition = memberAccess.TargetValue ? ToRatioResponse(x.RatioDefinition) : null
     };
+
+    private static string? ValidateRequiredPoe(bool requiresPoe, string? description)
+    {
+        var value = Clean(description);
+        if (value?.Length > 4000) return "Required POE description may not exceed 4000 characters.";
+        return requiresPoe && value == null ? "Required POE description is required when supporting evidence is mandatory." : null;
+    }
+
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private async Task<(RatioComparisonMethodDefinition? Method, PerformanceRatioSegment[] Segments, byte SegmentCount, string? Error)> ResolveRatioConfiguration(
         PerformanceUnitKind unitKind, string canonicalValue, SaveRatioDefinitionRequest? request)
@@ -409,12 +432,16 @@ public sealed record PerformancePeriodTargetDto(Guid PublicId, Guid ReportingPer
     public string? RevisedTargetValue { get; init; }
     public bool IsBudgetRevised { get; init; }
     public decimal? RevisedBudgetValue { get; init; }
+    public string? RequiredPoeDescription { get; init; }
+    public bool RequiresPoe { get; init; }
     public RatioDefinitionResponse? RatioDefinition { get; init; }
 }
 public sealed record SavePerformancePeriodTargetRequest(SubmissionKind TargetKind, Guid TargetPublicId, Guid ReportingPeriodPublicId, PerformanceUnitKind UnitKind, PerformanceDirection Direction, string TargetValue, decimal? BudgetValue, string? Description)
 {
     public Guid? OpmsUnitPublicId { get; init; }
     public Guid? PerformanceDirectionPublicId { get; init; }
+    public string? RequiredPoeDescription { get; init; }
+    public bool RequiresPoe { get; init; }
     public SaveRatioDefinitionRequest? RatioDefinition { get; init; }
 }
 public sealed record RevisePerformancePeriodTargetRequest(PerformanceUnitKind UnitKind, PerformanceDirection Direction, string TargetValue, decimal? BudgetValue, string? Description, bool IsActive, string Reason, string ApprovalReference, DateTime EffectiveAt, string RowVersion)
@@ -423,6 +450,8 @@ public sealed record RevisePerformancePeriodTargetRequest(PerformanceUnitKind Un
     public Guid? PerformanceDirectionPublicId { get; init; }
     public bool IsTargetRevised { get; init; } = true;
     public bool IsBudgetRevised { get; init; } = true;
+    public string? RequiredPoeDescription { get; init; }
+    public bool RequiresPoe { get; init; }
     public SaveRatioDefinitionRequest? RatioDefinition { get; init; }
 }
 public sealed record RatioDefinitionResponse(Guid PublicId, byte RatioSegmentCount, Guid RatioComparisonMethodPublicId,

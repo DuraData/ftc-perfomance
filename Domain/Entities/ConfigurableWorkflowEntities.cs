@@ -192,6 +192,7 @@ public class RatingSchemeValue
     public string Label { get; set; } = string.Empty;
     public decimal? MinimumAchievementPercent { get; set; }
     public decimal? MaximumAchievementPercent { get; set; }
+    public bool RequiresPoe { get; set; }
     public int SortOrder { get; set; }
     public Municipality Municipality { get; set; } = null!;
     public RatingScheme RatingScheme { get; set; } = null!;

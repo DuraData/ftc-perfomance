@@ -98,7 +98,7 @@ public sealed class RemainingCascadeDeletionGovernanceTests
                 );
                 """);
             const string latestMigration = "20261013161110_V39RestrictiveRemainingAggregateHistory";
-            foreach (var migration in context.Database.GetMigrations().Where(item => item != latestMigration))
+            foreach (var migration in context.Database.GetMigrations().TakeWhile(item => item != latestMigration))
                 await context.Database.ExecuteSqlRawAsync(
                     "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ({0}, {1})",
                     migration, "10.0.0");

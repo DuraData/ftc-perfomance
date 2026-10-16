@@ -23,6 +23,8 @@ public class PerformancePeriodTarget
     public bool IsBudgetRevised { get; set; }
     public decimal? RevisedBudgetValue { get; set; }
     public string? Description { get; set; }
+    public string? RequiredPoeDescription { get; set; }
+    public bool RequiresPoe { get; set; }
     public bool IsSystemDerivedTarget { get; set; }
     public string? DerivedFromPeriods { get; set; }
     public long? DerivedCalculationTypeId { get; set; }

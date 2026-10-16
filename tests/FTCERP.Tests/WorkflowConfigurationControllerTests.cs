@@ -119,7 +119,7 @@ public sealed class WorkflowConfigurationControllerTests
         var controller = Controller(context, 7, actor);
         var values = new[]
         {
-            new SaveRatingValueRequest(1m, "Not achieved", 0m, 49.99m, 1),
+            new SaveRatingValueRequest(1m, "Not achieved", 0m, 49.99m, 1, RequiresPoe: true),
             new SaveRatingValueRequest(2m, "Achieved", 50m, 100m, 2)
         };
 
@@ -134,11 +134,12 @@ public sealed class WorkflowConfigurationControllerTests
         result.Result.Should().BeOfType<OkObjectResult>();
         var scheme = await context.RatingSchemes.Include(item => item.Values).SingleAsync();
         scheme.Values.Should().HaveCount(2);
+        scheme.Values.Single(item => item.Value == 1m).RequiresPoe.Should().BeTrue();
         var audit = await context.AuditTrails.SingleAsync(item => item.EntityName == nameof(RatingScheme));
         audit.EntityId.Should().Be(scheme.PublicId.ToString());
         audit.Action.Should().Be("Create");
         audit.Reason.Should().Be("Approved assessment rating definition");
-        audit.NewValue.Should().Contain("TWO_POINT").And.Contain("Not achieved");
+        audit.NewValue.Should().Contain("TWO_POINT").And.Contain("Not achieved").And.Contain("RequiresPoe");
     }
 
     [Fact]

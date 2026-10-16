@@ -347,6 +347,8 @@ public record TargetPeriodValueResponse(
     public string? RevisedTargetValue { get; init; }
     public bool IsBudgetRevised { get; init; }
     public decimal? RevisedBudgetValue { get; init; }
+    public string? RequiredPoeDescription { get; init; }
+    public bool RequiresPoe { get; init; }
 }
 
 public sealed record PerformanceValueConfigurationResponse(
@@ -396,10 +398,10 @@ public sealed record KpiRevisionMemberAccess(
     bool ApprovalReference,
     bool Actor);
 
-public sealed record PeriodTargetMemberAccess(bool TargetValue, bool BudgetValue, bool Description)
+public sealed record PeriodTargetMemberAccess(bool TargetValue, bool BudgetValue, bool Description, bool RequiredPoe)
 {
-    public static PeriodTargetMemberAccess Full { get; } = new(true, true, true);
-    public static PeriodTargetMemberAccess None { get; } = new(false, false, false);
+    public static PeriodTargetMemberAccess Full { get; } = new(true, true, true, true);
+    public static PeriodTargetMemberAccess None { get; } = new(false, false, false, false);
 }
 
 public sealed record VoteNumberMemberAccess(bool Number, bool Amount)
@@ -500,6 +502,8 @@ public record OpmsSubmissionResponse(
     public string? SuggestionEditReason { get; init; }
     public decimal? AchievementPercent { get; init; }
     public bool? TargetAchieved { get; init; }
+    public string? RequiredPoeDescription { get; init; }
+    public bool RequiresPoe { get; init; }
     public string RowVersion { get; init; } = string.Empty;
     public string? WithdrawalReason { get; init; }
     public DateTime? WithdrawnAt { get; init; }
@@ -588,6 +592,8 @@ public record IpmsSubmissionResponse(
     public string? SuggestionEditReason { get; init; }
     public decimal? AchievementPercent { get; init; }
     public bool? TargetAchieved { get; init; }
+    public string? RequiredPoeDescription { get; init; }
+    public bool RequiresPoe { get; init; }
     public string RowVersion { get; init; } = string.Empty;
     public string? WithdrawalReason { get; init; }
     public DateTime? WithdrawnAt { get; init; }

@@ -45,9 +45,9 @@ public sealed class RatioConfigurationTests
                 INSERT INTO "OpmsUnitDefinitions" ("Id", "ValueDataType") VALUES (5, 'JSON');
                 """);
             var migrations = context.Database.GetMigrations().ToArray();
-            var latest = migrations[^1];
-            latest.Should().EndWith("V39GovernedRatioConfiguration");
-            foreach (var migration in migrations[..^1])
+            var latest = migrations.Single(item => item.EndsWith("V39GovernedRatioConfiguration", StringComparison.Ordinal));
+            var targetIndex = Array.IndexOf(migrations, latest);
+            foreach (var migration in migrations[..targetIndex])
                 await context.Database.ExecuteSqlRawAsync(
                     "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ({0}, {1})",
                     migration, "10.0.0");

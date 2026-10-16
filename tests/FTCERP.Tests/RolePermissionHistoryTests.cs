@@ -119,13 +119,13 @@ public sealed class RolePermissionHistoryTests
                 );
                 """);
             var migrations = context.Database.GetMigrations().ToArray();
-            foreach (var migration in migrations)
+            var targetMigration = migrations.Single(item => item.EndsWith("V39AppendPreservedRolePermissions", StringComparison.Ordinal));
+            foreach (var migration in migrations.TakeWhile(item => item != targetMigration).Append(targetMigration))
                 await context.Database.ExecuteSqlRawAsync(
                     "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ({0}, {1})",
                     migration, "10.0.0");
 
             const string predecessor = "20261013161110_V39RestrictiveRemainingAggregateHistory";
-            var targetMigration = migrations.Single(item => item.EndsWith("V39AppendPreservedRolePermissions", StringComparison.Ordinal));
             await context.GetService<IMigrator>().MigrateAsync(predecessor);
             await context.GetService<IMigrator>().MigrateAsync(targetMigration);
             context.ChangeTracker.Clear();

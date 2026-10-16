@@ -95,6 +95,15 @@ describe('SubmissionWorkspace member security', () => {
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
   });
 
+  it('renders the immutable required-POE snapshot as a read-only submission requirement', () => {
+    render(<SubmissionWorkspace submission={{ ...submission, requiresPoe: true, requiredPoeDescription: 'Signed attendance register and council resolution.' }} submissionType="OPMS" />);
+
+    expect(screen.getByText('Required Proof of Evidence')).toBeInTheDocument();
+    expect(screen.getByText('Required before submission')).toBeInTheDocument();
+    expect(screen.getByText('Signed attendance register and council resolution.')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /Required POE Description/i })).not.toBeInTheDocument();
+  });
+
   it.each(['OPMS', 'IPMS'] as const)('hides the %s evidence surface without resource READ access', (submissionType) => {
     security.canRead.mockReturnValue(false);
 

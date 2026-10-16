@@ -178,6 +178,7 @@ builder.Services.AddSingleton<IPerformanceConsolidationEngine, PerformanceConsol
 builder.Services.AddSingleton<IPerformanceTargetDerivationService, PerformanceTargetDerivationService>();
 builder.Services.AddScoped<ISubmissionValueService, SubmissionValueService>();
 builder.Services.AddScoped<IPerformanceSuggestionService, PerformanceSuggestionService>();
+builder.Services.AddScoped<ISubmissionValidationService, SubmissionValidationService>();
 builder.Services.AddScoped<IReportingWindowService, ReportingWindowService>();
 builder.Services.AddScoped<IConfigurableWorkflowService, ConfigurableWorkflowService>();
 builder.Services.AddSingleton<IEvidenceInspectionService, EvidenceInspectionService>();

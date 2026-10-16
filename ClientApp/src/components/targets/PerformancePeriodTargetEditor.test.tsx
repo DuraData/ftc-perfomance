@@ -78,6 +78,20 @@ describe('PerformancePeriodTargetEditor', () => {
     expect(screen.queryByRole('option', { name: 'Q1 · Quarter 1' })).not.toBeInTheDocument();
   });
 
+  it('shows the governed required-POE configuration on the reporting-period target', async () => {
+    api.getPerformancePeriodTargets.mockResolvedValue({ success: true, data: [{
+      publicId: 'value-1', reportingPeriodPublicId: 'period-q1', periodCode: 'Q1', periodType: 1,
+      unitKind: 2, direction: 1, opmsUnitPublicId: 'unit-number', performanceDirectionPublicId: 'direction-target-or-higher',
+      targetValue: '25', originalUnitKind: 2, originalTargetValue: '25', isTargetRevised: false, isBudgetRevised: false,
+      requiredPoeDescription: 'Signed completion certificate.', requiresPoe: true, isActive: true, rowVersion: 'AQ==',
+    }] });
+
+    render(<PerformancePeriodTargetEditor kind={1} targetPublicId="target-public-id" />);
+
+    expect(await screen.findByText('POE required')).toBeInTheDocument();
+    expect(screen.getByText(/Signed completion certificate/)).toBeInTheDocument();
+  });
+
   it('masks protected period values and hides mutation actions without member grants', async () => {
     security.canReadField.mockReturnValue(false);
     security.canEditField.mockReturnValue(false);

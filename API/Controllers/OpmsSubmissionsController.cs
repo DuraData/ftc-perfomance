@@ -37,6 +37,7 @@ public class OpmsSubmissionsController : ControllerBase
     private readonly IEvidenceInspectionService _evidenceInspection;
     private readonly IEvidenceMalwareScanner _malwareScanner;
     private readonly IPerformanceSuggestionService _performanceSuggestions;
+    private readonly ISubmissionValidationService _submissionValidation;
 
     public OpmsSubmissionsController(
         ApplicationDbContext context,
@@ -49,7 +50,8 @@ public class OpmsSubmissionsController : ControllerBase
         IReportingWindowService reportingWindows,
         IEvidenceInspectionService evidenceInspection,
         IEvidenceMalwareScanner malwareScanner,
-        IPerformanceSuggestionService performanceSuggestions)
+        IPerformanceSuggestionService performanceSuggestions,
+        ISubmissionValidationService? submissionValidation = null)
     {
         _context = context;
         _userManager = userManager;
@@ -62,6 +64,7 @@ public class OpmsSubmissionsController : ControllerBase
         _evidenceInspection = evidenceInspection;
         _malwareScanner = malwareScanner;
         _performanceSuggestions = performanceSuggestions;
+        _submissionValidation = submissionValidation ?? new SubmissionValidationService(context);
     }
 
     [HttpGet]
@@ -216,6 +219,8 @@ public class OpmsSubmissionsController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsSubmissionResponse>(false, null, "User not found"));
+        if (request.VarianceReason?.Trim().Length > 4000 || request.CorrectiveMeasure?.Trim().Length > 4000)
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "Variance reason and corrective measurement may not exceed 4000 characters."));
         if (request.OpmsTargetPublicId == Guid.Empty)
             return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS target is required."));
         if (request.ReportingPeriodPublicId == Guid.Empty)
@@ -260,8 +265,9 @@ public class OpmsSubmissionsController : ControllerBase
             Variance = resolved.Calculation?.Variance,
             VarianceReason = request.VarianceReason?.Trim(),
             CorrectiveMeasure = request.CorrectiveMeasure?.Trim(),
+            RequiredPoeDescription = resolved.Target.RequiredPoeDescription,
+            RequiresPoe = resolved.Target.RequiresPoe,
             PoeType = request.PoeType?.Trim(),
-            SubmittedByUserId = user.Id,
             CreatedBy = user.Id,
             CreatedOn = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow
@@ -280,6 +286,8 @@ public class OpmsSubmissionsController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsSubmissionResponse>(false, null, "User not found"));
+        if (request.VarianceReason?.Trim().Length > 4000 || request.CorrectiveMeasure?.Trim().Length > 4000)
+            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "Variance reason and corrective measurement may not exceed 4000 characters."));
         id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
         if (id.Length == 0) return NotFound(new ApiResponse<OpmsSubmissionResponse>(false, null, "OPMS submission not found"));
 
@@ -1085,8 +1093,13 @@ public class OpmsSubmissionsController : ControllerBase
         if (!decision.Allowed) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, decision.Reason));
         var memberDenial = await WorkflowActionMemberPermissionDenialAsync(user, BuildScope(entity), status, request);
         if (memberDenial != null) return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<OpmsSubmissionResponse>(false, null, memberDenial));
-        if (string.Equals(permissionCode, "OPMS_SUBMISSION.SUBMIT", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(entity.ActualPerformance))
-            return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "Authoritative actual performance is required before submission."));
+        if (string.Equals(permissionCode, "OPMS_SUBMISSION.SUBMIT", StringComparison.OrdinalIgnoreCase))
+        {
+            var validation = await _submissionValidation.ValidateAsync(entity);
+            if (!validation.IsValid)
+                return BadRequest(new ApiResponse<OpmsSubmissionResponse>(false, null, "Submission validation failed.",
+                    validation.Errors.Select(error => $"{error.Field}: {error.Message}").ToArray()));
+        }
         var configurable = entity.ReportingPeriodId.HasValue && await HasConfiguredWorkflowAsync(entity.ReportingPeriodId.Value);
         if (!configurable)
             return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, "No effective configured workflow exists for this municipality, financial year, and submission type."));
@@ -1198,6 +1211,8 @@ public class OpmsSubmissionsController : ControllerBase
         submission.Variance,
         submission.VarianceReason,
         submission.CorrectiveMeasure,
+        submission.RequiredPoeDescription,
+        submission.RequiresPoe,
         submission.SubmitterScore,
         submission.PoeType,
         submission.SubmittedByUserId,
@@ -1514,6 +1529,8 @@ public class OpmsSubmissionsController : ControllerBase
             response = response with { VarianceReason = null };
         if (!permissions.Contains("OPMS_SUBMISSION.CorrectiveMeasure.READ"))
             response = response with { CorrectiveMeasure = null };
+        if (!permissions.Contains("OPMS_SUBMISSION.RequiredPoeDescription.READ"))
+            response = response with { RequiredPoeDescription = null, RequiresPoe = false };
         if (!permissions.Contains("OPMS_SUBMISSION.SubmittedDate.READ"))
             response = response with { SubmittedAt = null };
         return response;

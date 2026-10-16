@@ -901,12 +901,14 @@ public class OpmsTargetsController : ControllerBase
     private async Task<PeriodTargetMemberAccess> GetPeriodTargetMemberAccessAsync(ApplicationUser user, AccessScopeContext scope) => new(
         (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodTargetValue.READ", scope))?.Allowed == true,
         (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodBudgetValue.READ", scope))?.Allowed == true,
-        (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodDescription.READ", scope))?.Allowed == true);
+        (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodDescription.READ", scope))?.Allowed == true,
+        (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodRequiredPoe.READ", scope))?.Allowed == true);
 
     private async Task<bool> CanUpdatePeriodTargetMembersAsync(ApplicationUser user, AccessScopeContext scope) =>
         (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodTargetValue.UPDATE", scope))?.Allowed == true
         && (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodBudgetValue.UPDATE", scope))?.Allowed == true
-        && (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodDescription.UPDATE", scope))?.Allowed == true;
+        && (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodDescription.UPDATE", scope))?.Allowed == true
+        && (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.PeriodRequiredPoe.UPDATE", scope))?.Allowed == true;
 
     private async Task<bool> CanUpdateSensitiveMembersAsync(ApplicationUser user, AccessScopeContext scope, SaveOpmsTargetRequest request) =>
         (!request.InternalReferenceSpecified || (await _accessControlService.CheckPermissionAsync(user, "OPMS_KPI.InternalReference.UPDATE", scope))?.Allowed == true)

@@ -379,10 +379,10 @@ public sealed class WorkflowConfigurationController(
         var code = request.Code.Trim().ToUpperInvariant();
         if (await context.RatingSchemes.AnyAsync(x => x.Code == code)) return Conflict(Fail<RatingSchemeDto>("Rating scheme code already exists."));
         var entity = new RatingScheme { MunicipalityId = tenantContext.MunicipalityId!.Value, Code = code, Name = request.Name.Trim(), IsActive = true };
-        foreach (var value in request.Values.OrderBy(x => x.SortOrder)) entity.Values.Add(new RatingSchemeValue { MunicipalityId = tenantContext.MunicipalityId.Value, Value = value.Value, Label = value.Label.Trim(), MinimumAchievementPercent = value.MinimumAchievementPercent, MaximumAchievementPercent = value.MaximumAchievementPercent, SortOrder = value.SortOrder });
+        foreach (var value in request.Values.OrderBy(x => x.SortOrder)) entity.Values.Add(new RatingSchemeValue { MunicipalityId = tenantContext.MunicipalityId.Value, Value = value.Value, Label = value.Label.Trim(), MinimumAchievementPercent = value.MinimumAchievementPercent, MaximumAchievementPercent = value.MaximumAchievementPercent, RequiresPoe = value.RequiresPoe, SortOrder = value.SortOrder });
         context.RatingSchemes.Add(entity);
         governance.QueueAuditTrail(nameof(RatingScheme), entity.PublicId.ToString(), "Create", null,
-            new { entity.Code, entity.Name, entity.IsActive, Values = entity.Values.OrderBy(x => x.SortOrder).Select(x => new { x.PublicId, x.Value, x.Label, x.MinimumAchievementPercent, x.MaximumAchievementPercent, x.SortOrder }).ToArray() },
+            new { entity.Code, entity.Name, entity.IsActive, Values = entity.Values.OrderBy(x => x.SortOrder).Select(x => new { x.PublicId, x.Value, x.Label, x.MinimumAchievementPercent, x.MaximumAchievementPercent, x.RequiresPoe, x.SortOrder }).ToArray() },
             actor.Id, PerformanceApiSupport.GetIpAddress(HttpContext), reason);
         await context.SaveChangesAsync();
         return Ok(new ApiResponse<RatingSchemeDto>(true, ToDto(entity)));
@@ -920,7 +920,7 @@ public sealed class WorkflowConfigurationController(
                 x.ApprovedAt, Convert.ToBase64String(x.RowVersion));
         }).ToArray();
     }
-    private static RatingSchemeDto ToDto(RatingScheme x) => new(x.PublicId, x.Code, x.Name, x.IsActive, Convert.ToBase64String(x.RowVersion), x.Values.OrderBy(v => v.SortOrder).Select(v => new RatingValueDto(v.PublicId, v.Value, v.Label, v.MinimumAchievementPercent, v.MaximumAchievementPercent, v.SortOrder)).ToArray());
+    private static RatingSchemeDto ToDto(RatingScheme x) => new(x.PublicId, x.Code, x.Name, x.IsActive, Convert.ToBase64String(x.RowVersion), x.Values.OrderBy(v => v.SortOrder).Select(v => new RatingValueDto(v.PublicId, v.Value, v.Label, v.MinimumAchievementPercent, v.MaximumAchievementPercent, v.RequiresPoe, v.SortOrder)).ToArray());
     private async Task<WorkflowMemberAccess> ReadWorkflowMembersAsync(ApplicationUser user, SubmissionKind kind, AccessScopeContext scope)
     {
         var resource = kind == SubmissionKind.Opms ? "OPMS_WORKFLOW" : "IPMS_WORKFLOW";
@@ -1053,9 +1053,9 @@ public sealed record SaveReportingWindowRequest(Guid ReportingPeriodPublicId, Su
 public sealed record ReportingWindowDto(Guid PublicId, Guid ReportingPeriodPublicId, string PeriodCode, SubmissionKind SubmissionKind, DateTime OpensAt, DateTime ClosesAt, bool IsActive, string RowVersion);
 public sealed record SaveReportingWindowExceptionRequest(Guid? UserPublicId, Guid? DepartmentPublicId, Guid? UnitPublicId, DateTime ExtendedClosesAt, string Reason);
 public sealed record ReportingWindowExceptionDto(Guid PublicId, string ScopeType, Guid? ScopePublicId, string? ScopeName, DateTime ExtendedClosesAt, string? Reason, Guid? ApprovedByUserPublicId, string? ApprovedByName, DateTime ApprovedAt, string RowVersion);
-public sealed record SaveRatingValueRequest(decimal Value, string Label, decimal? MinimumAchievementPercent, decimal? MaximumAchievementPercent, int SortOrder);
+public sealed record SaveRatingValueRequest(decimal Value, string Label, decimal? MinimumAchievementPercent, decimal? MaximumAchievementPercent, int SortOrder, bool RequiresPoe = false);
 public sealed record SaveRatingSchemeRequest(string Code, string Name, IReadOnlyList<SaveRatingValueRequest> Values, string Reason);
-public sealed record RatingValueDto(Guid PublicId, decimal Value, string Label, decimal? MinimumAchievementPercent, decimal? MaximumAchievementPercent, int SortOrder);
+public sealed record RatingValueDto(Guid PublicId, decimal Value, string Label, decimal? MinimumAchievementPercent, decimal? MaximumAchievementPercent, bool RequiresPoe, int SortOrder);
 public sealed record RatingSchemeDto(Guid PublicId, string Code, string Name, bool IsActive, string RowVersion, RatingValueDto[] Values);
 public sealed record WorkflowActionRequest(string ActionCode, WorkflowActionOutcome Outcome, string? Comment, decimal? RatingValue);
 public sealed record WorkflowActionDto(Guid PublicId, int Sequence, string ActionCode, WorkflowActionOutcome Outcome, Guid? ActorUserPublicId, string? ActorName, string? Comment, decimal? RatingValue, DateTime OccurredAt);

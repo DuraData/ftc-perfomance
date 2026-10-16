@@ -4419,7 +4419,8 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("CorrectiveMeasure")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -4494,6 +4495,13 @@ namespace FTCERP.Host.Migrations
                     b.Property<long?>("ReportingPeriodId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("RequiredPoeDescription")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<bool>("RequiresPoe")
+                        .HasColumnType("bit");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -4552,7 +4560,8 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("VarianceReason")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<DateTime?>("VerifiedAt")
                         .HasColumnType("datetime2");
@@ -7531,7 +7540,8 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("CorrectiveMeasure")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -7606,6 +7616,13 @@ namespace FTCERP.Host.Migrations
                     b.Property<long?>("ReportingPeriodId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("RequiredPoeDescription")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<bool>("RequiresPoe")
+                        .HasColumnType("bit");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -7664,7 +7681,8 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("VarianceReason")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<DateTime?>("VerifiedAt")
                         .HasColumnType("datetime2");
@@ -9209,6 +9227,13 @@ namespace FTCERP.Host.Migrations
                     b.Property<long>("ReportingPeriodId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("RequiredPoeDescription")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<bool>("RequiresPoe")
+                        .HasColumnType("bit");
+
                     b.Property<decimal?>("RevisedBudgetValue")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -10215,6 +10240,9 @@ namespace FTCERP.Host.Migrations
 
                     b.Property<long>("RatingSchemeId")
                         .HasColumnType("bigint");
+
+                    b.Property<bool>("RequiresPoe")
+                        .HasColumnType("bit");
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");

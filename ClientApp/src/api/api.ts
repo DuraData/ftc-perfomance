@@ -934,6 +934,8 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto): OPMSSubmission {
     variance: dto.variance ?? undefined,
     varianceReason: dto.varianceReason ?? undefined,
     correctiveMeasure: dto.correctiveMeasure ?? undefined,
+    requiredPoeDescription: dto.requiredPoeDescription ?? undefined,
+    requiresPoe: dto.requiresPoe ?? false,
     submitterScore: dto.submitterScore ?? undefined,
     submitterStatus: dto.submitterStatus ?? undefined,
     verifierStatus: dto.verifierStatus ?? undefined,
@@ -1021,6 +1023,8 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto): IPMSSubmission {
     variance: dto.variance ?? undefined,
     varianceReason: dto.varianceReason ?? undefined,
     correctiveMeasure: dto.correctiveMeasure ?? undefined,
+    requiredPoeDescription: dto.requiredPoeDescription ?? undefined,
+    requiresPoe: dto.requiresPoe ?? false,
     submitterScore: dto.submitterScore ?? undefined,
     submitterStatus: dto.submitterStatus ?? undefined,
     verifierStatus: dto.verifierStatus ?? undefined,
@@ -1627,11 +1631,11 @@ export async function getPerformanceConfigurationCatalogue(): Promise<ApiRespons
   return get<PerformanceConfigurationCatalogueDto>('/v1/performance-configuration/catalogue');
 }
 
-export async function createPerformancePeriodTarget(payload: { targetKind: 1 | 2; targetPublicId: string; reportingPeriodPublicId: string; unitKind: number; direction: number; opmsUnitPublicId?: string | null; performanceDirectionPublicId?: string | null; targetValue: string; budgetValue?: number; description?: string; ratioDefinition?: SaveRatioDefinitionPayload | null }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
+export async function createPerformancePeriodTarget(payload: { targetKind: 1 | 2; targetPublicId: string; reportingPeriodPublicId: string; unitKind: number; direction: number; opmsUnitPublicId?: string | null; performanceDirectionPublicId?: string | null; targetValue: string; budgetValue?: number; description?: string; requiredPoeDescription?: string; requiresPoe: boolean; ratioDefinition?: SaveRatioDefinitionPayload | null }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
   return post<PerformancePeriodTargetDto>('/v1/performance-period-targets', payload);
 }
 
-export async function revisePerformancePeriodTarget(publicId: string, payload: { unitKind: number; direction: number; opmsUnitPublicId?: string | null; performanceDirectionPublicId?: string | null; targetValue: string; budgetValue?: number; description?: string; isTargetRevised: boolean; isBudgetRevised: boolean; isActive: boolean; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string; ratioDefinition?: SaveRatioDefinitionPayload | null }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
+export async function revisePerformancePeriodTarget(publicId: string, payload: { unitKind: number; direction: number; opmsUnitPublicId?: string | null; performanceDirectionPublicId?: string | null; targetValue: string; budgetValue?: number; description?: string; requiredPoeDescription?: string; requiresPoe: boolean; isTargetRevised: boolean; isBudgetRevised: boolean; isActive: boolean; reason: string; approvalReference: string; effectiveAt: string; rowVersion: string; ratioDefinition?: SaveRatioDefinitionPayload | null }): Promise<ApiResponse<PerformancePeriodTargetDto>> {
   return put<PerformancePeriodTargetDto>(`/v1/performance-period-targets/${publicId}`, payload);
 }
 
@@ -1887,7 +1891,7 @@ export async function saveMyNotificationPreferences(payload: NotificationPrefere
   return put<NotificationPreferenceDto>('/v1/notification-policies/preferences/me', payload);
 }
 
-export async function createRatingScheme(payload: { code: string; name: string; reason: string; values: Array<{ value: number; label: string; minimumAchievementPercent?: number; maximumAchievementPercent?: number; sortOrder: number }> }): Promise<ApiResponse<RatingSchemeDto>> {
+export async function createRatingScheme(payload: { code: string; name: string; reason: string; values: Array<{ value: number; label: string; minimumAchievementPercent?: number; maximumAchievementPercent?: number; requiresPoe: boolean; sortOrder: number }> }): Promise<ApiResponse<RatingSchemeDto>> {
   return post<RatingSchemeDto>('/v1/workflow/rating-schemes', payload);
 }
 

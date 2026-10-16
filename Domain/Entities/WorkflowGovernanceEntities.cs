@@ -361,6 +361,8 @@ public partial class OpmsSubmission
     public decimal? Variance { get; set; }
     public string? VarianceReason { get; set; }
     public string? CorrectiveMeasure { get; set; }
+    public string? RequiredPoeDescription { get; set; }
+    public bool RequiresPoe { get; set; }
     public decimal? SubmitterScore { get; set; }
     public DateTime? SubmittedAt { get; set; }
     public string? SubmittedByUserId { get; set; }
@@ -440,6 +442,8 @@ public partial class IpmsSubmission
     public decimal? Variance { get; set; }
     public string? VarianceReason { get; set; }
     public string? CorrectiveMeasure { get; set; }
+    public string? RequiredPoeDescription { get; set; }
+    public bool RequiresPoe { get; set; }
     public decimal? SubmitterScore { get; set; }
     public DateTime? SubmittedAt { get; set; }
     public string? SubmittedByUserId { get; set; }

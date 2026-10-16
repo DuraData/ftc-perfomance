@@ -17,6 +17,15 @@ public sealed class PerformanceTargetDeletionGovernanceTests
             await using var context = new ApplicationDbContext(options);
             await context.Database.EnsureCreatedAsync();
             var seeded = await SeedAsync(context);
+            // Recreate the schema shape that existed immediately before the historical
+            // governed-deletion migration under test. Later additive columns must not
+            // change the column count expected by that migration's explicit copy SQL.
+            await context.Database.ExecuteSqlRawAsync("""
+                ALTER TABLE OpmsSubmissions DROP COLUMN RequiredPoeDescription;
+                ALTER TABLE OpmsSubmissions DROP COLUMN RequiresPoe;
+                ALTER TABLE IpmsSubmissions DROP COLUMN RequiredPoeDescription;
+                ALTER TABLE IpmsSubmissions DROP COLUMN RequiresPoe;
+                """);
             await context.Database.ExecuteSqlRawAsync("""
                 CREATE TABLE "__EFMigrationsHistory" (
                     "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
@@ -24,7 +33,7 @@ public sealed class PerformanceTargetDeletionGovernanceTests
                 );
                 """);
             const string latestMigration = "20261013141506_V39GovernedPerformanceTargetDeletion";
-            foreach (var migration in context.Database.GetMigrations().Where(item => item != latestMigration))
+            foreach (var migration in context.Database.GetMigrations().TakeWhile(item => item != latestMigration))
                 await context.Database.ExecuteSqlRawAsync(
                     "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ({0}, {1})",
                     migration, "10.0.0");

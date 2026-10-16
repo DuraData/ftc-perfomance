@@ -290,6 +290,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         builder.Entity<PerformancePeriodTarget>().HasIndex(item => new { item.IpmsTargetId, item.ReportingPeriodId }).IsUnique().HasFilter("[IpmsTargetId] IS NOT NULL");
         builder.Entity<PerformancePeriodTarget>().Property(item => item.TargetValue).HasMaxLength(1024);
         builder.Entity<PerformancePeriodTarget>().Property(item => item.RevisedTargetValue).HasMaxLength(1024);
+        builder.Entity<PerformancePeriodTarget>().Property(item => item.RequiredPoeDescription).HasMaxLength(4000);
         builder.Entity<PerformancePeriodTarget>().Property(item => item.BudgetValue).HasPrecision(18, 2);
         builder.Entity<PerformancePeriodTarget>().Property(item => item.RevisedBudgetValue).HasPrecision(18, 2);
         ConfigureRowVersion(builder.Entity<PerformancePeriodTarget>().Property(item => item.RowVersion));
@@ -977,6 +978,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigureRowVersion(builder.Entity<OpmsSubmission>().Property(item => item.RowVersion));
         builder.Entity<OpmsSubmission>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<OpmsSubmission>().Property(item => item.ActualPerformance).HasMaxLength(1024);
+        builder.Entity<OpmsSubmission>().Property(item => item.VarianceReason).HasMaxLength(4000);
+        builder.Entity<OpmsSubmission>().Property(item => item.CorrectiveMeasure).HasMaxLength(4000);
+        builder.Entity<OpmsSubmission>().Property(item => item.RequiredPoeDescription).HasMaxLength(4000);
         builder.Entity<OpmsSubmission>().Property(item => item.BaseState).HasMaxLength(20);
         builder.Entity<OpmsSubmission>().ToTable(table => table.HasCheckConstraint(
             "CK_OpmsSubmissions_BaseState",
@@ -992,6 +996,9 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigureRowVersion(builder.Entity<IpmsSubmission>().Property(item => item.RowVersion));
         builder.Entity<IpmsSubmission>().HasOne(item => item.Municipality).WithMany().HasForeignKey(item => item.MunicipalityId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<IpmsSubmission>().Property(item => item.ActualPerformance).HasMaxLength(1024);
+        builder.Entity<IpmsSubmission>().Property(item => item.VarianceReason).HasMaxLength(4000);
+        builder.Entity<IpmsSubmission>().Property(item => item.CorrectiveMeasure).HasMaxLength(4000);
+        builder.Entity<IpmsSubmission>().Property(item => item.RequiredPoeDescription).HasMaxLength(4000);
         builder.Entity<IpmsSubmission>().Property(item => item.BaseState).HasMaxLength(20);
         builder.Entity<IpmsSubmission>().ToTable(table => table.HasCheckConstraint(
             "CK_IpmsSubmissions_BaseState",
@@ -5209,7 +5216,8 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             nameof(PerformancePeriodTarget.RevisedOpmsUnitId), nameof(PerformancePeriodTarget.RevisedUnitKind),
             nameof(PerformancePeriodTarget.PerformanceDirectionId), nameof(PerformancePeriodTarget.Direction),
             nameof(PerformancePeriodTarget.IsBudgetRevised), nameof(PerformancePeriodTarget.RevisedBudgetValue),
-            nameof(PerformancePeriodTarget.Description), nameof(PerformancePeriodTarget.IsActive),
+            nameof(PerformancePeriodTarget.Description), nameof(PerformancePeriodTarget.RequiredPoeDescription),
+            nameof(PerformancePeriodTarget.RequiresPoe), nameof(PerformancePeriodTarget.IsActive),
             nameof(PerformancePeriodTarget.RowVersion)
         };
         foreach (var entry in ChangeTracker.Entries<PerformancePeriodTarget>().Where(entry => entry.State == EntityState.Modified))
