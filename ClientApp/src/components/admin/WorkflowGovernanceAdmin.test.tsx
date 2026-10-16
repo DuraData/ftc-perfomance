@@ -106,6 +106,8 @@ describe('WorkflowGovernanceAdminPage', () => {
     const permissions = screen.getAllByLabelText('Registered action / permission');
     expect(permissions[0]).toHaveValue('IPMS_SUBMISSION.SUBMIT');
     expect(permissions[1]).toHaveValue('IPMS_SUBMISSION.VERIFY');
+    expect(screen.getAllByLabelText('Different from previous stage')[0]).toBeDisabled();
+    fireEvent.click(screen.getAllByLabelText('Different from previous stage')[1]);
 
     fireEvent.change(screen.getByLabelText('Version reason*'), { target: { value: 'Configure the governed IPMS verification workflow' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create version' }));
@@ -114,7 +116,7 @@ describe('WorkflowGovernanceAdminPage', () => {
       submissionKind: 2,
       stages: [
         expect.objectContaining({ requiredActionCode: 'IPMS_SUBMISSION.SUBMIT', requiredPermissionCode: 'IPMS_SUBMISSION.SUBMIT' }),
-        expect.objectContaining({ requiredActionCode: 'IPMS_SUBMISSION.VERIFY', requiredPermissionCode: 'IPMS_SUBMISSION.VERIFY' }),
+        expect.objectContaining({ requiredActionCode: 'IPMS_SUBMISSION.VERIFY', requiredPermissionCode: 'IPMS_SUBMISSION.VERIFY', requireDifferentActorFromPreviousStage: true }),
       ],
     })));
   });

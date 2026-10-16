@@ -702,6 +702,29 @@ describe('versioned API routes', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/internal-audit/configurations/page?page=5&pageSize=25&search=2026&sortBy=createdAt&sortDirection=desc&current=true&model=1'), expect.objectContaining({ credentials: 'include' }));
   });
 
+  it('normalizes named workflow-governance submission kinds returned by ASP.NET', async () => {
+    const workflow = {
+      publicId: 'workflow-1', municipalityFinancialYearPublicId: 'year-1', submissionKind: 'Opms', code: 'DEFAULT', name: 'Default', version: 1,
+      isActive: true, effectiveFrom: '2026-07-01T00:00:00Z', effectiveTo: null, rowVersion: 'AQ==', stages: [],
+    };
+    const unknownWorkflow = { ...workflow, publicId: 'workflow-unknown', submissionKind: 'Unsupported' };
+    const window = {
+      publicId: 'window-1', reportingPeriodPublicId: 'period-1', periodCode: 'Q1', submissionKind: 'Ipms', opensAt: '2026-07-01T00:00:00Z',
+      closesAt: '2026-07-31T00:00:00Z', isActive: true, rowVersion: 'AQ==',
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: { items: [workflow, unknownWorkflow], page: 1, pageSize: 25, totalCount: 2, totalPages: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, data: { items: [window], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const definitions = await getWorkflowDefinitionsPage();
+    const windows = await getReportingWindowsPage();
+
+    expect(definitions.data?.items[0].submissionKind).toBe(1);
+    expect(definitions.data?.items[1].submissionKind).toBe(0);
+    expect(windows.data?.items[0].submissionKind).toBe(2);
+  });
+
   it('transports bounded reporting-window exception filters and pages', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [], page: 2, pageSize: 25, totalCount: 0, totalPages: 0 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);

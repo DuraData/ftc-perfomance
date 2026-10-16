@@ -305,6 +305,14 @@ function coerceSubmissionStatus(value?: string | null): SubmissionStatus {
   return knownStatuses.includes(normalized) ? normalized : 'draft';
 }
 
+function coerceSubmissionKind(value: unknown): number {
+  if (value === 1 || value === 2) return value;
+  const normalized = String(value ?? '').trim().replace(/[\s_-]+/g, '').toUpperCase();
+  if (normalized === 'OPMS' || normalized === '1') return 1;
+  if (normalized === 'IPMS' || normalized === '2') return 2;
+  return 0;
+}
+
 function parseJsonArray<T>(value?: string | null, fallback: T[] = []): T[] {
   if (!value) {
     return fallback;
@@ -1723,7 +1731,8 @@ function governancePageQuery(query: GovernancePageQuery): string {
 }
 
 export async function getWorkflowDefinitionsPage(query: GovernancePageQuery = {}): Promise<ApiResponse<PagedResult<WorkflowDefinitionDto>>> {
-  return get<PagedResult<WorkflowDefinitionDto>>(`/v1/workflow/definitions/page${governancePageQuery(query)}`);
+  const response = await get<PagedResult<WorkflowDefinitionDto>>(`/v1/workflow/definitions/page${governancePageQuery(query)}`);
+  return mapResponse(response, page => ({ ...page, items: page.items.map(item => ({ ...item, submissionKind: coerceSubmissionKind(item.submissionKind) })) }));
 }
 
 export async function createWorkflowDefinition(payload: {
@@ -1736,23 +1745,32 @@ export async function createWorkflowDefinition(payload: {
   reason: string;
   stages: Array<Omit<import('../types').WorkflowStageDefinitionDto, 'publicId' | 'ratingSchemeCode'>>;
 }): Promise<ApiResponse<WorkflowDefinitionDto>> {
-  return post<WorkflowDefinitionDto>('/v1/workflow/definitions', payload);
+  const response = await post<WorkflowDefinitionDto>('/v1/workflow/definitions', payload);
+  return mapResponse(response, item => ({ ...item, submissionKind: coerceSubmissionKind(item.submissionKind) }));
 }
 
 export async function compareWorkflowDefinitions(from: string, to: string): Promise<ApiResponse<WorkflowDefinitionComparisonDto>> {
-  return get<WorkflowDefinitionComparisonDto>(`/v1/workflow/definitions/compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+  const response = await get<WorkflowDefinitionComparisonDto>(`/v1/workflow/definitions/compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+  return mapResponse(response, comparison => ({
+    ...comparison,
+    from: { ...comparison.from, submissionKind: coerceSubmissionKind(comparison.from.submissionKind) },
+    to: { ...comparison.to, submissionKind: coerceSubmissionKind(comparison.to.submissionKind) },
+  }));
 }
 
 export async function retireWorkflowDefinition(publicId: string, payload: { reason: string; effectiveTo: string; rowVersion: string }): Promise<ApiResponse<WorkflowDefinitionDto>> {
-  return post<WorkflowDefinitionDto>(`/v1/workflow/definitions/${publicId}/retire`, payload);
+  const response = await post<WorkflowDefinitionDto>(`/v1/workflow/definitions/${publicId}/retire`, payload);
+  return mapResponse(response, item => ({ ...item, submissionKind: coerceSubmissionKind(item.submissionKind) }));
 }
 
 export async function getReportingWindowsPage(query: GovernancePageQuery = {}): Promise<ApiResponse<PagedResult<ReportingWindowDto>>> {
-  return get<PagedResult<ReportingWindowDto>>(`/v1/workflow/reporting-windows/page${governancePageQuery(query)}`);
+  const response = await get<PagedResult<ReportingWindowDto>>(`/v1/workflow/reporting-windows/page${governancePageQuery(query)}`);
+  return mapResponse(response, page => ({ ...page, items: page.items.map(item => ({ ...item, submissionKind: coerceSubmissionKind(item.submissionKind) })) }));
 }
 
 export async function createReportingWindow(payload: { reportingPeriodPublicId: string; submissionKind: number; opensAt: string; closesAt: string; reason: string }): Promise<ApiResponse<ReportingWindowDto>> {
-  return post<ReportingWindowDto>('/v1/workflow/reporting-windows', payload);
+  const response = await post<ReportingWindowDto>('/v1/workflow/reporting-windows', payload);
+  return mapResponse(response, item => ({ ...item, submissionKind: coerceSubmissionKind(item.submissionKind) }));
 }
 
 export type ReportingWindowExceptionPageQuery = RegisterPageQuery & {
