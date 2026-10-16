@@ -29,6 +29,7 @@ const trail = {
   entityName: 'OpmsSubmission', entityId: 'submission-a', action: 'Approve',
   changedByUserPublicId: '44444444-4444-4444-4444-444444444444', changedByName: 'Audit Member',
   changedAt: '2026-01-03T00:00:00Z', ipAddress: '192.0.2.10', correlationId: 'correlation-a',
+  reason: 'Approved after independent review', userAgent: 'audit-browser', sessionId: 'session-a',
   oldValue: '{"secret":"before"}', newValue: '{"secret":"after"}',
 };
 
@@ -79,6 +80,7 @@ describe('Audit administration', () => {
     expect(screen.queryByRole('columnheader', { name: 'User Agent' })).not.toBeInTheDocument();
     expect(screen.queryByText('anna@example.test')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.queryByText('User identity')).not.toBeInTheDocument();
     expect(screen.queryByText('Failure Reason')).not.toBeInTheDocument();
     expect(screen.queryByText('IP Address')).not.toBeInTheDocument();
   });
@@ -119,5 +121,31 @@ describe('Audit administration', () => {
     expect(screen.queryByText('IP Address')).not.toBeInTheDocument();
     expect(screen.queryByText('Old Value')).not.toBeInTheDocument();
     expect(screen.queryByText('New Value')).not.toBeInTheDocument();
+    expect(screen.queryByText('Correlation ID')).not.toBeInTheDocument();
+    expect(screen.queryByText('Governance reason')).not.toBeInTheDocument();
+    expect(screen.queryByText('User Agent')).not.toBeInTheDocument();
+    expect(screen.queryByText('Session ID')).not.toBeInTheDocument();
+  });
+
+  it('renders every protected login and audit member when its permission is granted', async () => {
+    render(<AdminAuditLogsPage />);
+
+    await screen.findByText('anna@example.test');
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.getByText('User identity')).toBeInTheDocument();
+    expect(screen.getByText(login.userPublicId)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Audit Trails' }));
+    await screen.findByText('OpmsSubmission');
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+    expect(screen.getByText('Correlation ID')).toBeInTheDocument();
+    expect(screen.getByText('correlation-a')).toBeInTheDocument();
+    expect(screen.getByText('Governance reason')).toBeInTheDocument();
+    expect(screen.getByText('Approved after independent review')).toBeInTheDocument();
+    expect(screen.getByText('User Agent')).toBeInTheDocument();
+    expect(screen.getByText('audit-browser')).toBeInTheDocument();
+    expect(screen.getByText('Session ID')).toBeInTheDocument();
+    expect(screen.getByText('session-a')).toBeInTheDocument();
   });
 });

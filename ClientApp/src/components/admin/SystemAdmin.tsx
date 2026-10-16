@@ -1025,6 +1025,7 @@ export function AdminPermissionsPage() {
 export function AdminAuditLogsPage() {
   const { canRead, canReadField } = useSecurity();
   const canViewLoginLogs = canRead('LOGIN_AUDIT');
+  const canReadLoginUserId = canReadField('LOGIN_AUDIT', 'UserId');
   const canReadLoginEmail = canReadField('LOGIN_AUDIT', 'Email');
   const canReadLoginIpAddress = canReadField('LOGIN_AUDIT', 'IpAddress');
   const canReadLoginUserAgent = canReadField('LOGIN_AUDIT', 'UserAgent');
@@ -1035,6 +1036,10 @@ export function AdminAuditLogsPage() {
   const canReadAuditNewValue = canReadField('AUDIT_TRAIL', 'NewValue');
   const canReadAuditChangedBy = canReadField('AUDIT_TRAIL', 'ChangedBy');
   const canReadAuditIpAddress = canReadField('AUDIT_TRAIL', 'IpAddress');
+  const canReadAuditCorrelationId = canReadField('AUDIT_TRAIL', 'CorrelationId');
+  const canReadAuditReason = canReadField('AUDIT_TRAIL', 'Reason');
+  const canReadAuditUserAgent = canReadField('AUDIT_TRAIL', 'UserAgent');
+  const canReadAuditSessionId = canReadField('AUDIT_TRAIL', 'SessionId');
   const [activeTab, setActiveTab] = useState<'login' | 'trail'>(canViewLoginLogs ? 'login' : 'trail');
   const [rows, setRows] = useState<LoginAuditLog[]>([]);
   const [trailRows, setTrailRows] = useState<AuditTrailEntryDto[]>([]);
@@ -1188,6 +1193,10 @@ export function AdminAuditLogsPage() {
                 <p className="text-[10px] text-secondary-500">Email</p>
                 <p className="text-sm font-medium text-secondary-900 dark:text-white">{selectedLog.email ?? '-'}</p>
               </div> : null}
+              {canReadLoginUserId ? <div>
+                <p className="text-[10px] text-secondary-500">User identity</p>
+                <p className="text-xs font-mono text-secondary-700 dark:text-secondary-300 break-all">{selectedLog.userPublicId ?? '-'}</p>
+              </div> : null}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className="text-[10px] text-secondary-500">Result</p>
@@ -1223,13 +1232,13 @@ export function AdminAuditLogsPage() {
           {selectedTrail && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] text-secondary-500">Entity</p>
-                  <p className="text-sm font-medium text-secondary-900 dark:text-white">{selectedTrail.entityName}</p>
+                  <p className="text-sm font-medium text-secondary-900 dark:text-white break-words">{selectedTrail.entityName}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] text-secondary-500">Action</p>
-                  <p className="text-sm font-medium text-secondary-900 dark:text-white">{selectedTrail.action}</p>
+                  <p className="text-sm font-medium text-secondary-900 dark:text-white break-words">{selectedTrail.action}</p>
                 </div>
               </div>
               {(canReadAuditEntityId || canReadAuditChangedBy) && <div className="grid grid-cols-2 gap-3">
@@ -1253,6 +1262,24 @@ export function AdminAuditLogsPage() {
                   <p className="text-xs text-secondary-700 dark:text-secondary-300">{selectedTrail.ipAddress ?? '-'}</p>
                 </div>}
               </div>
+              {(canReadAuditCorrelationId || canReadAuditSessionId) && <div className="grid grid-cols-2 gap-3">
+                {canReadAuditCorrelationId && <div>
+                  <p className="text-[10px] text-secondary-500">Correlation ID</p>
+                  <p className="text-xs font-mono text-secondary-700 dark:text-secondary-300 break-all">{selectedTrail.correlationId ?? '-'}</p>
+                </div>}
+                {canReadAuditSessionId && <div>
+                  <p className="text-[10px] text-secondary-500">Session ID</p>
+                  <p className="text-xs font-mono text-secondary-700 dark:text-secondary-300 break-all">{selectedTrail.sessionId ?? '-'}</p>
+                </div>}
+              </div>}
+              {canReadAuditReason && <div>
+                <p className="text-[10px] text-secondary-500">Governance reason</p>
+                <p className="text-xs text-secondary-700 dark:text-secondary-300 whitespace-pre-wrap break-words">{selectedTrail.reason ?? '-'}</p>
+              </div>}
+              {canReadAuditUserAgent && <div>
+                <p className="text-[10px] text-secondary-500">User Agent</p>
+                <p className="text-xs text-secondary-700 dark:text-secondary-300 break-words">{selectedTrail.userAgent ?? '-'}</p>
+              </div>}
               {canReadAuditOldValue && <div>
                 <p className="text-[10px] text-secondary-500">Old Value</p>
                 <pre className="mt-1 max-h-40 overflow-auto rounded-lg bg-secondary-50 p-3 text-[11px] text-secondary-700 dark:bg-secondary-900 dark:text-secondary-300 whitespace-pre-wrap break-words">{selectedTrail.oldValue ?? '-'}</pre>
