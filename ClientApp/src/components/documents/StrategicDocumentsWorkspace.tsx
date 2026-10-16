@@ -70,6 +70,7 @@ export function StrategicDocumentsWorkspace() {
   const [draft, setDraft] = useState<SaveStrategicDocumentVersionPayload>(emptyDocument);
   const [selectedType, setSelectedType] = useState<StrategicDocumentType>();
   const [typeDraft, setTypeDraft] = useState(emptyType);
+  const [typePickerRefreshKey, setTypePickerRefreshKey] = useState(0);
   const [contentMode, setContentMode] = useState<'file' | 'link'>('file');
   const [actionReason, setActionReason] = useState('');
   const [approvalReference, setApprovalReference] = useState('');
@@ -153,7 +154,8 @@ export function StrategicDocumentsWorkspace() {
 
   const startSuccessor = (document: StrategicDocument) => {
     setSelected(document);
-    setSelectedType(undefined);
+    setSelectedType(types.find(type => type.publicId === document.documentTypePublicId)
+      ?? (selectedType?.publicId === document.documentTypePublicId ? selectedType : undefined));
     setContentMode(document.externalUrl ? 'link' : 'file');
     setDraft({
       municipalityFinancialYearPublicId: document.municipalityFinancialYearPublicId,
@@ -213,6 +215,7 @@ export function StrategicDocumentsWorkspace() {
       if (!result.success) return pushToast('error', result.message ?? 'Unable to save the controlled document type.');
       pushToast('success', 'Strategic-document type saved.');
       setTypeDraft(emptyType());
+      setTypePickerRefreshKey(current => current + 1);
       await load();
     } finally { setBusy(false); }
   };
@@ -249,7 +252,7 @@ export function StrategicDocumentsWorkspace() {
             <label className="text-xs text-secondary-600">Search<input aria-label="Search strategic documents" className={fieldClass} value={searchInput} onChange={event => setSearchInput(event.target.value)} /></label>
             <label className="text-xs text-secondary-600">Sort<select aria-label="Sort strategic documents" className={fieldClass} value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); setSelected(null); }}><option value="createdAt">Created</option><option value="title">Title</option><option value="documentDate">Document date</option><option value="financialYear">Financial year</option><option value="displayOrder">Display order</option><option value="versionNumber">Version</option></select></label>
             <label className="text-xs text-secondary-600">Direction<select aria-label="Strategic document sort direction" className={fieldClass} value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); setSelected(null); }}><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
-            <Button variant="outline" onClick={() => void load()}>Refresh</Button>
+            <Button variant="outline" onClick={() => { setTypePickerRefreshKey(current => current + 1); void load(); }}>Refresh</Button>
           </div>
         </Card>
 
@@ -280,7 +283,7 @@ export function StrategicDocumentsWorkspace() {
             <div className="flex items-start justify-between gap-3"><div><h2 className="font-semibold">{draft.previousVersionPublicId ? 'Create successor version' : 'Add strategic document'}</h2><p className="text-xs text-secondary-500">A successor preserves its predecessor and becomes the administrative current version. Existing published content remains visible until the successor is published.</p></div>{draft.previousVersionPublicId ? <Button variant="ghost" onClick={() => setDraft(emptyDocument())}>Cancel successor</Button> : null}</div>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               <CalendarMasterPicker kind="municipality-financial-year" label="Strategic document financial year" value={draft.municipalityFinancialYearPublicId} selectedLabel={selected?.financialYearCode} onChange={value => setDraft({ ...draft, municipalityFinancialYearPublicId: value })} required />
-              <StrategicDocumentTypePicker value={draft.documentTypePublicId} selectedLabel={selected ? `${selected.documentTypeCode} · ${selected.documentTypeName}` : undefined} onChange={selectType} disabled={busy} />
+              <StrategicDocumentTypePicker value={draft.documentTypePublicId} selectedLabel={selected ? `${selected.documentTypeCode} · ${selected.documentTypeName}` : undefined} onChange={selectType} disabled={busy} refreshKey={typePickerRefreshKey} />
               <label className="text-xs text-secondary-600">Optional SDBIP layer<input aria-label="Strategic document SDBIP layer" className={fieldClass} value={draft.sdbipLayer ?? ''} onChange={event => setDraft({ ...draft, sdbipLayer: event.target.value })} /></label>
               <label className="text-xs text-secondary-600 md:col-span-2">User-facing title<input aria-label="Strategic document title" className={fieldClass} value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} /></label>
               <label className="text-xs text-secondary-600">Document date<input aria-label="Strategic document date" type="date" className={fieldClass} value={draft.documentDate.slice(0, 10)} onChange={event => setDraft({ ...draft, documentDate: event.target.value })} /></label>

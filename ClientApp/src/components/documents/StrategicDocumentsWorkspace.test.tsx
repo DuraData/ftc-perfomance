@@ -94,6 +94,17 @@ describe('Strategic documents workspace', () => {
     }));
   });
 
+  it('retains type capabilities when starting a successor version', async () => {
+    render(<StrategicDocumentsWorkspace />);
+    fireEvent.click(await screen.findByRole('button', { name: /Approved IDP/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'New Version' }));
+
+    const linkMode = screen.getByLabelText('Use approved external link');
+    expect(linkMode).toBeEnabled();
+    expect(linkMode).toBeChecked();
+    expect(screen.getByLabelText('Strategic document external URL')).toHaveValue('https://example.gov.za/idp.pdf');
+  });
+
   it('loads the strategic-document register in bounded server pages', async () => {
     api.getStrategicDocumentsPage.mockResolvedValue({ success: true, data: { items: [document], page: 1, pageSize: 25, totalCount: 26, totalPages: 2 } });
     render(<StrategicDocumentsWorkspace />);

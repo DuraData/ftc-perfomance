@@ -53,4 +53,18 @@ describe('StrategicDocumentTypePicker', () => {
     ));
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('type-1', type));
   });
+
+  it('reloads active choices when its parent changes the refresh key', async () => {
+    api.getStrategicDocumentTypesPage
+      .mockResolvedValueOnce({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } })
+      .mockResolvedValue({ success: true, data: { items: [type], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    const onChange = vi.fn();
+    const view = render(<StrategicDocumentTypePicker value="" onChange={onChange} refreshKey={0} />);
+    await screen.findByText('0 matching document types');
+
+    view.rerender(<StrategicDocumentTypePicker value="" onChange={onChange} refreshKey={1} />);
+
+    expect(await screen.findByRole('option', { name: 'IDP · Integrated Development Plan' })).toHaveValue('type-1');
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('type-1', type));
+  });
 });

@@ -9,11 +9,12 @@ type Props = {
   onChange: (value: string, option?: StrategicDocumentType) => void;
   selectedLabel?: string;
   disabled?: boolean;
+  refreshKey?: number;
 };
 
 const optionLabel = (item: StrategicDocumentType) => `${item.code} · ${item.name}`;
 
-export function StrategicDocumentTypePicker({ value, onChange, selectedLabel, disabled }: Props) {
+export function StrategicDocumentTypePicker({ value, onChange, selectedLabel, disabled, refreshKey = 0 }: Props) {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -57,7 +58,7 @@ export function StrategicDocumentTypePicker({ value, onChange, selectedLabel, di
     };
     void load();
     return () => { cancelled = true; };
-  }, [onChange, page, search, value]);
+  }, [onChange, page, refreshKey, search, value]);
 
   useEffect(() => {
     if (!value || selectedOption?.publicId === value || items.some(item => item.publicId === value)) return;
