@@ -338,6 +338,7 @@ public record TargetPeriodValueResponse(
     bool IsActive,
     string RowVersion)
 {
+    public PerformanceValueConfigurationResponse? ValueConfiguration { get; init; }
     public PerformanceUnitKind OriginalUnitKind { get; init; }
     public string? OriginalTargetValue { get; init; }
     public decimal? OriginalBudgetValue { get; init; }
@@ -347,6 +348,22 @@ public record TargetPeriodValueResponse(
     public bool IsBudgetRevised { get; init; }
     public decimal? RevisedBudgetValue { get; init; }
 }
+
+public sealed record PerformanceValueConfigurationResponse(
+    Guid? PublicId,
+    string Code,
+    string Name,
+    string InputControlType,
+    string ValueDataType,
+    string? Symbol,
+    int? DecimalPlaces,
+    decimal? MinValue,
+    decimal? MaxValue,
+    bool SupportsAutoVariance,
+    bool RequiresComponentUi,
+    bool IsQualitative,
+    PerformanceUnitKind EngineUnitKind,
+    int? ComponentCount);
 
 public sealed record KpiFieldRevisionResponse(
     Guid PublicId,
@@ -461,6 +478,7 @@ public record OpmsSubmissionResponse(
     public string? TargetUnitOfMeasureName { get; init; }
     public string? TargetUnitOfMeasureSymbol { get; init; }
     public string? TargetUnitType { get; init; }
+    public PerformanceValueConfigurationResponse? ValueConfiguration { get; init; }
     public string? SystemSuggestedActualPerformance { get; init; }
     public bool WasSystemSuggestionEdited { get; init; }
     public DateTime? SuggestionGeneratedDate { get; init; }
@@ -548,6 +566,7 @@ public record IpmsSubmissionResponse(
     public string? TargetUnitOfMeasureName { get; init; }
     public string? TargetUnitOfMeasureSymbol { get; init; }
     public string? TargetUnitType { get; init; }
+    public PerformanceValueConfigurationResponse? ValueConfiguration { get; init; }
     public string? SystemSuggestedActualPerformance { get; init; }
     public bool WasSystemSuggestionEdited { get; init; }
     public DateTime? SuggestionGeneratedDate { get; init; }

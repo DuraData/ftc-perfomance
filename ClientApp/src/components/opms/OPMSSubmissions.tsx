@@ -4,10 +4,11 @@ import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
-import { Input, Select, FormRow, FormHero, FormPanel } from '../common/Form';
+import { Select, FormRow, FormHero, FormPanel } from '../common/Form';
 import { submissionStatusLabels as statusLabels } from '../submissions/submissionStatus';
-import type { IPMSSubmission, OPMSSubmission } from '../../types';
+import type { IPMSSubmission, OPMSSubmission, PerformancePeriodTargetDto, PerformanceValueConfiguration } from '../../types';
 import { SubmissionWorkspace } from '../submissions/SubmissionWorkspace';
+import { PerformanceValueInput } from '../submissions/PerformanceValueInput';
 import { TargetPicker } from '../common/TargetPicker';
 import { useApp } from '../../context/AppContext';
 import {
@@ -70,10 +71,11 @@ function SubmissionPeriodSelect({
   kind: 'opms' | 'ipms';
   targetId: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, configuration?: PerformanceValueConfiguration) => void;
   error?: string;
 }) {
   const [options, setOptions] = useState<{ value: string; label: string }[]>([]);
+  const [periods, setPeriods] = useState<PerformancePeriodTargetDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string>();
 
@@ -81,6 +83,7 @@ function SubmissionPeriodSelect({
     let cancelled = false;
     if (!targetId) {
       setOptions([]);
+      setPeriods([]);
       setLoadError(undefined);
       return () => { cancelled = true; };
     }
@@ -91,12 +94,14 @@ function SubmissionPeriodSelect({
       if (cancelled) return;
       if (!result.success || !result.data) {
         setOptions([]);
+        setPeriods([]);
         setLoadError(result.message ?? 'Unable to load reporting periods for this target.');
       } else {
-        setOptions(result.data.periodTargets
+        const activePeriods = result.data.periodTargets
           .filter(period => period.isActive)
-          .sort((left, right) => left.periodType - right.periodType)
-          .map(period => ({ value: period.reportingPeriodPublicId, label: period.periodCode })));
+          .sort((left, right) => left.periodType - right.periodType);
+        setPeriods(activePeriods);
+        setOptions(activePeriods.map(period => ({ value: period.reportingPeriodPublicId, label: period.periodCode })));
       }
       setIsLoading(false);
     };
@@ -109,7 +114,10 @@ function SubmissionPeriodSelect({
       label="Reporting period"
       options={[{ value: '', label: targetId ? 'Select reporting period' : 'Select a target first' }, ...options]}
       value={value}
-      onChange={event => onChange(event.target.value)}
+      onChange={event => {
+        const nextValue = event.target.value;
+        onChange(nextValue, periods.find(period => period.reportingPeriodPublicId === nextValue)?.valueConfiguration ?? undefined);
+      }}
       disabled={!targetId || isLoading}
       required
       error={error ?? loadError}
@@ -164,6 +172,7 @@ export function OPMSSubmissionsList() {
     reportingPeriodPublicId: '',
     actualPerformance: '',
   });
+  const [valueConfiguration, setValueConfiguration] = useState<PerformanceValueConfiguration>();
   const allSubmissions = useMemo(() => opmsSubmissions, [opmsSubmissions]);
   const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
   const permissionSet = useMemo(() => new Set(permissions.map(permission => permission.toUpperCase())), [permissions]);
@@ -224,6 +233,7 @@ export function OPMSSubmissionsList() {
       reportingPeriodPublicId: '',
       actualPerformance: '',
     });
+    setValueConfiguration(undefined);
     setFormErrors({});
   };
 
@@ -485,19 +495,21 @@ export function OPMSSubmissionsList() {
                       label="Target"
                       value={form.targetId}
                       onChange={(value) => {
-                        setForm(prev => ({ ...prev, targetId: value, reportingPeriodPublicId: '' }));
+                        setForm(prev => ({ ...prev, targetId: value, reportingPeriodPublicId: '', actualPerformance: '' }));
+                        setValueConfiguration(undefined);
                         setFormErrors(prev => ({ ...prev, targetId: undefined, reportingPeriodPublicId: undefined }));
                       }}
                       required
                       error={formErrors.targetId}
                     />
-                    <SubmissionPeriodSelect kind="opms" targetId={form.targetId} value={form.reportingPeriodPublicId} onChange={(value) => {
-                      setForm(prev => ({ ...prev, reportingPeriodPublicId: value }));
+                    <SubmissionPeriodSelect kind="opms" targetId={form.targetId} value={form.reportingPeriodPublicId} onChange={(value, configuration) => {
+                      setForm(prev => ({ ...prev, reportingPeriodPublicId: value, actualPerformance: '' }));
+                      setValueConfiguration(configuration);
                       setFormErrors(prev => ({ ...prev, reportingPeriodPublicId: undefined }));
                     }} error={formErrors.reportingPeriodPublicId} />
                   </FormRow>
                   {canEditActualPerformance
-                    ? <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
+                    ? <PerformanceValueInput configuration={valueConfiguration} value={form.actualPerformance} onChange={(value) => setForm(prev => ({ ...prev, actualPerformance: value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
                     : <p className="text-xs text-secondary-500">Actual Performance is protected by member-level security and can be captured by an authorized editor.</p>}
                 </FormPanel>
               </div>
@@ -534,6 +546,7 @@ export function IPMSSubmissionsList() {
     reportingPeriodPublicId: '',
     actualPerformance: '',
   });
+  const [valueConfiguration, setValueConfiguration] = useState<PerformanceValueConfiguration>();
   const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
   const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
   const permissionSet = useMemo(() => new Set(permissions.map(permission => permission.toUpperCase())), [permissions]);
@@ -594,6 +607,7 @@ export function IPMSSubmissionsList() {
       reportingPeriodPublicId: '',
       actualPerformance: '',
     });
+    setValueConfiguration(undefined);
     setFormErrors({});
   };
 
@@ -855,19 +869,21 @@ export function IPMSSubmissionsList() {
                       label="Target"
                       value={form.targetId}
                       onChange={(value) => {
-                        setForm(prev => ({ ...prev, targetId: value, reportingPeriodPublicId: '' }));
+                        setForm(prev => ({ ...prev, targetId: value, reportingPeriodPublicId: '', actualPerformance: '' }));
+                        setValueConfiguration(undefined);
                         setFormErrors(prev => ({ ...prev, targetId: undefined, reportingPeriodPublicId: undefined }));
                       }}
                       required
                       error={formErrors.targetId}
                     />
-                    <SubmissionPeriodSelect kind="ipms" targetId={form.targetId} value={form.reportingPeriodPublicId} onChange={(value) => {
-                      setForm(prev => ({ ...prev, reportingPeriodPublicId: value }));
+                    <SubmissionPeriodSelect kind="ipms" targetId={form.targetId} value={form.reportingPeriodPublicId} onChange={(value, configuration) => {
+                      setForm(prev => ({ ...prev, reportingPeriodPublicId: value, actualPerformance: '' }));
+                      setValueConfiguration(configuration);
                       setFormErrors(prev => ({ ...prev, reportingPeriodPublicId: undefined }));
                     }} error={formErrors.reportingPeriodPublicId} />
                   </FormRow>
                   {canEditActualPerformance
-                    ? <Input label="Actual Performance" value={form.actualPerformance} onChange={(e) => setForm(prev => ({ ...prev, actualPerformance: e.target.value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
+                    ? <PerformanceValueInput configuration={valueConfiguration} value={form.actualPerformance} onChange={(value) => setForm(prev => ({ ...prev, actualPerformance: value }))} helpText="Optional while the submission remains in progress; required validation is enforced when it is submitted." />
                     : <p className="text-xs text-secondary-500">Actual Performance is protected by member-level security and can be captured by an authorized editor.</p>}
                 </FormPanel>
               </div>

@@ -61,6 +61,7 @@ import { PerformanceRfiWorkspace } from '../workflow/PerformanceRfiWorkspace';
 import { StageRatingHistory } from '../workflow/StageRatingHistory';
 import { useSecurity } from '../../context/SecurityContext';
 import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
+import { PerformanceValueInput } from './PerformanceValueInput';
 
 type SubmissionRecord = OPMSSubmission | IPMSSubmission;
 
@@ -970,12 +971,13 @@ export function SubmissionWorkspace({
 
           <Section title="Actual Performance" icon={<CheckCircle2 className="h-4 w-4" />}>
             <div className="grid gap-4 md:grid-cols-3">
-              {canReadActual && <Field
-                label="Actual Performance"
-                value={currentSubmission.actualPerformance ?? ''}
-                editable={isEditing && canEditActual}
-                onChange={(value) => updateDraftSubmission(current => ({ ...current, actualPerformance: value, actual: Number.isFinite(Number(value)) ? Number(value) : 0 }))}
-              />}
+              {canReadActual && (isEditing && canEditActual
+                ? <div className="md:col-span-3"><PerformanceValueInput
+                    configuration={currentSubmission.valueConfiguration}
+                    value={currentSubmission.actualPerformance ?? ''}
+                    onChange={(value) => updateDraftSubmission(current => ({ ...current, actualPerformance: value, actual: Number.isFinite(Number(value)) ? Number(value) : 0 }))}
+                  /></div>
+                : <Field label="Actual Performance" value={currentSubmission.actualPerformance ?? ''} />)}
               {canReadActual && <Field
                 label="Actual Expenditure"
                 value={actualExpenditure !== undefined ? actualExpenditure : ''}
@@ -1004,10 +1006,12 @@ export function SubmissionWorkspace({
               {canManageConsolidation && currentSubmission.baseState === 'IN_PROGRESS' && !currentSubmission.isDisabled && (
                 <div className="space-y-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700">
                   <div className="grid gap-3 md:grid-cols-2">
-                    <label className="text-sm font-medium text-secondary-700 dark:text-secondary-200">
-                      Final actual
-                      <input aria-label="Final consolidated actual" className="mt-1 min-h-11 w-full rounded-lg border border-secondary-200 bg-white px-3 dark:border-secondary-700 dark:bg-secondary-800" value={consolidatedActual} onChange={event => setConsolidatedActual(event.target.value)} />
-                    </label>
+                    <PerformanceValueInput
+                      configuration={currentSubmission.valueConfiguration}
+                      label="Final consolidated actual"
+                      value={consolidatedActual}
+                      onChange={setConsolidatedActual}
+                    />
                     {canEditSuggestionReason && (
                       <label className="text-sm font-medium text-secondary-700 dark:text-secondary-200">
                         Reason when changing the suggestion

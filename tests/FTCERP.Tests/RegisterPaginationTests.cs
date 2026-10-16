@@ -41,6 +41,18 @@ public sealed class RegisterPaginationTests
                 FinancialYear = new FinancialYear { Name = "2026/27" }
             }
         };
+        var originalUnit = new OpmsUnitDefinition
+        {
+            PublicId = Guid.NewGuid(), Code = "NUMBER", Name = "Number", InputControlType = "NUMERIC",
+            ValueDataType = "DECIMAL", DecimalPlaces = 2, MinValue = 0, SupportsAutoVariance = true,
+            EngineUnitKind = PerformanceUnitKind.AbsoluteCount
+        };
+        var revisedUnit = new OpmsUnitDefinition
+        {
+            PublicId = Guid.NewGuid(), Code = "PERCENT", Name = "Percentage", InputControlType = "NUMERIC",
+            ValueDataType = "DECIMAL", Symbol = "%", DecimalPlaces = 2, MinValue = 0, MaxValue = 100,
+            SupportsAutoVariance = true, EngineUnitKind = PerformanceUnitKind.PercentageBased
+        };
         target.CanonicalPeriodTargets =
         [
             new PerformancePeriodTarget
@@ -48,8 +60,12 @@ public sealed class RegisterPaginationTests
                 ReportingPeriodId = reportingPeriod.Id,
                 ReportingPeriod = reportingPeriod,
                 UnitKind = PerformanceUnitKind.AbsoluteCount,
+                OpmsUnit = originalUnit,
+                TargetValue = "12",
                 IsTargetRevised = true,
                 RevisedUnitKind = PerformanceUnitKind.PercentageBased,
+                RevisedTargetValue = "75",
+                RevisedOpmsUnit = revisedUnit,
                 IsActive = true
             }
         ];
@@ -74,6 +90,12 @@ public sealed class RegisterPaginationTests
         response.TargetUnitOfMeasureName.Should().Be("Kilometres");
         response.TargetUnitOfMeasureSymbol.Should().Be("km");
         response.TargetUnitType.Should().Be(nameof(PerformanceUnitKind.PercentageBased));
+        response.ValueConfiguration.Should().NotBeNull();
+        response.ValueConfiguration!.PublicId.Should().Be(revisedUnit.PublicId);
+        response.ValueConfiguration.Code.Should().Be("PERCENT");
+        response.ValueConfiguration.InputControlType.Should().Be("NUMERIC");
+        response.ValueConfiguration.MaxValue.Should().Be(100);
+        response.ValueConfiguration.EngineUnitKind.Should().Be(PerformanceUnitKind.PercentageBased);
         response.Quarter.Should().Be("ANNUAL");
     }
 

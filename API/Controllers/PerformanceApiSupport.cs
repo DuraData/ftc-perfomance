@@ -441,6 +441,7 @@ public static class PerformanceApiSupport
             target.IsActive,
             Convert.ToBase64String(target.RowVersion))
         {
+            ValueConfiguration = ToValueConfiguration(target, memberAccess.TargetValue),
             OriginalUnitKind = target.UnitKind,
             OriginalTargetValue = memberAccess.TargetValue ? target.TargetValue : null,
             OriginalBudgetValue = memberAccess.BudgetValue ? target.BudgetValue : null,
@@ -525,6 +526,7 @@ public static class PerformanceApiSupport
             TargetUnitOfMeasureName = submission.OpmsTarget.UnitOfMeasure?.Name,
             TargetUnitOfMeasureSymbol = submission.OpmsTarget.UnitOfMeasure?.Symbol,
             TargetUnitType = EffectiveTargetUnitType(submission.OpmsTarget.CanonicalPeriodTargets, submission.ReportingPeriodId),
+            ValueConfiguration = EffectiveValueConfiguration(submission.OpmsTarget.CanonicalPeriodTargets, submission.ReportingPeriodId),
             SystemSuggestedActualPerformance = submission.SystemSuggestedActualPerformance,
             WasSystemSuggestionEdited = submission.WasSystemSuggestionEdited,
             SuggestionGeneratedDate = submission.SuggestionGeneratedDate,
@@ -615,6 +617,7 @@ public static class PerformanceApiSupport
             TargetUnitOfMeasureName = submission.IpmsTarget.UnitOfMeasure?.Name,
             TargetUnitOfMeasureSymbol = submission.IpmsTarget.UnitOfMeasure?.Symbol,
             TargetUnitType = EffectiveTargetUnitType(submission.IpmsTarget.CanonicalPeriodTargets, submission.ReportingPeriodId),
+            ValueConfiguration = EffectiveValueConfiguration(submission.IpmsTarget.CanonicalPeriodTargets, submission.ReportingPeriodId),
             SystemSuggestedActualPerformance = submission.SystemSuggestedActualPerformance,
             WasSystemSuggestionEdited = submission.WasSystemSuggestionEdited,
             SuggestionGeneratedDate = submission.SuggestionGeneratedDate,
@@ -639,6 +642,53 @@ public static class PerformanceApiSupport
         var periodTarget = periodTargets.SingleOrDefault(item => item.ReportingPeriodId == reportingPeriodId.Value && item.IsActive);
         return periodTarget == null ? null : PerformanceRevisionResolver.EffectiveUnitKind(periodTarget).ToString();
     }
+
+    private static PerformanceValueConfigurationResponse? EffectiveValueConfiguration(
+        IReadOnlyList<PerformancePeriodTarget> periodTargets,
+        long? reportingPeriodId)
+    {
+        if (!reportingPeriodId.HasValue) return null;
+        var periodTarget = periodTargets.SingleOrDefault(item => item.ReportingPeriodId == reportingPeriodId.Value && item.IsActive);
+        return periodTarget == null ? null : ToValueConfiguration(periodTarget, includeComponentCount: true);
+    }
+
+    private static PerformanceValueConfigurationResponse ToValueConfiguration(
+        PerformancePeriodTarget periodTarget,
+        bool includeComponentCount)
+    {
+        var periodType = periodTarget.ReportingPeriod?.PeriodType
+            ?? PerformanceRevisionResolver.ResolvePeriodType(null, null);
+        var usesRevision = PerformanceRevisionResolver.UsesRevisedValues(periodType) && periodTarget.IsTargetRevised;
+        var unit = usesRevision ? periodTarget.RevisedOpmsUnit ?? periodTarget.OpmsUnit : periodTarget.OpmsUnit;
+        var kind = PerformanceRevisionResolver.EffectiveUnitKind(periodTarget);
+        var targetValue = PerformanceRevisionResolver.EffectiveTargetValue(periodTarget);
+        var componentCount = includeComponentCount && kind == PerformanceUnitKind.Ratios
+            ? targetValue.Split(':', StringSplitOptions.TrimEntries).Length
+            : (int?)null;
+
+        if (componentCount is < 2 or > 4) componentCount = null;
+        if (unit != null)
+        {
+            return new(unit.PublicId, unit.Code, unit.Name, unit.InputControlType, unit.ValueDataType,
+                unit.Symbol, unit.DecimalPlaces, unit.MinValue, unit.MaxValue, unit.SupportsAutoVariance,
+                unit.RequiresComponentUi, unit.IsQualitative, kind, componentCount);
+        }
+
+        var fallback = LegacyValueConfiguration(kind);
+        return fallback with { ComponentCount = componentCount };
+    }
+
+    private static PerformanceValueConfigurationResponse LegacyValueConfiguration(PerformanceUnitKind kind) => kind switch
+    {
+        PerformanceUnitKind.Date => new(null, "DATE", "Date", "DATE", "DATE", null, null, null, null, true, false, false, kind, null),
+        PerformanceUnitKind.Ratios => new(null, "RATIO", "Ratio", "RATIO", "TEXT", null, 6, 0, null, true, true, false, kind, null),
+        PerformanceUnitKind.Binary or PerformanceUnitKind.BinaryDetermination => new(null, "YES_NO", "Yes / No", "SELECT", "BOOLEAN", null, null, null, null, true, false, false, kind, null),
+        PerformanceUnitKind.QualitativeTargets or PerformanceUnitKind.None => new(null, "QUALITATIVE", "Qualitative", "TEXT", "TEXT", null, null, null, null, false, false, true, kind, null),
+        PerformanceUnitKind.PercentageBased => new(null, "PERCENT", "Percentage", "NUMERIC", "DECIMAL", "%", 2, 0, 100, true, false, false, kind, null),
+        PerformanceUnitKind.Financial => new(null, "FINANCIAL", "Financial", "CURRENCY", "DECIMAL", null, 2, 0, null, true, false, false, kind, null),
+        PerformanceUnitKind.ReadinessScale => new(null, "SCALE_1_5", "Readiness scale", "SELECT", "INTEGER", null, 0, 1, 5, true, false, false, kind, null),
+        _ => new(null, "NUMBER", "Number", "NUMERIC", "DECIMAL", null, 0, 0, null, true, false, false, kind, null)
+    };
 
     public static NotificationResponse ToResponse(this Notification notification) =>
         new(

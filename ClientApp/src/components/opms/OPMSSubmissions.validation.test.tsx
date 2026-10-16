@@ -87,6 +87,37 @@ describe('OPMS submission creation validation', () => {
     })));
   });
 
+  it('clears an actual value when the reporting period changes to a different configured control', async () => {
+    api.getOpmsTarget.mockResolvedValue({
+      success: true,
+      data: {
+        periodTargets: [
+          {
+            reportingPeriodPublicId: 'period-yes-no', periodCode: 'Q1', periodType: 1, isActive: true,
+            valueConfiguration: { code: 'YES_NO', name: 'Yes or No', inputControlType: 'SELECT', valueDataType: 'BOOLEAN', supportsAutoVariance: true, requiresComponentUi: false, isQualitative: false, engineUnitKind: 9 },
+          },
+          {
+            reportingPeriodPublicId: 'period-qualitative', periodCode: 'Q2', periodType: 2, isActive: true,
+            valueConfiguration: { code: 'QUALITATIVE', name: 'Qualitative', inputControlType: 'TEXT', valueDataType: 'TEXT', supportsAutoVariance: false, requiresComponentUi: false, isQualitative: true, engineUnitKind: 13 },
+          },
+        ],
+      },
+    });
+
+    render(<OPMSSubmissionsList />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New Submission' }));
+    await screen.findByRole('option', { name: 'KPI-001 · Road maintenance · Infrastructure' });
+    fireEvent.change(screen.getByRole('combobox', { name: /^Target/ }), { target: { value: 'public-1' } });
+    const period = await screen.findByRole('combobox', { name: /Reporting period/ });
+    fireEvent.change(period, { target: { value: 'period-yes-no' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Actual Performance' }), { target: { value: 'true' } });
+
+    fireEvent.change(period, { target: { value: 'period-qualitative' } });
+
+    expect(screen.getByRole('textbox', { name: 'Actual Performance' })).toHaveValue('');
+  });
+
   it('renders omitted due date and actual as blank values in the register', async () => {
     api.getOpmsSubmissionsPage.mockResolvedValue({
       success: true,

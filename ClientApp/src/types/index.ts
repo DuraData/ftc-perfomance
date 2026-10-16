@@ -589,6 +589,7 @@ export interface OPMSSubmission {
   extendedDueDate?: string;
   actual: number;
   actualPerformance?: string;
+  valueConfiguration?: PerformanceValueConfiguration;
   systemSuggestedActualPerformance?: string;
   wasSystemSuggestionEdited?: boolean;
   suggestionGeneratedDate?: string;
@@ -666,6 +667,7 @@ export interface IPMSSubmission {
   extendedDueDate?: string;
   actual: number;
   actualPerformance?: string;
+  valueConfiguration?: PerformanceValueConfiguration;
   systemSuggestedActualPerformance?: string;
   wasSystemSuggestionEdited?: boolean;
   suggestionGeneratedDate?: string;
@@ -1774,6 +1776,24 @@ export interface PerformancePeriodTargetDto {
   revisedTargetValue?: string | null;
   isBudgetRevised: boolean;
   revisedBudgetValue?: number | null;
+  valueConfiguration?: PerformanceValueConfiguration | null;
+}
+
+export interface PerformanceValueConfiguration {
+  publicId?: string | null;
+  code: string;
+  name: string;
+  inputControlType: string;
+  valueDataType: string;
+  symbol?: string | null;
+  decimalPlaces?: number | null;
+  minValue?: number | null;
+  maxValue?: number | null;
+  supportsAutoVariance: boolean;
+  requiresComponentUi: boolean;
+  isQualitative: boolean;
+  engineUnitKind: number;
+  componentCount?: number | null;
 }
 
 export interface OpmsUnitDefinitionDto {
@@ -2659,6 +2679,7 @@ export interface OpmsSubmissionDto {
   pmsStatus?: string | null;
   auditorStatus?: string | null;
   actualPerformance?: string | null;
+  valueConfiguration?: PerformanceValueConfiguration | null;
   systemSuggestedActualPerformance?: string | null;
   wasSystemSuggestionEdited?: boolean;
   suggestionGeneratedDate?: string | null;
@@ -2745,6 +2766,7 @@ export interface IpmsSubmissionDto {
   pmsStatus?: string | null;
   auditorStatus?: string | null;
   actualPerformance?: string | null;
+  valueConfiguration?: PerformanceValueConfiguration | null;
   systemSuggestedActualPerformance?: string | null;
   wasSystemSuggestionEdited?: boolean;
   suggestionGeneratedDate?: string | null;
