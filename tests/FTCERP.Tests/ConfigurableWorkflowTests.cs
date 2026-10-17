@@ -268,18 +268,39 @@ public sealed class ConfigurableWorkflowTests
     }
 
     [Fact]
-    public async Task ReportingWindow_UsesScopedExtensionWithoutOpeningForOtherUsers()
+    public async Task ReportingWindow_EnforcesBeforeOpenAfterAndScopedExtensionDecisions()
     {
         await using var context = IdpTestFixture.CreateContext();
         var now = DateTime.UtcNow;
         var window = new ReportingWindow { Id = 1, MunicipalityId = 7, ReportingPeriodId = 10, SubmissionKind = SubmissionKind.Opms, OpensAt = now.AddDays(-10), ClosesAt = now.AddDays(-1) };
         context.ReportingWindows.Add(window);
         context.ReportingWindowExceptions.Add(new ReportingWindowException { MunicipalityId = 7, ReportingWindowId = 1, UserId = "allowed-user", ExtendedClosesAt = now.AddDays(2), Reason = "Approved extension", ApprovedByUserId = "manager" });
+        context.ReportingWindowExceptions.Add(new ReportingWindowException { MunicipalityId = 7, ReportingWindowId = 1, DepartmentId = 50, ExtendedClosesAt = now.AddDays(3), Reason = "Approved department extension", ApprovedByUserId = "manager" });
         await context.SaveChangesAsync();
         var service = new ReportingWindowService(context);
 
-        (await service.CheckAsync(SubmissionKind.Opms, 10, "allowed-user", null, null, now)).Allowed.Should().BeTrue();
-        (await service.CheckAsync(SubmissionKind.Opms, 10, "other-user", null, null, now)).Allowed.Should().BeFalse();
+        var before = await service.CheckAsync(SubmissionKind.Opms, 10, "other-user", null, null, now.AddDays(-11));
+        before.Allowed.Should().BeFalse();
+        before.Reason.Should().Contain("Reporting opens at");
+
+        var during = await service.CheckAsync(SubmissionKind.Opms, 10, "other-user", null, null, now.AddDays(-5));
+        during.Allowed.Should().BeTrue();
+        during.Reason.Should().Be("Reporting window is open.");
+
+        var after = await service.CheckAsync(SubmissionKind.Opms, 10, "other-user", null, null, now);
+        after.Allowed.Should().BeFalse();
+        after.Reason.Should().Contain("Reporting closed at");
+
+        var userExtension = await service.CheckAsync(SubmissionKind.Opms, 10, "allowed-user", null, null, now);
+        userExtension.Allowed.Should().BeTrue();
+        userExtension.EffectiveClose.Should().Be(now.AddDays(2));
+
+        var departmentExtension = await service.CheckAsync(SubmissionKind.Opms, 10, "department-user", 50, null, now.AddDays(2.5));
+        departmentExtension.Allowed.Should().BeTrue();
+        departmentExtension.EffectiveClose.Should().Be(now.AddDays(3));
+
+        (await service.CheckAsync(SubmissionKind.Opms, 10, "allowed-user", null, null, now.AddDays(2.5))).Allowed.Should().BeFalse();
+        (await service.CheckAsync(SubmissionKind.Opms, 10, "department-user", 50, null, now.AddDays(3.5))).Allowed.Should().BeFalse();
     }
 
     [Fact]
