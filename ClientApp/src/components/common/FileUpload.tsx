@@ -44,6 +44,14 @@ interface FileUploadProps {
   disabled?: boolean;
 }
 
+const governedEvidenceTypes = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
+
 function getFileIcon(type: string) {
   if (type.startsWith('image/')) return <Image className="w-8 h-8 text-blue-500" />;
   if (type.includes('spreadsheet') || type.includes('excel')) return <FileSpreadsheet className="w-8 h-8 text-green-500" />;
@@ -71,8 +79,8 @@ export function FileUpload({
   onDispose,
   existingFiles = [],
   maxFiles,
-  maxSize = 10,
-  acceptedTypes,
+  maxSize = 25,
+  acceptedTypes = governedEvidenceTypes,
   previewable = true,
   disabled = false,
 }: FileUploadProps) {
@@ -117,25 +125,26 @@ export function FileUpload({
     const currentCount = files.length;
 
     if (maxFiles !== undefined && currentCount + fileArray.length > maxFiles) {
-      alert(`Maximum ${maxFiles} files allowed`);
+      setUploadError(`Maximum ${maxFiles} files allowed`);
       return;
     }
 
+    const validationErrors: string[] = [];
     const validFiles = fileArray.filter(file => {
       if (file.size > maxSize * 1024 * 1024) {
-        alert(`File ${file.name} exceeds maximum size of ${maxSize}MB`);
+        validationErrors.push(`File ${file.name} exceeds maximum size of ${maxSize}MB`);
         return false;
       }
 
       if (acceptedTypes && !acceptedTypes.some(type => file.type.match(type))) {
-        alert(`File type ${file.type} not allowed`);
+        validationErrors.push(`File type ${file.type || 'unknown'} not allowed for ${file.name}`);
         return false;
       }
       return true;
     });
 
+    setUploadError(validationErrors.join(' '));
     if (!onUpload || validFiles.length === 0) return;
-    setUploadError('');
     setIsUploading(true);
     try {
       await onUpload(validFiles);

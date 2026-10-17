@@ -929,13 +929,13 @@ public class IpmsSubmissionsController : ControllerBase
 
     private bool TrySetPoeRowVersion(PoeFile file, string value)
     {
-        try { var bytes = Convert.FromBase64String(value); if (bytes.Length != 8) return false; _context.Entry(file).Property(item => item.RowVersion).OriginalValue = bytes; return true; }
+        try { var bytes = Convert.FromBase64String(value); if (bytes.Length is not (sizeof(long) or 16)) return false; _context.Entry(file).Property(item => item.RowVersion).OriginalValue = bytes; return true; }
         catch (FormatException) { return false; }
     }
 
     private static bool PoeRowVersionMatches(PoeFile file, string value)
     {
-        try { var bytes = Convert.FromBase64String(value); return bytes.Length == 8 && file.RowVersion.SequenceEqual(bytes); }
+        try { var bytes = Convert.FromBase64String(value); return bytes.Length is sizeof(long) or 16 && file.RowVersion.SequenceEqual(bytes); }
         catch (FormatException) { return false; }
     }
 

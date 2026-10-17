@@ -33,7 +33,6 @@ describe('FileUpload evidence scan state', () => {
 
   it('sends only files that pass the production validation boundary', async () => {
     const onUpload = vi.fn().mockResolvedValue(undefined);
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
     const { container } = render(<FileUpload onUpload={onUpload} acceptedTypes={['application/pdf']} existingFiles={[]} />);
     const allowed = new File(['evidence'], 'allowed.pdf', { type: 'application/pdf' });
     const rejected = new File(['image'], 'rejected.png', { type: 'image/png' });
@@ -41,8 +40,38 @@ describe('FileUpload evidence scan state', () => {
     fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [allowed, rejected] } });
 
     await waitFor(() => expect(onUpload).toHaveBeenCalledWith([allowed]));
-    expect(alert).toHaveBeenCalledWith('File type image/png not allowed');
-    alert.mockRestore();
+    expect(screen.getByRole('alert')).toHaveTextContent('File type image/png not allowed for rejected.png');
+  });
+
+  it('uses the governed 25 MB evidence boundary and six-format allow-list by default', () => {
+    const onUpload = vi.fn().mockResolvedValue(undefined);
+    const { container } = render(<FileUpload onUpload={onUpload} existingFiles={[]} />);
+    const rejected = new File(['not evidence'], 'payload.txt', { type: 'text/plain' });
+
+    expect(screen.getByText(/up to 25MB each/i)).toBeInTheDocument();
+    expect(container.querySelector('input[type="file"]')).toHaveAttribute('accept', [
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ].join(','));
+
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [rejected] } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('File type text/plain not allowed for payload.txt');
+    expect(onUpload).not.toHaveBeenCalled();
+  });
+
+  it('renders an accessible inline error for oversized evidence', () => {
+    const onUpload = vi.fn().mockResolvedValue(undefined);
+    const { container } = render(<FileUpload onUpload={onUpload} existingFiles={[]} />);
+    const oversized = new File([new Uint8Array(25 * 1024 * 1024 + 1)], 'oversized.pdf', { type: 'application/pdf' });
+
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [oversized] } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('File oversized.pdf exceeds maximum size of 25MB');
+    expect(onUpload).not.toHaveBeenCalled();
   });
 
   it('renders persisted files without fake mutation controls and links an authorized download', () => {

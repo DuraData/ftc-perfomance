@@ -731,7 +731,7 @@ public class OpmsSubmissionsController : ControllerBase
         if (id.Length == 0) return NotFound();
         var submission = await _context.OpmsSubmissions.AsNoTracking().Include(item => item.OpmsTarget).FirstOrDefaultAsync(item => item.Id == id);
         if (submission == null) return NotFound();
-        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_SUBMISSION.READ", BuildScope(submission));
+        var decision = await _accessControlService.CheckPermissionAsync(user, "OPMS_POE.READ", BuildScope(submission));
         if (!decision.Allowed) return Forbid();
         var evidence = await _context.PoeFiles.AsNoTracking().Include(item => item.Blob).FirstOrDefaultAsync(item => item.PublicId == attachmentId && item.SubmissionKind == SubmissionKind.Opms && item.SubmissionId == id && item.IsActive && !item.Blob.IsContentDeleted && !item.Blob.IsQuarantined && item.Blob.SignatureVerified && item.Blob.ScanStatus == "Clean");
         if (evidence == null) return NotFound();
@@ -929,13 +929,13 @@ public class OpmsSubmissionsController : ControllerBase
 
     private bool TrySetPoeRowVersion(PoeFile file, string value)
     {
-        try { var bytes = Convert.FromBase64String(value); if (bytes.Length != 8) return false; _context.Entry(file).Property(item => item.RowVersion).OriginalValue = bytes; return true; }
+        try { var bytes = Convert.FromBase64String(value); if (bytes.Length is not (sizeof(long) or 16)) return false; _context.Entry(file).Property(item => item.RowVersion).OriginalValue = bytes; return true; }
         catch (FormatException) { return false; }
     }
 
     private static bool PoeRowVersionMatches(PoeFile file, string value)
     {
-        try { var bytes = Convert.FromBase64String(value); return bytes.Length == 8 && file.RowVersion.SequenceEqual(bytes); }
+        try { var bytes = Convert.FromBase64String(value); return bytes.Length is sizeof(long) or 16 && file.RowVersion.SequenceEqual(bytes); }
         catch (FormatException) { return false; }
     }
 

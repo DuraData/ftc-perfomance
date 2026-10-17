@@ -790,15 +790,19 @@ export function SubmissionWorkspace({
 
   const uploadEvidence = async (files: File[]) => {
     setEvidenceBusy(true);
+    setEvidenceError('');
+    setEvidenceNotice('');
     const results = await Promise.all(files.map(file => submissionType === 'OPMS'
       ? uploadOpmsSubmissionAttachment(submission.id, file)
       : uploadIpmsSubmissionAttachment(submission.id, file)));
     const successes = results.filter(result => result.success).length;
     const failure = results.find(result => !result.success);
     if (successes) setEvidenceNotice(`${successes} file${successes === 1 ? '' : 's'} uploaded.`);
-    if (failure) setEvidenceError(failure.message ?? 'One or more evidence files could not be uploaded.');
     setEvidencePage(1);
     refreshEvidence();
+    if (failure) {
+      throw new Error(failure.message ?? 'One or more evidence files could not be uploaded.');
+    }
   };
 
   const mutateEvidence = async (
