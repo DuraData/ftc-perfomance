@@ -36,6 +36,8 @@ const IPMSTargetFormPage = lazy(() => import('./components/targets/TargetFormPag
 const OPMSTargetFormPage = lazy(() => import('./components/targets/TargetFormPages').then(module => ({ default: module.OPMSTargetFormPage })));
 const KPILibrary = lazy(() => import('./components/kpi/KPILibrary').then(module => ({ default: module.KPILibrary })));
 const Reports = lazy(() => import('./components/reports/Reports').then(module => ({ default: module.Reports })));
+const ReportsLanding = lazy(() => import('./components/reports/Reports').then(module => ({ default: module.ReportsLanding })));
+const SubmissionExceptionReport = lazy(() => import('./components/reports/SubmissionExceptionReport').then(module => ({ default: module.SubmissionExceptionReport })));
 const Settings = lazy(() => import('./components/settings/Settings').then(module => ({ default: module.Settings })));
 const SecurityAdministrationPage = lazy(() => import('./components/security/SecurityAdministration').then(module => ({ default: module.SecurityAdministrationPage })));
 const AuthenticationAdministrationPage = lazy(() => import('./components/security/AuthenticationAdministration').then(module => ({ default: module.AuthenticationAdministrationPage })));
@@ -269,21 +271,21 @@ function AppContent() {
       case '/admin/occupations':
         return <TenantOrganizationAdministration kind="positions" />;
       case '/reports':
-        return <Reports />;
+        return <ReportsLanding />;
       case '/reports/opms-performance':
-        return <Reports />;
+        return <Reports initialKind={1} initialReportType={1} title="OPMS Performance Reports" subtitle="Governed organisational performance reporting" />;
       case '/reports/ipms-performance':
-        return <Reports />;
+        return <Reports initialKind={2} initialReportType={1} title="IPMS Performance Reports" subtitle="Governed individual performance reporting" />;
       case '/reports/idp-summary':
-        return <Reports />;
+        return <IdpReportsPage />;
       case '/reports/submission-status':
-        return <Reports />;
+        return <Reports initialReportType={7} title="Submission Status Reports" subtitle="Workflow status and submission registers" />;
       case '/reports/evidence-register':
-        return <Reports />;
+        return <Reports initialReportType={14} title="Evidence Register" subtitle="Governed POE metadata, integrity and retention reporting" />;
       case '/reports/returned-submissions':
-        return <Reports />;
+        return <SubmissionExceptionReport mode="returned" />;
       case '/reports/overdue-submissions':
-        return <Reports />;
+        return <SubmissionExceptionReport mode="overdue" />;
       case '/idp/dashboard':
         return <IdpPlanningDashboardPage />;
       case '/idp/overview':

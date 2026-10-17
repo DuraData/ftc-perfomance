@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Download, FileText, History, RefreshCw, Target, TrendingUp } from 'lucide-react';
+import { AlertTriangle, BarChart3, ClipboardCheck, Download, FileSearch, FileText, History, Map, RefreshCw, RotateCcw, Target, TrendingUp } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
@@ -50,9 +50,42 @@ const storedGenerationFilters = (generation?: OfficialReportGenerationDto) => {
   return { departmentPublicId: generation.departmentPublicId ?? undefined, unitPublicId: generation.unitPublicId ?? undefined };
 };
 
-export function Reports() {
+type ReportsProps = {
+  initialKind?: 1 | 2;
+  initialReportType?: OfficialReportTypeValue;
+  title?: string;
+  subtitle?: string;
+};
+
+const reportDestinations = [
+  { path: '/reports/opms-performance', title: 'OPMS performance', description: 'Quarterly, mid-term, annual, departmental and unit performance.', icon: Target },
+  { path: '/reports/ipms-performance', title: 'IPMS performance', description: 'Individual performance reports and governed exports.', icon: TrendingUp },
+  { path: '/reports/idp-summary', title: 'IDP summary', description: 'IDP plan, hierarchy, project, KPI and alignment reporting.', icon: Map },
+  { path: '/reports/submission-status', title: 'Submission status', description: 'Workflow status and submission registers across reporting periods.', icon: ClipboardCheck },
+  { path: '/reports/evidence-register', title: 'Evidence register', description: 'POE metadata, integrity hashes, scan state and retention details.', icon: FileSearch },
+  { path: '/reports/returned-submissions', title: 'Returned submissions', description: 'Submissions returned for information or correction.', icon: RotateCcw },
+  { path: '/reports/overdue-submissions', title: 'Overdue submissions', description: 'Open submissions whose governed due date has passed.', icon: AlertTriangle },
+] as const;
+
+export function ReportsLanding() {
+  const { setCurrentPath } = useApp();
+  return <AppShell title="Reports" subtitle="Governed performance, planning and exception reporting">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {reportDestinations.map(destination => {
+        const Icon = destination.icon;
+        return <button key={destination.path} type="button" onClick={() => setCurrentPath(destination.path)} className="rounded-xl border border-secondary-200 bg-white p-5 text-left shadow-sm transition hover:border-primary-400 hover:shadow-md dark:border-secondary-700 dark:bg-secondary-900">
+          <span className="mb-4 inline-flex rounded-lg bg-primary-50 p-3 text-primary-700 dark:bg-primary-950 dark:text-primary-300"><Icon className="h-5 w-5" /></span>
+          <span className="block text-base font-semibold text-secondary-900 dark:text-white">{destination.title}</span>
+          <span className="mt-1 block text-sm text-secondary-600 dark:text-secondary-300">{destination.description}</span>
+        </button>;
+      })}
+    </div>
+  </AppShell>;
+}
+
+export function Reports({ initialKind = 1, initialReportType, title = 'Performance Reports', subtitle = 'Tenant-scoped server analytics' }: ReportsProps = {}) {
   const { permissions, pushToast } = useApp();
-  const [kind, setKind] = useState<1 | 2>(1);
+  const [kind, setKind] = useState<1 | 2>(initialKind);
   const [periodId, setPeriodId] = useState('');
   const [yearId, setYearId] = useState('');
   const [templates, setTemplates] = useState<OfficialReportTemplateDto[]>([]);
@@ -138,9 +171,13 @@ export function Reports() {
     const result = await getOfficialReportTemplatesPage(kind, false, yearId || undefined, { page: 1, pageSize: 100, sortBy: 'reportType', sortDirection: 'asc' });
     const items = result.data?.items ?? [];
     setTemplateOptions(items);
-    setTemplateId(current => items.some(template => template.publicId === current) ? current : items[0]?.publicId ?? '');
+    setTemplateId(current => {
+      if (items.some(template => template.publicId === current)) return current;
+      const routeTemplate = items.find(template => reportTypeValue(template.reportType) === initialReportType)?.publicId;
+      return initialReportType ? routeTemplate ?? '' : items[0]?.publicId ?? '';
+    });
     if (!result.success) setError(result.message ?? 'Official report template options could not be loaded.');
-  }, [canReadOfficial, kind, yearId]);
+  }, [canReadOfficial, initialReportType, kind, yearId]);
 
   const loadTemplates = useCallback(async () => {
     if (!canReadOfficial) { setTemplates([]); setTemplateTotalCount(0); setTemplateTotalPages(0); return; }
@@ -326,7 +363,7 @@ export function Reports() {
   ] : [];
 
   return (
-    <AppShell title="Performance Reports" subtitle="Tenant-scoped server analytics">
+    <AppShell title={title} subtitle={subtitle}>
       <div className="space-y-5">
         <Card className="p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">

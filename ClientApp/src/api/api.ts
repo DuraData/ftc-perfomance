@@ -2393,7 +2393,7 @@ export type RegisterPageQuery = {
   departmentPublicId?: string;
   municipalityFinancialYearPublicId?: string;
   reportingPeriodPublicId?: string;
-  dashboardFilter?: 'assigned' | 'achieved' | 'at-risk' | 'outstanding' | 'draft' | 'submitted' | 'returned' | 'approved';
+  dashboardFilter?: 'assigned' | 'achieved' | 'at-risk' | 'outstanding' | 'draft' | 'submitted' | 'returned' | 'approved' | 'overdue';
   lifecycle?: 'active' | 'revised' | 'withdrawn';
   reportingPeriodType?: 1 | 2 | 3 | 4 | 5 | 6;
 };

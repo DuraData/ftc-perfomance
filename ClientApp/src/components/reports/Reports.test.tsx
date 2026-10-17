@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { Reports } from './Reports';
+import { Reports, ReportsLanding } from './Reports';
 
 const api = vi.hoisted(() => ({
   getPerformanceReportSummary: vi.fn(),
@@ -24,7 +24,7 @@ const api = vi.hoisted(() => ({
   getVoteNumberMastersPage: vi.fn(),
 }));
 const liveReportPermissions = ['OPMS_KPI.READ', 'OPMS_SUBMISSION.READ', 'OPMS_SUBMISSION.ActualPerformance.READ', 'OPMS_SUBMISSION.Variance.READ'];
-const app = vi.hoisted(() => ({ permissions: ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE', 'OPMS_KPI.READ', 'OPMS_SUBMISSION.READ', 'OPMS_SUBMISSION.ActualPerformance.READ', 'OPMS_SUBMISSION.Variance.READ'] as string[] }));
+const app = vi.hoisted(() => ({ permissions: ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE', 'OPMS_KPI.READ', 'OPMS_SUBMISSION.READ', 'OPMS_SUBMISSION.ActualPerformance.READ', 'OPMS_SUBMISSION.Variance.READ'] as string[], setCurrentPath: vi.fn() }));
 
 vi.mock('../../api/api', () => api);
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
@@ -38,7 +38,7 @@ vi.mock('recharts', () => ({
   Bar: () => null,
 }));
 vi.mock('../../context/AppContext', () => ({
-  useApp: () => ({ permissions: app.permissions, pushToast: vi.fn() }),
+  useApp: () => ({ permissions: app.permissions, pushToast: vi.fn(), setCurrentPath: app.setCurrentPath }),
 }));
 
 describe('Reports', () => {
@@ -301,5 +301,35 @@ describe('Reports', () => {
       sortBy: 'name',
     })));
     expect(await screen.findByRole('option', { name: 'FIN · Finance' })).toBeInTheDocument();
+  });
+
+  it('honours route-specific framework and report type defaults', async () => {
+    app.permissions = ['IPMS_REPORT.READ'];
+    api.getOfficialReportTemplatesPage.mockResolvedValue({
+      success: true,
+      data: { items: [
+        { publicId: 'template-quarterly', templateFamilyPublicId: 'family-quarterly', submissionKind: 2, reportType: 'QuarterlyPerformance', code: 'QUARTERLY', name: 'Quarterly report', format: 'Pdf', versionNumber: 1, headingTemplate: '{Period}', columns: [], isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', approvalReference: 'Council-1', reason: 'Approved', createdAt: '2026-07-01', rowVersion: 'AQ==' },
+        { publicId: 'template-evidence', templateFamilyPublicId: 'family-evidence', submissionKind: 2, reportType: 'EvidenceRegister', code: 'EVIDENCE', name: 'Evidence register', format: 'Xlsx', versionNumber: 1, headingTemplate: '{Period}', columns: [], isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', approvalReference: 'Council-2', reason: 'Approved', createdAt: '2026-07-01', rowVersion: 'Ag==' },
+      ], page: 1, pageSize: 25, totalCount: 2, totalPages: 1 },
+    });
+
+    render(<Reports initialKind={2} initialReportType={14} title="Evidence Register" />);
+
+    await waitFor(() => expect(api.getOfficialReportTemplatesPage).toHaveBeenCalledWith(2, false, undefined, expect.objectContaining({ pageSize: 100 })));
+    expect(screen.getByLabelText('Performance framework')).toHaveValue('2');
+    expect(await screen.findByLabelText('Approved template')).toHaveValue('template-evidence');
+  });
+
+  it('does not substitute an unrelated template when the route report type is unavailable', async () => {
+    render(<Reports initialReportType={7} title="Submission Status Reports" />);
+
+    expect(await screen.findByLabelText('Approved template')).toHaveValue('');
+  });
+
+  it('presents every governed report destination from the report landing page', () => {
+    render(<ReportsLanding />);
+    expect(screen.getAllByRole('button')).toHaveLength(7);
+    fireEvent.click(screen.getByRole('button', { name: /Overdue submissions/ }));
+    expect(app.setCurrentPath).toHaveBeenCalledWith('/reports/overdue-submissions');
   });
 });

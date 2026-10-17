@@ -79,7 +79,7 @@ public class OpmsSubmissionsController : ControllerBase
         if (!SubmissionSortFields.Contains(request.NormalizedSortBy))
             return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "SortBy must be createdAt, status, quarter, or indicatorNumber."));
         if (!SubmissionDashboardFilters.Contains(request.NormalizedDashboardFilter))
-            return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "DashboardFilter must be draft, submitted, returned, or approved."));
+            return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "DashboardFilter must be draft, submitted, returned, approved, or overdue."));
         if (request.NormalizedDashboardFilter.Length > 0 && !request.ReportingPeriodPublicId.HasValue)
             return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "ReportingPeriodPublicId is required for an OPMS dashboard drill-down."));
 
@@ -115,6 +115,9 @@ public class OpmsSubmissionsController : ControllerBase
             "submitted" => projectedQuery.Where(item => item.Status == "submitted"),
             "returned" => projectedQuery.Where(item => item.Status == "returned_for_info"),
             "approved" => projectedQuery.Where(item => item.Status == "approved" || item.Status == "completed"),
+            "overdue" => projectedQuery.Where(item =>
+                (item.Submission.ExtendedDueDate ?? item.Submission.DueDate) < DateTime.UtcNow
+                && item.Status != "approved" && item.Status != "completed"),
             _ => projectedQuery
         };
         if (request.NormalizedSearch.Length > 0)
@@ -156,7 +159,7 @@ public class OpmsSubmissionsController : ControllerBase
     }
 
     private static readonly HashSet<string> SubmissionSortFields = ["createdat", "status", "quarter", "indicatornumber"];
-    private static readonly HashSet<string> SubmissionDashboardFilters = ["", "draft", "submitted", "returned", "approved"];
+    private static readonly HashSet<string> SubmissionDashboardFilters = ["", "draft", "submitted", "returned", "approved", "overdue"];
 
     private static IQueryable<PerformanceApiSupport.OpmsSubmissionStatusProjection> ApplySubmissionOrdering(
         IQueryable<PerformanceApiSupport.OpmsSubmissionStatusProjection> query,

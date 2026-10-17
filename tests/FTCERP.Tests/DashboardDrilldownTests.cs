@@ -55,7 +55,7 @@ public sealed class DashboardDrilldownTests
             new IpmsSubmission
             {
                 Id = "drill-draft", MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, IpmsTargetId = outstanding.Id,
-                Quarter = "Q1", Status = "completed", BaseState = SubmissionBaseStates.InProgress
+                Quarter = "Q1", Status = "completed", BaseState = SubmissionBaseStates.InProgress, DueDate = DateTime.UtcNow.AddDays(-1)
             });
         await context.SaveChangesAsync();
         await SeedCanonicalWorkflowAsync(context, municipality, municipalityYear, SubmissionKind.Ipms,
@@ -115,6 +115,11 @@ public sealed class DashboardDrilldownTests
         var returnedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "returned"));
         var returnedPage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(returnedResult.Result).Value).Data!;
         Assert.Equal("returned_for_info", Assert.Single(returnedPage.Items).Status);
+
+        var overdueResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "overdue"));
+        var overduePage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(overdueResult.Result).Value).Data!;
+        var overdueSubmission = Assert.Single(overduePage.Items);
+        Assert.Equal("draft", overdueSubmission.Status);
 
         var statusSearch = new PagedQueryRequest
         {
@@ -195,7 +200,7 @@ public sealed class DashboardDrilldownTests
             new OpmsSubmission
             {
                 Id = "opms-drill-draft", MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, OpmsTargetId = outstanding.Id,
-                Quarter = "Q1", Status = "completed", BaseState = SubmissionBaseStates.InProgress
+                Quarter = "Q1", Status = "completed", BaseState = SubmissionBaseStates.InProgress, DueDate = DateTime.UtcNow.AddDays(-1)
             });
         await context.SaveChangesAsync();
         await SeedCanonicalWorkflowAsync(context, municipality, municipalityYear, SubmissionKind.Opms,
@@ -255,6 +260,11 @@ public sealed class DashboardDrilldownTests
         var returnedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "returned"));
         var returnedPage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(returnedResult.Result).Value).Data!;
         Assert.Equal("returned_for_info", Assert.Single(returnedPage.Items).Status);
+
+        var overdueResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "overdue"));
+        var overduePage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(overdueResult.Result).Value).Data!;
+        var overdueSubmission = Assert.Single(overduePage.Items);
+        Assert.Equal("draft", overdueSubmission.Status);
 
         var statusSearch = new PagedQueryRequest
         {
