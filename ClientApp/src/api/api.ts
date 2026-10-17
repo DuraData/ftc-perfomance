@@ -586,6 +586,30 @@ function normalizeEnumNumber(value: unknown, names: Record<string, number>): num
   return names[value.replace(/[\s_-]/g, '').toLowerCase()] ?? 0;
 }
 
+const internalAuditModelByName: Record<string, number> = {
+  detailed: 1,
+  satisfactorynotsatisfactory: 2,
+};
+
+const internalAuditOutcomeByName: Record<string, number> = {
+  achieved: 1,
+  notachieved: 2,
+  satisfactory: 3,
+  notsatisfactory: 4,
+};
+
+function normalizeInternalAuditConfiguration(row: InternalAuditConfigurationDto): InternalAuditConfigurationDto {
+  return { ...row, model: normalizeEnumNumber(row.model, internalAuditModelByName) as 1 | 2 };
+}
+
+function normalizeInternalAuditAssessment(row: InternalAuditAssessmentDto): InternalAuditAssessmentDto {
+  return {
+    ...row,
+    model: normalizeEnumNumber(row.model, internalAuditModelByName) as 1 | 2,
+    outcome: normalizeEnumNumber(row.outcome, internalAuditOutcomeByName) as 1 | 2 | 3 | 4,
+  };
+}
+
 function normalizePerformancePeriodTarget(row: PerformancePeriodTargetDto): PerformancePeriodTargetDto {
   return {
     ...row,
@@ -1818,23 +1842,35 @@ export async function closePerformanceRfi(publicId: string, payload: { comment?:
 }
 
 export async function getInternalAuditConfigurationsPage(query: GovernancePageQuery = {}): Promise<ApiResponse<PagedResult<InternalAuditConfigurationDto>>> {
-  return get<PagedResult<InternalAuditConfigurationDto>>(`/v1/internal-audit/configurations/page${governancePageQuery(query)}`);
+  const response = await get<PagedResult<InternalAuditConfigurationDto>>(`/v1/internal-audit/configurations/page${governancePageQuery(query)}`);
+  return response.data ? { ...response, data: { ...response.data, items: response.data.items.map(normalizeInternalAuditConfiguration) } } : response;
 }
 
 export async function saveInternalAuditConfiguration(payload: { municipalityFinancialYearPublicId: string; model: 1 | 2; effectiveFrom: string; reason: string; currentRowVersion?: string }): Promise<ApiResponse<InternalAuditConfigurationDto>> {
-  return post<InternalAuditConfigurationDto>('/v1/internal-audit/configurations', payload);
+  const response = await post<InternalAuditConfigurationDto>('/v1/internal-audit/configurations', payload);
+  return response.data ? { ...response, data: normalizeInternalAuditConfiguration(response.data) } : response;
 }
 
 export async function getInternalAuditSubmission(kind: 1 | 2, submissionId: string): Promise<ApiResponse<InternalAuditSubmissionDto>> {
-  return get<InternalAuditSubmissionDto>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}`);
+  const response = await get<InternalAuditSubmissionDto>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}`);
+  return response.data ? {
+    ...response,
+    data: {
+      ...response.data,
+      configuration: normalizeInternalAuditConfiguration(response.data.configuration),
+      latestAssessment: response.data.latestAssessment ? normalizeInternalAuditAssessment(response.data.latestAssessment) : response.data.latestAssessment,
+    },
+  } : response;
 }
 
 export async function getInternalAuditAssessmentsPage(kind: 1 | 2, submissionId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<InternalAuditAssessmentDto>>> {
-  return get<PagedResult<InternalAuditAssessmentDto>>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}/assessments/page${registerPageQuery(query)}`);
+  const response = await get<PagedResult<InternalAuditAssessmentDto>>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}/assessments/page${registerPageQuery(query)}`);
+  return response.data ? { ...response, data: { ...response.data, items: response.data.items.map(normalizeInternalAuditAssessment) } } : response;
 }
 
 export async function saveInternalAuditAssessment(kind: 1 | 2, submissionId: string, payload: { outcome: 1 | 2 | 3 | 4; detailedObservation: string; comment?: string; findings?: string; recommendation?: string; score?: number; responseDueAt?: string; previousAssessmentPublicId?: string }): Promise<ApiResponse<InternalAuditAssessmentDto>> {
-  return post<InternalAuditAssessmentDto>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}/assessments`, payload);
+  const response = await post<InternalAuditAssessmentDto>(`/v1/internal-audit/submissions/${kind}/${encodeURIComponent(submissionId)}/assessments`, payload);
+  return response.data ? { ...response, data: normalizeInternalAuditAssessment(response.data) } : response;
 }
 
 export async function getRatingSchemesPage(query: GovernancePageQuery = {}): Promise<ApiResponse<PagedResult<RatingSchemeDto>>> {

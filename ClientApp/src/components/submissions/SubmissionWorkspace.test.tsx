@@ -11,6 +11,11 @@ const security = vi.hoisted(() => ({
 }));
 
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
+vi.mock('../workflow/InternalAuditAssessmentPanel', () => ({
+  InternalAuditAssessmentPanel: ({ kind, submissionId, canAssess }: { kind: number; submissionId: string; canAssess: boolean }) => (
+    <div data-testid="internal-audit-assessment-panel">{kind}:{submissionId}:{String(canAssess)}</div>
+  ),
+}));
 vi.mock('../workflow/PerformanceRfiWorkspace', () => ({ PerformanceRfiWorkspace: () => null }));
 vi.mock('../workflow/StageRatingHistory', () => ({ StageRatingHistory: () => null }));
 vi.mock('../workflow/WorkflowActionHistory', () => ({ WorkflowActionHistory: () => null }));
@@ -396,6 +401,20 @@ describe('SubmissionWorkspace member security', () => {
     expect(screen.queryByText('Workflow Actions')).not.toBeInTheDocument();
     for (const action of ['Submit', 'Verify', 'Verify Reject', 'Approve', 'Reject', 'Review', 'Audit', 'Save Score'])
       expect(screen.queryByRole('button', { name: action })).not.toBeInTheDocument();
+  });
+
+  it('keeps governed Internal Audit assessment history reachable after workflow completion', () => {
+    security.canExecute.mockImplementation((code: string) => code === 'OPMS_WORKFLOW.INTERNAL_AUDIT');
+    const completed = {
+      ...submission,
+      status: 'completed',
+      workflow: { stages: [], completed: true, currentActorEligible: false, state: 'Completed' },
+    } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={completed} submissionType="OPMS" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Auditor Information' }));
+
+    expect(screen.getByTestId('internal-audit-assessment-panel')).toHaveTextContent('1:7:true');
   });
 
   it('loads evidence from the bounded register and navigates authoritative pages', async () => {

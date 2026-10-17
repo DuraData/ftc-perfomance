@@ -100,7 +100,10 @@ public sealed class WorkflowQueuesController(
             DueDate = item.DueDate,
             Status = context.SubmissionWorkflowInstances
                 .Where(instance => instance.SubmissionKind == SubmissionKind.Opms && instance.SubmissionId == item.Id)
-                .Select(instance => instance.State == WorkflowInstanceState.Completed ? "completed"
+                .Select(instance => instance.State == WorkflowInstanceState.Completed
+                    && instance.Actions.Any(action => action.ActionCode == "OPMS_WORKFLOW.INTERNAL_AUDIT")
+                    && !context.InternalAuditAssessments.Any(assessment => assessment.SubmissionWorkflowInstanceId == instance.Id) ? "reviewed"
+                    : instance.State == WorkflowInstanceState.Completed ? "completed"
                     : instance.State == WorkflowInstanceState.Cancelled ? "cancelled"
                     : instance.State == WorkflowInstanceState.Rework ? "returned_for_info"
                     : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".VERIFY") ? "pending_verification"
@@ -150,7 +153,10 @@ public sealed class WorkflowQueuesController(
             DueDate = item.DueDate,
             Status = context.SubmissionWorkflowInstances
                 .Where(instance => instance.SubmissionKind == SubmissionKind.Ipms && instance.SubmissionId == item.Id)
-                .Select(instance => instance.State == WorkflowInstanceState.Completed ? "completed"
+                .Select(instance => instance.State == WorkflowInstanceState.Completed
+                    && instance.Actions.Any(action => action.ActionCode == "IPMS_WORKFLOW.INTERNAL_AUDIT")
+                    && !context.InternalAuditAssessments.Any(assessment => assessment.SubmissionWorkflowInstanceId == instance.Id) ? "reviewed"
+                    : instance.State == WorkflowInstanceState.Completed ? "completed"
                     : instance.State == WorkflowInstanceState.Cancelled ? "cancelled"
                     : instance.State == WorkflowInstanceState.Rework ? "returned_for_info"
                     : instance.CurrentStage != null && instance.CurrentStage.RequiredActionCode.EndsWith(".VERIFY") ? "pending_verification"

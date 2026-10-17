@@ -482,18 +482,19 @@ describe('versioned API routes', () => {
   });
 
   it('loads Internal Audit assessment history through the encoded bounded route', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [], page: 2, pageSize: 10, totalCount: 0, totalPages: 0 } }), {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { items: [{ publicId: 'assessment-1', model: 'SatisfactoryNotSatisfactory', outcome: 'NotSatisfactory', assessedAt: '2026-10-17T00:00:00Z' }], page: 2, pageSize: 10, totalCount: 1, totalPages: 1 } }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await getInternalAuditAssessmentsPage(1, 'submission/id', { page: 2, pageSize: 10, search: ' evidence ', sortBy: 'assessedAt', sortDirection: 'desc' });
+    const response = await getInternalAuditAssessmentsPage(1, 'submission/id', { page: 2, pageSize: 10, search: ' evidence ', sortBy: 'assessedAt', sortDirection: 'desc' });
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/v1/internal-audit/submissions/1/submission%2Fid/assessments/page?page=2&pageSize=10&search=evidence&sortBy=assessedAt&sortDirection=desc'),
       expect.objectContaining({ credentials: 'include' }),
     );
+    expect(response.data?.items[0]).toEqual(expect.objectContaining({ model: 2, outcome: 4 }));
   });
 
   it('routes OPMS and IPMS definition and ordering histories through bounded pages', async () => {

@@ -18,6 +18,7 @@ import {
 import { Button, Badge, Card } from '../ui';
 import { Tabs } from '../common/Tabs';
 import { FileUpload } from '../common/FileUpload';
+import { InternalAuditAssessmentPanel } from '../workflow/InternalAuditAssessmentPanel';
 import { submissionStatusLabels as statusLabels } from './submissionStatus';
 import type {
   Attachment,
@@ -673,8 +674,9 @@ export function SubmissionWorkspace({
     && security.canExecute(`${submissionType}_SUBMISSION.REJECT`) && currentActorEligible;
   const canReview = currentSubmission.status === 'approved'
     && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`) && currentActorEligible;
+  const canUseInternalAuditAssessment = security.canExecute(`${submissionType}_WORKFLOW.INTERNAL_AUDIT`);
   const canAudit = currentSubmission.status === 'reviewed'
-    && security.canExecute(`${submissionType}_WORKFLOW.INTERNAL_AUDIT`) && currentActorEligible;
+    && canUseInternalAuditAssessment && currentActorEligible;
   const canExtendDueDate = !['completed', 'cancelled'].includes(currentSubmission.status)
     && security.canExecute(`${submissionType}_SUBMISSION.EXTEND_DUE_DATE`)
     && security.canEditField(resourceCode, 'DueDate')
@@ -1207,6 +1209,13 @@ export function SubmissionWorkspace({
             {canReadAuditorObservation && <Field label="Audited At" value={formatDateTime(getAuditedAt(currentSubmission))} />}
             {canReadAuditorComment && <Field label="Findings" value={getAuditorComments(currentSubmission) || '-'} wide />}
           </div>
+          {currentSubmission.workflow && <div className="mt-4 border-t border-secondary-200 pt-4 dark:border-secondary-700">
+            <InternalAuditAssessmentPanel
+              kind={submissionType === 'OPMS' ? 1 : 2}
+              submissionId={currentSubmission.id}
+              canAssess={canUseInternalAuditAssessment}
+            />
+          </div>}
         </Section>
       )}
 

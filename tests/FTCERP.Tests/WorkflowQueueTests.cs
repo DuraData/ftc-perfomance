@@ -1,6 +1,7 @@
 using FTCERP.Host.API.Controllers;
 using FTCERP.Host.API.Requests;
 using FTCERP.Host.API.Responses;
+using FTCERP.Host.Application.Services;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Security;
 
@@ -8,6 +9,66 @@ namespace FTCERP.Tests;
 
 public sealed class WorkflowQueueTests
 {
+    [Fact]
+    public async Task Completed_audit_transition_without_model_assessment_remains_recoverable_in_auditor_queue()
+    {
+        await using var context = IdpTestFixture.CreateRelationalContext();
+        var municipality = new Municipality { Code = "QUEUE-RECOVERY", Name = "Workflow Queue Recovery Municipality" };
+        var financialYear = new FinancialYear { Code = "2026/27", Name = "2026/27", StartDate = new(2026, 7, 1), EndDate = new(2027, 6, 30) };
+        var user = IdpTestFixture.CreateUser("queue-recovery-user", "Queue", "Auditor");
+        user.Municipality = municipality;
+        context.AddRange(municipality, financialYear, user);
+        await context.SaveChangesAsync();
+
+        var municipalityYear = new MunicipalityFinancialYear
+        {
+            MunicipalityId = municipality.Id, FinancialYearId = financialYear.Id, FinancialYear = financialYear,
+            EffectiveFrom = financialYear.StartDate, IsCurrent = true
+        };
+        var definition = new WorkflowDefinition
+        {
+            MunicipalityId = municipality.Id, MunicipalityFinancialYear = municipalityYear, SubmissionKind = SubmissionKind.Opms,
+            Code = "QUEUE-RECOVERY", Name = "Recoverable audit workflow", EffectiveFrom = financialYear.StartDate
+        };
+        definition.Stages.Add(new WorkflowStageDefinition
+        {
+            MunicipalityId = municipality.Id, Code = "INTERNAL_AUDIT", Name = "Internal audit", Sequence = 1,
+            RequiredActionCode = "OPMS_WORKFLOW.INTERNAL_AUDIT", RequiredPermissionCode = "OPMS_WORKFLOW.INTERNAL_AUDIT",
+            RequireDifferentActorFromSubmitter = false, RequireDifferentActorFromPreviousStage = false, IsTerminal = true
+        });
+        var period = new ReportingPeriod
+        {
+            MunicipalityFinancialYear = municipalityYear, Code = "Q3-RECOVERY", Name = "Quarter 3",
+            StartDate = DateTime.UtcNow.AddDays(-10), EndDate = DateTime.UtcNow.AddDays(10)
+        };
+        var target = OpmsTarget("opms-audit-recovery", user.Id, municipality.Id);
+        var submission = OpmsSubmission("audit-recovery", target.Id, "completed", SubmissionBaseStates.Submitted, user.Id, municipality.Id, DateTime.UtcNow);
+        context.AddRange(municipalityYear, definition, period, target, submission);
+        await context.SaveChangesAsync();
+        var transition = await new ConfigurableWorkflowService(context).PrepareActionAsync(
+            SubmissionKind.Opms, submission.Id, period.Id, user.Id, user.Id, "OPMS_WORKFLOW.INTERNAL_AUDIT",
+            WorkflowActionOutcome.Approve, "Legacy audit transition", null, "queue-recovery-trace");
+        Assert.True(transition.Allowed, transition.Reason);
+        await context.SaveChangesAsync();
+
+        var access = new Mock<IAccessControlService>();
+        access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_SUBMISSION.READ")).ReturnsAsync(Scope([target.Id]));
+        access.Setup(service => service.GetQueryScopeAsync(user, "IPMS_SUBMISSION.READ")).ReturnsAsync(new AccessQueryScopeResult(false, false, [], [], [], [], [], []));
+        access.Setup(service => service.CheckPermissionAsync(user, It.IsAny<string>(), It.IsAny<AccessScopeContext>()))
+            .ReturnsAsync(new AccessDecisionResult(true, "Allowed", [], [], []));
+        var controller = new WorkflowQueuesController(context, access.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = IdpTestFixture.CreatePrincipal(user.Id) } }
+        };
+
+        var result = await controller.Get(new WorkflowQueueQueryRequest { Queue = "auditor" });
+        var response = Assert.IsType<ApiResponse<WorkflowQueueResponse>>(Assert.IsType<OkObjectResult>(result.Result).Value).Data!;
+        var item = Assert.Single(response.Page.Items);
+        Assert.Equal(submission.PublicId, item.PublicId);
+        Assert.Equal("reviewed", item.Status);
+        Assert.Equal(1, response.Counts.Auditor);
+    }
+
     [Fact]
     public async Task Combined_queue_counts_and_pages_are_filtered_by_dynamic_scope_before_database_paging()
     {
