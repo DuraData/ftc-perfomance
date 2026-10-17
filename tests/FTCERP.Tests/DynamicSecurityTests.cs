@@ -428,6 +428,10 @@ public class DynamicSecurityTests
 
         var viewerSecurity = CreateService(context, viewer, tenant.Object);
         (await viewerSecurity.CheckPermissionAsync(viewer, "OPMS_KPI.READ", new AccessScopeContext(MunicipalityId: 7))).Allowed.Should().BeTrue();
+        var viewerQueryScope = await viewerSecurity.GetQueryScopeAsync(viewer, "OPMS_KPI.READ");
+        viewerQueryScope.PermissionGranted.Should().BeTrue();
+        viewerQueryScope.Unrestricted.Should().BeTrue("institution scope is unrestricted only inside the already selected tenant");
+        viewerQueryScope.MunicipalityIds.Should().Equal(7);
         (await viewerSecurity.CheckPermissionAsync(viewer, "OPMS_KPI.UPDATE", new AccessScopeContext(MunicipalityId: 7))).Allowed.Should().BeFalse();
         (await viewerSecurity.GetAuthorizedNavigationAsync(viewer)).Select(item => item.Path)
             .Should().BeEquivalentTo("/dashboard", "/opms/dashboard");

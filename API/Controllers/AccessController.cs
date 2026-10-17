@@ -30,7 +30,6 @@ public class AccessController : ControllerBase
     }
 
     [HttpGet("my-permissions")]
-    [Authorize(Policy = "Permission:Access.MyPermissions.View")]
     public async Task<ActionResult<ApiResponse<string[]>>> GetMyPermissions()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);

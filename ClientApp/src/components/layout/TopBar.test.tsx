@@ -3,6 +3,7 @@ import { TopBar } from './TopBar';
 
 const app = vi.hoisted(() => ({
   userProfile: { firstName: 'Test', lastName: 'User', fullName: 'Test User', email: 'test@example.gov.za' },
+  permissions: ['Notifications.View'],
   authenticationGate: null as null | 'password_change' | 'mfa_enrollment',
   darkMode: false,
   toggleDarkMode: vi.fn(),
@@ -32,6 +33,7 @@ describe('TopBar notification feed', () => {
     app.tenantContextTotalCount = 0;
     app.currentMunicipalityPublicId = null;
     app.authenticationGate = null;
+    app.permissions = ['Notifications.View'];
     vi.clearAllMocks();
   });
 
@@ -103,6 +105,15 @@ describe('TopBar notification feed', () => {
     app.authenticationGate = 'password_change';
 
     render(<TopBar title="Account Security" />);
+
+    expect(api.getNotifications).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /^Notifications/ })).not.toBeInTheDocument();
+  });
+
+  it('does not request or expose notifications without the dynamic notification permission', () => {
+    app.permissions = ['OPMS_KPI.READ'];
+
+    render(<TopBar title="OPMS Targets" />);
 
     expect(api.getNotifications).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /^Notifications/ })).not.toBeInTheDocument();

@@ -27,6 +27,7 @@ type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
 export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
   const {
     userProfile,
+    permissions,
     authenticationGate,
     darkMode,
     toggleDarkMode,
@@ -51,6 +52,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [tenantSearchInput, setTenantSearchInput] = useState(tenantContextSearch);
+  const canViewNotifications = permissions.includes('Notifications.View');
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setTenantContextSearch(tenantSearchInput.trim()), 300);
@@ -58,7 +60,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
   }, [setTenantContextSearch, tenantSearchInput]);
 
   const loadNotifications = useCallback(async () => {
-    if (authenticationGate !== null) return;
+    if (authenticationGate !== null || !canViewNotifications) return;
     setLoadingNotifications(true);
     const result = await getNotifications({ page: 1, pageSize: 8, sortBy: 'createdAt', sortDirection: 'desc' });
     if (result.success && result.data) {
@@ -68,11 +70,11 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
       pushToast('error', result.message ?? 'Failed to load notifications');
     }
     setLoadingNotifications(false);
-  }, [authenticationGate, pushToast]);
+  }, [authenticationGate, canViewNotifications, pushToast]);
 
   useEffect(() => {
-    if (authenticationGate === null) void loadNotifications();
-  }, [authenticationGate, loadNotifications]);
+    if (authenticationGate === null && canViewNotifications) void loadNotifications();
+  }, [authenticationGate, canViewNotifications, loadNotifications]);
 
   const recentNotifications = useMemo(
     () => notifications
@@ -237,7 +239,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
         </button>
 
         {/* Notifications */}
-        {authenticationGate === null && <div className="relative">
+        {authenticationGate === null && canViewNotifications && <div className="relative">
           <button
             className="p-2 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors relative"
             onClick={toggleNotifications}

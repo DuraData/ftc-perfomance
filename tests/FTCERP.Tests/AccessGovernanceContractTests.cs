@@ -15,6 +15,17 @@ namespace FTCERP.Tests;
 public sealed class AccessGovernanceContractTests
 {
     [Fact]
+    public void Self_permission_bootstrap_requires_authentication_without_a_circular_dynamic_permission()
+    {
+        Assert.Contains(typeof(AccessController).GetCustomAttributes<AuthorizeAttribute>(),
+            attribute => string.IsNullOrWhiteSpace(attribute.Policy));
+
+        var method = typeof(AccessController).GetMethod(nameof(AccessController.GetMyPermissions));
+        Assert.NotNull(method);
+        Assert.Empty(method.GetCustomAttributes<AuthorizeAttribute>());
+    }
+
+    [Fact]
     public async Task Any_permission_policy_succeeds_when_one_dynamic_permission_is_allowed()
     {
         var user = IdpTestFixture.CreateUser("any-permission-user", "Any", "Permission");

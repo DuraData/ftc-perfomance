@@ -248,6 +248,10 @@ public class AccessControlService : IAccessControlService
             .Concat(access.RoleAssignments.Where(item => allowedTypes.Contains(ScopeType.UnitScope) && item.UnitId.HasValue).Select(item => item.UnitId!.Value)).Distinct().ToArray();
         var municipalities = access.Scopes.Where(scope => allowedTypes.Contains(ScopeType.InstitutionScope) && scope.ScopeType == ScopeType.InstitutionScope && scope.MunicipalityId.HasValue).Select(scope => scope.MunicipalityId!.Value)
             .Concat(access.RoleAssignments.Where(item => allowedTypes.Contains(ScopeType.InstitutionScope) && item.MunicipalityId.HasValue).Select(item => item.MunicipalityId!.Value)).Distinct().ToArray();
+        if (allowedTypes.Contains(ScopeType.InstitutionScope)
+            && _tenantContext?.MunicipalityId is long currentMunicipalityId
+            && municipalities.Contains(currentMunicipalityId))
+            return new(true, true, [], [], [], [], [], municipalities);
         var owners = allowedTypes.Contains(ScopeType.Self) ? new[] { user.Id } : [];
         var targetIds = access.Scopes.Where(scope => allowedTypes.Contains(ScopeType.AssignedTargetScope) && scope.ScopeType == ScopeType.AssignedTargetScope && scope.TargetId != null).Select(scope => scope.TargetId!)
             .Concat(access.Assignments.Where(item => allowedTypes.Contains(ScopeType.AssignedTargetScope) && item.IsActive && item.TargetId != null).Select(item => item.TargetId!)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();

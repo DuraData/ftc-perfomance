@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { OPMSTargetFilters, OPMSTargetList } from './OPMSTargetList';
 
@@ -21,6 +21,11 @@ vi.mock('../library/TargetLibraries', () => ({ OpmsTemplateSelectionModal: () =>
 vi.mock('../common/GovernedWithdrawalDialog', () => ({ GovernedWithdrawalDialog: () => null }));
 
 describe('OPMSTargetFilters', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    hasAnyPermission.mockReturnValue(true);
+  });
+
   it('loads bounded department options and emits a stable public-id filter', async () => {
     api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'department-public', code: 'WAT', name: 'Live Water Services', isActive: true }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
     const onFilterChange = vi.fn();
@@ -42,5 +47,22 @@ describe('OPMSTargetFilters', () => {
 
     await waitFor(() => expect(api.getOpmsTargetsPage).toHaveBeenCalled());
     expect(screen.queryByTitle('Withdraw')).not.toBeInTheDocument();
+  });
+
+  it('does not expose mutation or submission actions to a KPI read-only user', async () => {
+    hasAnyPermission.mockReturnValue(false);
+    api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getOpmsTargetsPage.mockResolvedValue({ success: true, data: { items: [{ id: 'target-1', isWithdrawn: false }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+
+    render(<OPMSTargetList />);
+
+    await waitFor(() => expect(api.getOpmsTargetsPage).toHaveBeenCalled());
+    expect(screen.getByText('Read Only')).toBeInTheDocument();
+    expect(screen.getByText('All permitted departments')).toBeInTheDocument();
+    expect(api.getDepartmentMastersPage).not.toHaveBeenCalled();
+    expect(screen.queryByTitle('Edit')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Copy')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Start Submission')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New Target' })).not.toBeInTheDocument();
   });
 });

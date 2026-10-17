@@ -20,9 +20,15 @@ describe('AccessControl helpers', () => {
     expect(canAccessPath('/workflow/verification', menu)).toBe(true);
   });
 
-  it('lets detail and edit pages inherit their authorized parent route', () => {
+  it('lets read-only detail pages inherit their authorized parent route', () => {
     expect(canAccessPath('/opms/targets/target-1', menu)).toBe(true);
-    expect(canAccessPath('/opms/targets/target-1/edit', menu)).toBe(true);
+  });
+
+  it('requires the matching CRUD permission for inherited create and edit routes', () => {
+    expect(canAccessPath('/opms/targets/new', menu)).toBe(false);
+    expect(canAccessPath('/opms/targets/target-1/edit', menu)).toBe(false);
+    expect(canAccessPath('/opms/targets/new', menu, ['OPMS_KPI.CREATE'])).toBe(true);
+    expect(canAccessPath('/opms/targets/target-1/edit', menu, ['opms_kpi.update'])).toBe(true);
   });
 
   it('denies routes absent from the filtered menu', () => {

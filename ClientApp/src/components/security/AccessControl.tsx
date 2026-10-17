@@ -24,13 +24,32 @@ function collectAuthorizedPaths(items: MenuItem[]): string[] {
 
 /**
  * Page access is derived from the tenant-filtered menu returned by the API.
- * Nested detail routes inherit access from their nearest authorized menu route;
- * operation buttons and the API still enforce their specific CRUD permission.
+ * Nested read routes inherit access from their nearest authorized menu route.
+ * Known mutation routes additionally require their matching CRUD permission;
+ * operation buttons and the API remain independent enforcement layers.
  */
-export function canAccessPath(path: string, menuItems: MenuItem[]) {
+const mutationRoutePermissions: Array<{ matches: (path: string) => boolean; permissions: string[] }> = [
+  { matches: path => path === '/opms/targets/new', permissions: ['OPMS_KPI.CREATE'] },
+  { matches: path => /^\/opms\/targets\/[^/]+\/edit$/.test(path), permissions: ['OPMS_KPI.UPDATE'] },
+  { matches: path => path === '/ipms/targets/new', permissions: ['IPMS_KPI.CREATE'] },
+  { matches: path => /^\/ipms\/targets\/[^/]+\/edit$/.test(path), permissions: ['IPMS_KPI.UPDATE'] },
+  { matches: path => path === '/opms/library/new', permissions: ['OPMS_TARGET_TEMPLATE.CREATE'] },
+  { matches: path => /^\/opms\/library\/[^/]+\/edit$/.test(path), permissions: ['OPMS_TARGET_TEMPLATE.UPDATE'] },
+  { matches: path => path === '/ipms/library/new', permissions: ['IPMS_TARGET_TEMPLATE.CREATE'] },
+  { matches: path => /^\/ipms\/library\/[^/]+\/edit$/.test(path), permissions: ['IPMS_TARGET_TEMPLATE.UPDATE'] },
+];
+
+export function canAccessPath(path: string, menuItems: MenuItem[], grantedPermissions: string[] = []) {
   const requested = normalizePath(path);
-  return collectAuthorizedPaths(menuItems).some(authorized =>
+  const hasAuthorizedParent = collectAuthorizedPaths(menuItems).some(authorized =>
     requested === authorized || requested.startsWith(`${authorized}/`));
+
+  if (!hasAuthorizedParent) {
+    return false;
+  }
+
+  const mutationRoute = mutationRoutePermissions.find(rule => rule.matches(requested));
+  return !mutationRoute || hasPermissionCode(mutationRoute.permissions, grantedPermissions);
 }
 
 export function useHasPermission(code: string) {
@@ -44,8 +63,8 @@ export function useHasAnyPermission(codes: string[]) {
 }
 
 export function useCanAccessPath(path: string) {
-  const { menuItems } = useApp();
-  return useMemo(() => canAccessPath(path, menuItems), [path, menuItems]);
+  const { menuItems, permissions } = useApp();
+  return useMemo(() => canAccessPath(path, menuItems, permissions), [path, menuItems, permissions]);
 }
 
 export function AccessDeniedPage() {

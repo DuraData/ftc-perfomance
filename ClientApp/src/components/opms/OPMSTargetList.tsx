@@ -80,6 +80,7 @@ function buildPayloadFromTarget(target: OPMSTarget): SaveOpmsTargetPayload {
 }
 
 export function OPMSTargetFilters({ onFilterChange }: { onFilterChange: (filters: Record<string, string>) => void }) {
+  const canFilterByDepartment = useHasAnyPermission(['DEPARTMENT.READ']);
   const [filters, setFilters] = useState({
     department: '',
     status: '',
@@ -94,7 +95,16 @@ export function OPMSTargetFilters({ onFilterChange }: { onFilterChange: (filters
   return (
     <Card className="mb-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <OrganizationMasterPicker kind="department" label="Department" value={filters.department} emptyLabel="All Departments" onChange={value => handleChange('department', value)} />
+        {canFilterByDepartment ? (
+          <OrganizationMasterPicker kind="department" label="Department" value={filters.department} emptyLabel="All Departments" onChange={value => handleChange('department', value)} />
+        ) : (
+          <div>
+            <span className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">Department</span>
+            <p className="rounded-lg border border-secondary-200 bg-secondary-50 px-3 py-2 text-sm text-secondary-600 dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-300">
+              All permitted departments
+            </p>
+          </div>
+        )}
         <div>
           <label htmlFor="opms-status-filter" className="block text-xs font-medium text-secondary-600 dark:text-secondary-400 mb-1">
             Status
@@ -122,6 +132,7 @@ export function OPMSTargetList() {
     pushToast,
   } = useApp();
   const canManageTargets = useHasAnyPermission(['OPMS_KPI.CREATE', 'OPMS_KPI.UPDATE', 'OPMS_KPI.WITHDRAW']);
+  const canStartSubmission = useHasAnyPermission(['OPMS_SUBMISSION.CREATE']);
   const canExecuteWithdrawal = useHasAnyPermission(['OPMS_KPI.WITHDRAW']);
   const canEditWithdrawalReason = useHasAnyPermission(['OPMS_KPI.WithdrawalReason.UPDATE']);
   const canWithdrawTarget = canExecuteWithdrawal && canEditWithdrawalReason;
@@ -321,7 +332,7 @@ export function OPMSTargetList() {
             <Ban className="w-4 h-4 text-error-500" />
           </button>}
         </>
-      ) : (
+      ) : canStartSubmission ? (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -332,7 +343,7 @@ export function OPMSTargetList() {
         >
           <FileText className="w-4 h-4 text-secondary-400" />
         </button>
-      )}
+      ) : null}
     </div>
   );
 
