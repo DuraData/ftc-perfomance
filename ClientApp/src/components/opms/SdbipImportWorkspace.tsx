@@ -4,6 +4,7 @@ import type { OpmsImportBatchDto, OpmsImportBatchSummaryDto } from '../../types'
 import { useSecurity } from '../../context/SecurityContext';
 import { parseSdbipImportCsv } from './sdbipImportCsv';
 import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
+import { AppShell } from '../layout/AppShell';
 
 export function SdbipImportWorkspace() {
   const { canReadField } = useSecurity();
@@ -22,22 +23,31 @@ export function SdbipImportWorkspace() {
   const [historyStatus, setHistoryStatus] = useState('');
   const [historySort, setHistorySort] = useState('createdAt');
   const [historyRevision, setHistoryRevision] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   const [error, setError] = useState('');
   const [reason, setReason] = useState('');
   const [approval, setApproval] = useState('');
   const [effectiveAt, setEffectiveAt] = useState('');
 
   useEffect(() => {
-    if (!layer) { setHistory([]); setHistoryTotalPages(0); return; }
+    if (!layer) { setHistory([]); setHistoryTotalPages(0); setHistoryError(''); setHistoryLoading(false); return; }
     let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryError('');
     void getOpmsImportBatchesPage(layer, {
       page: historyPage, pageSize: 10, search: canSearchHistory ? historySearch : undefined,
       status: historyStatus || undefined, sortBy: historySort, sortDirection: 'desc',
     }).then(response => {
       if (cancelled) return;
-      if (!response.success) { setError(response.message ?? 'Unable to load import history.'); return; }
+      if (!response.success) { setHistoryError(response.message ?? 'Unable to load import history.'); setHistoryLoading(false); return; }
       setHistory(response.data?.items ?? []);
       setHistoryTotalPages(response.data?.totalPages ?? 0);
+      setHistoryLoading(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setHistoryError('Unable to load import history.');
+      setHistoryLoading(false);
     });
     return () => { cancelled = true; };
   }, [canSearchHistory, historyPage, historyRevision, historySearch, historySort, historyStatus, layer]);
@@ -69,8 +79,9 @@ export function SdbipImportWorkspace() {
     if (!response.success) setError(response.message ?? 'Download failed.');
   };
 
-  return <div className="p-6 space-y-5">
-    <div><h1 className="text-2xl font-semibold">SDBIP import and reconciliation</h1><p className="text-sm text-secondary-600">Upload the governed wide CSV template. Nothing is written to the KPI register until the complete preview is valid and committed.</p></div>
+  return <AppShell title="SDBIP import and reconciliation" subtitle="Governed preview, validation, reconciliation, and complete-batch commit">
+  <div className="space-y-5">
+    <p className="text-sm text-secondary-600">Upload the governed wide CSV template. Nothing is written to the KPI register until the complete preview is valid and committed.</p>
     <div className="bg-white dark:bg-secondary-800 rounded-lg border p-4 grid gap-4 md:grid-cols-2">
       <CalendarMasterPicker kind="sdbip-layer" label="SDBIP layer" value={layer} onChange={value => { setLayer(value); setHistoryPage(1); setBatch(undefined); }} required />
       <label className="text-sm">Wide CSV file<input className="mt-1 block w-full" type="file" accept=".csv,text/csv" onChange={event => void stage(event.target.files?.[0])} /></label>
@@ -91,14 +102,17 @@ export function SdbipImportWorkspace() {
     </div>}
     {layer && <section className="space-y-3 rounded border p-4" aria-label="SDBIP import history">
       <h2 className="font-semibold">Import history</h2>
+      {historyError && <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-red-800">{historyError}</div>}
       <div className="flex flex-wrap gap-2">
         {canSearchHistory && <input aria-label="Search SDBIP import history" className="rounded border p-2" value={historySearch} onChange={event => { setHistorySearch(event.target.value); setHistoryPage(1); }} placeholder="Search permitted metadata" />}
         <select aria-label="Filter SDBIP import status" className="rounded border p-2" value={historyStatus} onChange={event => { setHistoryStatus(event.target.value); setHistoryPage(1); }}><option value="">All statuses</option><option value="Staged">Staged</option><option value="Committed">Committed</option></select>
         <select aria-label="Sort SDBIP import history" className="rounded border p-2" value={historySort} onChange={event => { setHistorySort(event.target.value); setHistoryPage(1); }}><option value="createdAt">Created</option>{canReadFileName && <option value="fileName">File name</option>}<option value="status">Status</option><option value="totalRows">Row count</option><option value="committedAt">Committed</option></select>
       </div>
-      <div className="flex flex-wrap gap-2">{history.map(item => <button key={item.publicId} type="button" className="rounded border px-2 py-1 text-xs" onClick={() => void openBatch(item.publicId)}>{canReadFileName && item.sourceFileName ? `${item.sourceFileName} · ` : ''}{item.status} · {item.totalRows} rows · {new Date(item.createdAt).toLocaleString()}</button>)}</div>
-      {!history.length && <p className="text-sm text-secondary-500">No import batches match the current filters.</p>}
+      {historyLoading ? <p className="text-sm text-secondary-500" role="status">Loading import history…</p>
+        : <div className="flex flex-wrap gap-2">{history.map(item => <button key={item.publicId} type="button" className="rounded border px-2 py-1 text-xs" onClick={() => void openBatch(item.publicId)}>{canReadFileName && item.sourceFileName ? `${item.sourceFileName} · ` : ''}{item.status} · {item.totalRows} rows · {new Date(item.createdAt).toLocaleString()}</button>)}</div>}
+      {!historyLoading && !history.length && <p className="text-sm text-secondary-500">No import batches match the current filters.</p>}
       <div className="flex items-center justify-between text-xs text-secondary-500"><span>Page {historyPage} of {Math.max(1, historyTotalPages)}</span><div className="flex gap-2"><button type="button" className="rounded border px-2 py-1" disabled={historyPage <= 1} onClick={() => setHistoryPage(value => value - 1)}>Previous</button><button type="button" className="rounded border px-2 py-1" disabled={historyPage >= historyTotalPages} onClick={() => setHistoryPage(value => value + 1)}>Next</button></div></div>
     </section>}
-  </div>;
+  </div>
+  </AppShell>;
 }

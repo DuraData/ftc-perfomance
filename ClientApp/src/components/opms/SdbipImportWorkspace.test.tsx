@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { SdbipImportWorkspace } from './SdbipImportWorkspace';
 
@@ -9,6 +10,9 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 vi.mock('../../api/api', () => api);
+vi.mock('../layout/AppShell', () => ({
+  AppShell: ({ title, children }: { title: string; children: ReactNode }) => <main><h1>{title}</h1>{children}</main>,
+}));
 vi.mock('../common/CalendarMasterPicker', () => ({
   CalendarMasterPicker: ({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) =>
     <label>{label}<select aria-label={label} value={value} onChange={event => onChange(event.target.value)}><option value="">Select</option><option value="layer-1">Top layer</option></select></label>,
@@ -34,6 +38,7 @@ describe('SDBIP import workspace member security', () => {
 
   it('does not render denied metadata, diagnostics, search or file sorting from a hostile payload', async () => {
     render(<SdbipImportWorkspace />);
+    expect(screen.getByRole('heading', { name: 'SDBIP import and reconciliation' })).toBeInTheDocument();
     fireEvent.change(screen.getByRole('combobox', { name: 'SDBIP layer' }), { target: { value: 'layer-1' } });
     const historyButton = await screen.findByRole('button', { name: /Staged · 1 rows/i });
     expect(historyButton).not.toHaveTextContent('SECRET-FILE');
@@ -45,5 +50,32 @@ describe('SDBIP import workspace member security', () => {
     for (const secret of ['SECRET-REQUEST', 'SECRET-FILE', 'SECRET-HASH', 'SECRET-ACTOR', 'SECRET-DIAGNOSTIC', 'SECRET-CODE', 'SECRET-FIELD', 'SECRET-SUPPLIED', 'SECRET-BEFORE', 'SECRET-AFTER'])
       expect(screen.queryByText(new RegExp(secret))).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Diagnostic' })).not.toBeInTheDocument();
+  });
+
+  it('renders a durable loading state followed by the empty state', async () => {
+    let resolveHistory!: (value: unknown) => void;
+    api.getOpmsImportBatchesPage.mockReturnValue(new Promise(resolve => { resolveHistory = resolve; }));
+    render(<SdbipImportWorkspace />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'SDBIP layer' }), { target: { value: 'layer-1' } });
+    expect(await screen.findByRole('status')).toHaveTextContent('Loading import history');
+
+    resolveHistory({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } });
+    expect(await screen.findByText('No import batches match the current filters.')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('keeps history failures scoped to history and clears them after a successful retry', async () => {
+    api.getOpmsImportBatchesPage
+      .mockRejectedValueOnce(new Error('Network unavailable'))
+      .mockResolvedValueOnce({ success: true, data: { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 } });
+    render(<SdbipImportWorkspace />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'SDBIP layer' }), { target: { value: 'layer-1' } });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load import history.');
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter SDBIP import status' }), { target: { value: 'Staged' } });
+    await waitFor(() => expect(screen.queryByText('Unable to load import history.')).not.toBeInTheDocument());
+    expect(screen.getByText('No import batches match the current filters.')).toBeInTheDocument();
   });
 });
