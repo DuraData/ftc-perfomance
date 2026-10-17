@@ -22,6 +22,17 @@ public sealed class RegisterPaginationTests
     }
 
     [Fact]
+    public void Retained_stage_resubmission_preserves_completed_downstream_statuses()
+    {
+        var retainedStage = new SubmissionWorkflowAction { FromStageId = 42, ToStageId = 42 };
+        var advancedStage = new SubmissionWorkflowAction { FromStageId = 41, ToStageId = 42 };
+
+        PerformanceApiSupport.ShouldResetDownstreamWorkflowStatuses("resubmitted", retainedStage).Should().BeFalse();
+        PerformanceApiSupport.ShouldResetDownstreamWorkflowStatuses("resubmitted", advancedStage).Should().BeTrue();
+        PerformanceApiSupport.ShouldResetDownstreamWorkflowStatuses("submitted", retainedStage).Should().BeTrue();
+    }
+
+    [Fact]
     public void Submission_response_projects_governed_target_context_needed_by_the_workspace()
     {
         var departmentPublicId = Guid.NewGuid();

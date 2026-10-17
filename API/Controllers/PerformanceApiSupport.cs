@@ -23,6 +23,12 @@ public static class PerformanceApiSupport
         return requestedStatus;
     }
 
+    internal static bool ShouldResetDownstreamWorkflowStatuses(
+        string requestedStatus,
+        SubmissionWorkflowAction? action) =>
+        !string.Equals(requestedStatus, "resubmitted", StringComparison.OrdinalIgnoreCase)
+        || action?.FromStageId != action?.ToStageId;
+
     internal static IQueryable<OpmsSubmissionStatusProjection> ProjectCanonicalStatuses(
         ApplicationDbContext context,
         IQueryable<OpmsSubmission> query) =>

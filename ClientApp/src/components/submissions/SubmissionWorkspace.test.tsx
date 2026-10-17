@@ -228,6 +228,31 @@ describe('SubmissionWorkspace member security', () => {
     expect(screen.queryByRole('button', { name: 'Verify Reject' })).not.toBeInTheDocument();
   });
 
+  it('does not expose status-derived actions that contradict the projected current stage', () => {
+    security.canExecute.mockReturnValue(true);
+    const inconsistent = {
+      ...submission,
+      status: 'submitted',
+      workflow: {
+        stages: [
+          { code: 'SUBMIT', name: 'Submit', sequence: 1, isTerminal: false, requiredActionCode: 'OPMS_SUBMISSION.SUBMIT', isOptional: false, allowBypass: false },
+          { code: 'VERIFY', name: 'Verify', sequence: 2, isTerminal: true, requiredActionCode: 'OPMS_SUBMISSION.VERIFY', isOptional: false, allowBypass: false },
+        ],
+        currentStageCode: 'SUBMIT',
+        completed: false,
+        currentActorEligible: true,
+        state: 'Active',
+      },
+    } as OPMSSubmission;
+
+    render(<SubmissionWorkspace submission={inconsistent} submissionType="OPMS" onWorkflowAction={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'Verify' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Verify Reject' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument();
+  });
+
   it('keeps the due-date extension controls hidden until both exact member updates are granted', () => {
     security.canExecute.mockImplementation((code: string) => code === 'OPMS_SUBMISSION.EXTEND_DUE_DATE');
     security.canEditField.mockImplementation((_resource: string, member: string) => member === 'DueDate');

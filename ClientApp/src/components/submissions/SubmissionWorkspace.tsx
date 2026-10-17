@@ -651,19 +651,25 @@ export function SubmissionWorkspace({
   const currentWorkflowStage = currentSubmission.workflow?.stages.find(
     stage => stage.code === currentSubmission.workflow?.currentStageCode,
   );
+  const currentStageRequires = (actionCode: string) => !currentSubmission.workflow?.currentStageCode
+    || currentWorkflowStage?.requiredActionCode?.toUpperCase() === actionCode.toUpperCase();
   const isWorkflowRework = currentSubmission.workflow?.state === 'Rework';
   const canSubmit = ['draft', 'returned_for_info', 'verify_rejected', 'rejected'].includes(currentSubmission.status)
     && !isWorkflowRework
+    && currentStageRequires(`${submissionType}_SUBMISSION.SUBMIT`)
     && security.canExecute(`${submissionType}_SUBMISSION.SUBMIT`) && currentActorEligible;
   const canResubmit = currentSubmission.baseState === 'IN_PROGRESS' && isWorkflowRework
     && security.canExecute(`${submissionType}_SUBMISSION.RESUBMIT`);
   const canCorrect = currentSubmission.baseState === 'SUBMITTED' && !currentSubmission.workflow?.completed
     && security.canExecute(`${submissionType}_SUBMISSION.CORRECT`) && canEditWorkflowComment;
   const canVerify = ['submitted', 'pending_verification'].includes(currentSubmission.status)
+    && currentStageRequires(`${submissionType}_SUBMISSION.VERIFY`)
     && security.canExecute(`${submissionType}_SUBMISSION.VERIFY`) && currentActorEligible;
   const canVerifyReject = ['submitted', 'pending_verification'].includes(currentSubmission.status)
+    && currentStageRequires(`${submissionType}_SUBMISSION.VERIFY`)
     && security.canExecute(`${submissionType}_SUBMISSION.VERIFY_REJECT`) && currentActorEligible;
   const canApprove = ['verified', 'pending_approval'].includes(currentSubmission.status)
+    && currentStageRequires(`${submissionType}_SUBMISSION.APPROVE`)
     && security.canExecute(`${submissionType}_SUBMISSION.APPROVE`) && currentActorEligible;
   const canApproveBypass = ['submitted', 'pending_verification'].includes(currentSubmission.status)
     && currentWorkflowStage?.isOptional === true
@@ -671,11 +677,14 @@ export function SubmissionWorkspace({
     && currentSubmission.workflow?.currentActorEligibleForBypass === true
     && security.canExecute(`${submissionType}_SUBMISSION.APPROVE_BYPASS`);
   const canReject = ['verified', 'pending_approval'].includes(currentSubmission.status)
+    && currentStageRequires(`${submissionType}_SUBMISSION.APPROVE`)
     && security.canExecute(`${submissionType}_SUBMISSION.REJECT`) && currentActorEligible;
   const canReview = currentSubmission.status === 'approved'
+    && currentStageRequires(`${submissionType}_WORKFLOW.PMS_REVIEW`)
     && security.canExecute(`${submissionType}_WORKFLOW.PMS_REVIEW`) && currentActorEligible;
   const canUseInternalAuditAssessment = security.canExecute(`${submissionType}_WORKFLOW.INTERNAL_AUDIT`);
   const canAudit = currentSubmission.status === 'reviewed'
+    && currentStageRequires(`${submissionType}_WORKFLOW.INTERNAL_AUDIT`)
     && canUseInternalAuditAssessment && currentActorEligible;
   const canExtendDueDate = !['completed', 'cancelled'].includes(currentSubmission.status)
     && security.canExecute(`${submissionType}_SUBMISSION.EXTEND_DUE_DATE`)

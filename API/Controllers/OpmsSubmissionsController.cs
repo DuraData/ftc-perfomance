@@ -1091,6 +1091,7 @@ public class OpmsSubmissionsController : ControllerBase
     private async Task<ActionResult<ApiResponse<OpmsSubmissionResponse>>> ApplyWorkflowAction(string id, string permissionCode, string status, string action, NotificationType notificationType, SubmissionWorkflowActionRequest request)
     {
         var resultingStatus = status;
+        var resetDownstreamWorkflowStatuses = true;
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized(new ApiResponse<OpmsSubmissionResponse>(false, null, "User not found"));
         id = await ResolveSubmissionIdAsync(id) ?? string.Empty;
@@ -1142,6 +1143,7 @@ public class OpmsSubmissionsController : ControllerBase
             var transition = await _configurableWorkflow.PrepareActionAsync(SubmissionKind.Opms, entity.Id, entity.ReportingPeriodId!.Value, entity.SubmittedByUserId ?? entity.CreatedBy ?? user.Id, user.Id, permissionCode, outcome, request.Comment, request.Score, HttpContext.TraceIdentifier);
             if (!transition.Allowed) return Conflict(new ApiResponse<OpmsSubmissionResponse>(false, null, transition.Reason));
             resultingStatus = PerformanceApiSupport.ResolveWorkflowStatus(status, transition.Instance);
+            resetDownstreamWorkflowStatuses = PerformanceApiSupport.ShouldResetDownstreamWorkflowStatuses(status, transition.Action);
             _context.AuditTrails.Add(new AuditTrail { EntityName = "OpmsSubmission", EntityId = id, Action = permissionCode, NewValue = System.Text.Json.JsonSerializer.Serialize(new { RequestedStatus = status, EffectiveStatus = resultingStatus, request.Comment, request.Score, transition.Reason }), ChangedBy = user.Id, IpAddress = PerformanceApiSupport.GetIpAddress(HttpContext) });
         }
 
@@ -1156,10 +1158,13 @@ public class OpmsSubmissionsController : ControllerBase
             entity.SubmittedAt = DateTime.UtcNow;
             entity.SubmittedByUserId = user.Id;
             entity.SubmitterStatus = "Submitted";
-            entity.VerifierStatus = "Pending";
-            entity.ApproverStatus = "Pending";
-            entity.PmsStatus = "Pending";
-            entity.AuditorStatus = "Pending";
+            if (resetDownstreamWorkflowStatuses)
+            {
+                entity.VerifierStatus = "Pending";
+                entity.ApproverStatus = "Pending";
+                entity.PmsStatus = "Pending";
+                entity.AuditorStatus = "Pending";
+            }
         }
         else if (string.Equals(status, "verified", StringComparison.OrdinalIgnoreCase) || string.Equals(status, "verify_rejected", StringComparison.OrdinalIgnoreCase))
         {
