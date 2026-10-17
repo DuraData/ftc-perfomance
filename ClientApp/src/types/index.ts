@@ -2197,8 +2197,13 @@ export interface PerformanceReportSummaryDto {
   departments: DepartmentPerformanceReportDto[];
 }
 
-export type OfficialReportFormat = 1 | 2 | 3 | 4;
-export type OfficialReportType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
+export type OfficialReportFormat = 1 | 2 | 3 | 4 | 'Csv' | 'Xlsx' | 'Docx' | 'Pdf';
+export type OfficialReportType =
+  | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16
+  | 'QuarterlyPerformance' | 'MidTermPerformance' | 'AnnualPerformance' | 'DepartmentalPerformance'
+  | 'UnitPerformance' | 'PerformanceSummary' | 'WorkflowStatus' | 'SubmissionRegister'
+  | 'VerificationRegister' | 'ApprovalRegister' | 'PmsReview' | 'InternalAudit'
+  | 'OutstandingRfi' | 'EvidenceRegister' | 'AuditTrail' | 'VersionTrail';
 
 export interface OfficialReportTemplateDto {
   publicId: string;
@@ -2253,9 +2258,9 @@ export interface OfficialReportGenerationDto {
   downloadUrl: string;
 }
 
-export type OfficialReportScheduleCadence = 1 | 2 | 3 | 4;
-export type OfficialReportRecipientKind = 1 | 2;
-export type OfficialReportJobState = 1 | 2 | 3 | 4 | 5 | 6;
+export type OfficialReportScheduleCadence = 1 | 2 | 3 | 4 | 'Once' | 'Daily' | 'Weekly' | 'Monthly';
+export type OfficialReportRecipientKind = 1 | 2 | 'User' | 'Role';
+export type OfficialReportJobState = 1 | 2 | 3 | 4 | 5 | 6 | 'Queued' | 'Processing' | 'RetryPending' | 'Completed' | 'Failed' | 'Cancelled';
 
 export interface OfficialReportScheduleDto {
   publicId: string;
