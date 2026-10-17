@@ -40,6 +40,7 @@ const mutationRoutePermissions: Array<{ matches: (path: string) => boolean; perm
 ];
 
 const routeAccessParents: Record<string, string> = {
+  '/configuration/workflow': '/admin/approval-setup',
   '/workflow/my-drafts': '/workflow/my-queue',
   '/workflow/pending-submission': '/workflow/my-queue',
   '/workflow/returned-submissions': '/workflow/my-queue',

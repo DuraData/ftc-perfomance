@@ -18,6 +18,10 @@ const workflowMenu: MenuItem[] = [
   { label: 'My Workflow', path: '/workflow/my-queue', isDivider: false },
 ];
 
+const configurationMenu: MenuItem[] = [
+  { label: 'Workflow Governance', path: '/admin/approval-setup', isDivider: false },
+];
+
 describe('AccessControl helpers', () => {
   it('derives route access from the backend-filtered navigation tree', () => {
     expect(canAccessPath('/dashboard', menu)).toBe(true);
@@ -58,6 +62,11 @@ describe('AccessControl helpers', () => {
       '/workflow/approved-closed',
     ]) expect(canAccessPath(path, workflowMenu)).toBe(true);
     expect(canAccessPath('/workflow/verification', workflowMenu)).toBe(false);
+  });
+
+  it('maps the requirements workflow-configuration route to the governed navigation entry', () => {
+    expect(canAccessPath('/configuration/workflow', configurationMenu)).toBe(true);
+    expect(canAccessPath('/configuration/workflow', workflowMenu)).toBe(false);
   });
 
   it('limits mandatory account setup to the security settings route', () => {

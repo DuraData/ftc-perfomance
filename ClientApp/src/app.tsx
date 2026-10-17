@@ -203,6 +203,7 @@ function AppContent() {
         return <TenantCalendarAdministration />;
       case '/admin/organisations':
         return <TenantOrganizationAdministration kind="departments" />;
+      case '/configuration/workflow':
       case '/admin/approval-setup':
         return <WorkflowGovernanceAdminPage />;
       case '/admin/lookups':
