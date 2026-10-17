@@ -59,6 +59,7 @@ import {
 } from '../../api/api';
 import { PerformanceRfiWorkspace } from '../workflow/PerformanceRfiWorkspace';
 import { StageRatingHistory } from '../workflow/StageRatingHistory';
+import { WorkflowActionHistory } from '../workflow/WorkflowActionHistory';
 import { useSecurity } from '../../context/SecurityContext';
 import { GovernedWithdrawalDialog } from '../common/GovernedWithdrawalDialog';
 import { PerformanceValueInput } from './PerformanceValueInput';
@@ -1255,7 +1256,7 @@ export function SubmissionWorkspace({
           </div>
           {comments.length === 0 ? (
             <div className="rounded-lg border border-dashed border-secondary-300 bg-secondary-50 px-4 py-10 text-center text-sm text-secondary-500 dark:border-secondary-700 dark:bg-secondary-800">
-              No comments or workflow history recorded yet.
+              No legacy submission comments recorded.
             </div>
           ) : (
             <div className="space-y-3">
@@ -1273,6 +1274,7 @@ export function SubmissionWorkspace({
               ))}
             </div>
           )}
+          <WorkflowActionHistory kind={submissionType === 'OPMS' ? 1 : 2} submissionId={currentSubmission.id} />
           <PerformanceRfiWorkspace kind={submissionType === 'OPMS' ? 1 : 2} submissionId={currentSubmission.id} />
           <StageRatingHistory kind={submissionType === 'OPMS' ? 1 : 2} submissionId={currentSubmission.id} />
         </Section>

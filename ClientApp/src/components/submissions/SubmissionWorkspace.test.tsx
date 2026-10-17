@@ -13,6 +13,7 @@ const security = vi.hoisted(() => ({
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 vi.mock('../workflow/PerformanceRfiWorkspace', () => ({ PerformanceRfiWorkspace: () => null }));
 vi.mock('../workflow/StageRatingHistory', () => ({ StageRatingHistory: () => null }));
+vi.mock('../workflow/WorkflowActionHistory', () => ({ WorkflowActionHistory: () => null }));
 
 const api = vi.hoisted(() => ({
   getOpmsSubmissionAttachmentsPage: vi.fn(),

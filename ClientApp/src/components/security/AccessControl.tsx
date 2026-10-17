@@ -39,10 +39,22 @@ const mutationRoutePermissions: Array<{ matches: (path: string) => boolean; perm
   { matches: path => /^\/ipms\/library\/[^/]+\/edit$/.test(path), permissions: ['IPMS_TARGET_TEMPLATE.UPDATE'] },
 ];
 
+const routeAccessParents: Record<string, string> = {
+  '/workflow/my-drafts': '/workflow/my-queue',
+  '/workflow/pending-submission': '/workflow/my-queue',
+  '/workflow/returned-submissions': '/workflow/my-queue',
+  '/workflow/under-verification': '/workflow/my-queue',
+  '/workflow/under-review': '/workflow/my-queue',
+  '/workflow/under-approval': '/workflow/my-queue',
+  '/workflow/internal-audit-returned': '/workflow/my-queue',
+  '/workflow/approved-closed': '/workflow/my-queue',
+};
+
 export function canAccessPath(path: string, menuItems: MenuItem[], grantedPermissions: string[] = []) {
   const requested = normalizePath(path);
+  const accessPath = routeAccessParents[requested] ?? requested;
   const hasAuthorizedParent = collectAuthorizedPaths(menuItems).some(authorized =>
-    requested === authorized || requested.startsWith(`${authorized}/`));
+    accessPath === authorized || accessPath.startsWith(`${authorized}/`));
 
   if (!hasAuthorizedParent) {
     return false;

@@ -1949,6 +1949,18 @@ export interface StageRatingDto {
   ratedAt: string;
 }
 
+export interface WorkflowActionHistoryDto {
+  publicId: string;
+  sequence: number;
+  actionCode: string;
+  outcome: number | string;
+  actorUserPublicId?: string | null;
+  actorName?: string | null;
+  comment?: string | null;
+  ratingValue?: number | null;
+  occurredAt: string;
+}
+
 export interface NotificationDeliveryAttemptDto {
   publicId: string;
   recipientUserPublicId?: string | null;

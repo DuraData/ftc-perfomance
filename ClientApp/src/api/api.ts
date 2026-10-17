@@ -111,6 +111,7 @@ import type {
   ReportingWindowExceptionDto,
   PerformanceRfiDto,
   StageRatingDto,
+  WorkflowActionHistoryDto,
   SecurityNavigationItemDto,
   SecurityResourceDefinitionDto,
   SecurityActionDefinitionDto,
@@ -1842,6 +1843,10 @@ export async function getRatingSchemesPage(query: GovernancePageQuery = {}): Pro
 
 export async function getSubmissionStageRatingsPage(kind: number, submissionId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<StageRatingDto>>> {
   return get<PagedResult<StageRatingDto>>(`/v1/workflow/submissions/${kind}/${encodeURIComponent(submissionId)}/ratings/page${registerPageQuery(query)}`);
+}
+
+export async function getSubmissionWorkflowActionsPage(kind: number, submissionId: string, query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<WorkflowActionHistoryDto>>> {
+  return get<PagedResult<WorkflowActionHistoryDto>>(`/v1/workflow/submissions/${kind}/${encodeURIComponent(submissionId)}/actions/page${registerPageQuery(query)}`);
 }
 
 export async function getPendingNotificationDeliveries(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<NotificationOutboxItemDto>>> {

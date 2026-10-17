@@ -14,6 +14,10 @@ const menu: MenuItem[] = [
   },
 ];
 
+const workflowMenu: MenuItem[] = [
+  { label: 'My Workflow', path: '/workflow/my-queue', isDivider: false },
+];
+
 describe('AccessControl helpers', () => {
   it('derives route access from the backend-filtered navigation tree', () => {
     expect(canAccessPath('/dashboard', menu)).toBe(true);
@@ -40,6 +44,20 @@ describe('AccessControl helpers', () => {
   it('denies the retired generic task workspace while governed workflow routes remain available', () => {
     expect(canAccessPath('/tasks', menu)).toBe(false);
     expect(canAccessPath('/workflow/verification', menu)).toBe(true);
+  });
+
+  it('lets every named work-queue view inherit the backend-authorized workflow parent', () => {
+    for (const path of [
+      '/workflow/my-drafts',
+      '/workflow/pending-submission',
+      '/workflow/returned-submissions',
+      '/workflow/under-verification',
+      '/workflow/under-review',
+      '/workflow/under-approval',
+      '/workflow/internal-audit-returned',
+      '/workflow/approved-closed',
+    ]) expect(canAccessPath(path, workflowMenu)).toBe(true);
+    expect(canAccessPath('/workflow/verification', workflowMenu)).toBe(false);
   });
 
   it('limits mandatory account setup to the security settings route', () => {
