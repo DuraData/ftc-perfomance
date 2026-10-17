@@ -3514,6 +3514,14 @@ export interface IdpAlignmentLink {
   rowVersion: string;
 }
 
+export interface CreateIdpAlignmentLinkPayload {
+  idpStrategicObjectivePublicId: string;
+  frameworkType: string;
+  frameworkReferenceCode: string;
+  frameworkReferenceTitle: string;
+  notes?: string | null;
+}
+
 export interface IdpRiskLink {
   publicId: string;
   idpStrategicObjectivePublicId?: string | null;

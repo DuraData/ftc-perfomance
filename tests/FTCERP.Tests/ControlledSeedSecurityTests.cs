@@ -151,6 +151,42 @@ public sealed class ControlledSeedSecurityTests
     }
 
     [Fact]
+    public async Task Platform_target_seed_lookup_ignores_same_indicator_numbers_owned_by_municipalities()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+
+        var municipality = new Municipality { Code = "TENANT", Name = "Tenant Municipality" };
+        var period = new Period
+        {
+            Code = "2026/27",
+            Name = "2026/2027 Financial Year",
+            FiscalYear = "2026/2027",
+            StartDate = new DateTime(2026, 7, 1),
+            EndDate = new DateTime(2027, 6, 30)
+        };
+        context.AddRange(municipality, period);
+        await context.SaveChangesAsync();
+
+        context.OpmsTargets.AddRange(
+            new OpmsTarget { IndicatorNumber = "FIN-001", TargetName = "Platform target", PeriodId = period.Id },
+            new OpmsTarget { MunicipalityId = municipality.Id, IndicatorNumber = "FIN-001", TargetName = "Tenant target", PeriodId = period.Id });
+        context.IpmsTargets.AddRange(
+            new IpmsTarget { IndicatorNumber = "EMP-001", TargetName = "Platform employee target", PeriodId = period.Id },
+            new IpmsTarget { MunicipalityId = municipality.Id, IndicatorNumber = "EMP-001", TargetName = "Tenant employee target", PeriodId = period.Id });
+        await context.SaveChangesAsync();
+
+        var opmsTargets = await DbInitializer.LoadPlatformOpmsTargetsAsync(context);
+        var ipmsTargets = await DbInitializer.LoadPlatformIpmsTargetsAsync(context);
+
+        opmsTargets.Should().ContainSingle().Which.Value.MunicipalityId.Should().BeNull();
+        ipmsTargets.Should().ContainSingle().Which.Value.MunicipalityId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Lookup_seed_is_additive_and_preserves_administrator_configuration()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

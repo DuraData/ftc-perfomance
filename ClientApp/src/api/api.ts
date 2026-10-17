@@ -53,6 +53,8 @@ import type {
   IdpHierarchyPath,
   IdpDashboard,
   IdpAlignmentMatrixItem,
+  IdpAlignmentLink,
+  CreateIdpAlignmentLinkPayload,
   IdpDocument,
   IdpReportDocument,
   CreateIdpPlanPayload,
@@ -2888,6 +2890,10 @@ export async function getIdpAlignmentMatrixPage(
   if (frameworkType?.trim()) parameters.set('frameworkType', frameworkType.trim());
   const suffix = parameters.size ? `?${parameters.toString()}` : '';
   return get<PagedResult<IdpAlignmentMatrixItem>>(`/v1/idp/plans/${encodeURIComponent(planPublicId)}/alignment-matrix/page${suffix}`);
+}
+
+export async function createIdpAlignmentLink(payload: CreateIdpAlignmentLinkPayload): Promise<ApiResponse<IdpAlignmentLink>> {
+  return post<IdpAlignmentLink>('/v1/idp/alignment-links', payload);
 }
 
 export async function getIdpDocumentsPage(

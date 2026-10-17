@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { BarChart3, FileText, Layers, Map, RefreshCcw, Users } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { BarChart3, FileText, Layers, Map as MapIcon, RefreshCcw, Users } from 'lucide-react';
 import {
   createIdpComment,
   createIdpPlan,
@@ -18,6 +18,7 @@ import {
   stageIdpHierarchyImport,
   stageIdpKpiImport,
   createIdpCommunitySession,
+  createIdpAlignmentLink,
 } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
@@ -101,7 +102,7 @@ export function IdpPlanningDashboardPage() {
 
         {!busy && !dashboard ? (
           <EmptyState
-            icon={<Map className="h-6 w-6" />}
+            icon={<MapIcon className="h-6 w-6" />}
             title="No IDP dashboard data"
             description="Create an IDP plan to unlock strategic progress, participation, and budget analytics."
           />
@@ -957,9 +958,18 @@ export function IdpCommunityParticipationPage() {
 }
 
 export function IdpAlignmentMatrixPage() {
-  const canManageAlignment = useHasAnyPermission(['IDP.Alignment.Manage']);
+  const { pushToast } = useApp();
+  const security = useSecurity();
+  const canManageAlignment = security.canCreate('IDP_ALIGNMENT');
+  const canWriteNotes = security.canEditField('IDP_ALIGNMENT', 'Notes');
   const [selectedPlanPublicId, setSelectedPlanPublicId] = useState('');
   const [matrix, setMatrix] = useState<IdpAlignmentMatrixItem[]>([]);
+  const [objectives, setObjectives] = useState<Array<{ publicId: string; code: string; name: string }>>([]);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [savingAlignment, setSavingAlignment] = useState(false);
+  const [alignmentForm, setAlignmentForm] = useState({
+    objectivePublicId: '', frameworkType: 'NationalDevelopmentPlan', referenceCode: '', referenceTitle: '', notes: '',
+  });
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -999,6 +1009,49 @@ export function IdpAlignmentMatrixPage() {
     return () => { cancelled = true; };
   }, [frameworkType, page, refreshKey, search, selectedPlanPublicId, sortBy, sortDirection]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedPlanPublicId || !canManageAlignment) {
+      setObjectives([]);
+      return () => { cancelled = true; };
+    }
+    void getIdpHierarchyPathsPage(selectedPlanPublicId, { page: 1, pageSize: 100, sortBy: 'objective', sortDirection: 'asc' }).then(result => {
+      if (cancelled) return;
+      const unique = new Map<string, { publicId: string; code: string; name: string }>();
+      for (const row of result.data?.items ?? []) unique.set(row.objectivePublicId, { publicId: row.objectivePublicId, code: row.objectiveCode, name: row.objectiveName });
+      const next = [...unique.values()];
+      setObjectives(next);
+      setAlignmentForm(current => ({ ...current, objectivePublicId: next.some(item => item.publicId === current.objectivePublicId) ? current.objectivePublicId : (next[0]?.publicId ?? '') }));
+    });
+    return () => { cancelled = true; };
+  }, [canManageAlignment, selectedPlanPublicId]);
+
+  const submitAlignment = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!alignmentForm.objectivePublicId || !alignmentForm.referenceCode.trim() || !alignmentForm.referenceTitle.trim()) {
+      pushToast('error', 'Select an objective and provide the framework reference code and title.');
+      return;
+    }
+    setSavingAlignment(true);
+    const result = await createIdpAlignmentLink({
+      idpStrategicObjectivePublicId: alignmentForm.objectivePublicId,
+      frameworkType: alignmentForm.frameworkType,
+      frameworkReferenceCode: alignmentForm.referenceCode.trim(),
+      frameworkReferenceTitle: alignmentForm.referenceTitle.trim(),
+      notes: canWriteNotes && alignmentForm.notes.trim() ? alignmentForm.notes.trim() : null,
+    });
+    setSavingAlignment(false);
+    if (!result.success) {
+      pushToast('error', result.message ?? 'Failed to create the alignment link.');
+      return;
+    }
+    pushToast('success', 'Alignment link created and audit logged.');
+    setAlignmentForm(current => ({ ...current, referenceCode: '', referenceTitle: '', notes: '' }));
+    setShowCreateForm(false);
+    setPage(1);
+    setRefreshKey(value => value + 1);
+  };
+
   return (
     <AppShell title="Alignment Matrix" subtitle="NDP, PGDS, DDM, sector, and municipal alignment mapping">
       <div className="space-y-4">
@@ -1009,9 +1062,24 @@ export function IdpAlignmentMatrixPage() {
             <label className="text-xs text-secondary-600">Framework<select aria-label="Filter IDP alignment framework" className={fieldClass} value={frameworkType} onChange={event => { setFrameworkType(event.target.value); setPage(1); }}><option value="">All frameworks</option><option value="NationalDevelopmentPlan">NDP</option><option value="ProvincialGrowthStrategy">PGDS</option><option value="DistrictDevelopmentModel">DDM</option><option value="SectorPlan">Sector plan</option><option value="MunicipalGoal">Municipal goal</option><option value="Circular88">Circular 88</option><option value="TreasuryTid">Treasury TID</option></select></label>
             <label className="text-xs text-secondary-600">Sort<select aria-label="Sort IDP alignment matrix" className={fieldClass} value={sortBy} onChange={event => { setSortBy(event.target.value); setPage(1); }}><option value="objective">Objective</option><option value="outcome">Outcome</option><option value="framework">Framework</option><option value="reference">Reference</option></select></label>
             <label className="text-xs text-secondary-600">Direction<select aria-label="IDP alignment sort direction" className={fieldClass} value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select></label>
-            <div className="flex items-center gap-2"><Button variant="outline" onClick={() => setRefreshKey(value => value + 1)}>Refresh</Button>{!canManageAlignment ? <Badge variant="warning">Read Only</Badge> : null}</div>
+            <div className="flex items-center gap-2"><Button variant="outline" onClick={() => setRefreshKey(value => value + 1)}>Refresh</Button>{canManageAlignment ? <Button variant="primary" onClick={() => setShowCreateForm(value => !value)}>{showCreateForm ? 'Cancel New Alignment' : 'New Alignment Link'}</Button> : <Badge variant="warning">Read Only</Badge>}</div>
           </div>
         </Card>
+
+        {canManageAlignment && showCreateForm ? <Card>
+          <form className="space-y-3" onSubmit={submitAlignment}>
+            <h3 className="text-base font-semibold text-secondary-900 dark:text-white">New Alignment Link</h3>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <label className="text-xs text-secondary-600">Strategic objective<select aria-label="Alignment strategic objective" required className={fieldClass} value={alignmentForm.objectivePublicId} onChange={event => setAlignmentForm(current => ({ ...current, objectivePublicId: event.target.value }))}><option value="">Select an objective</option>{objectives.map(item => <option key={item.publicId} value={item.publicId}>{item.code} - {item.name}</option>)}</select></label>
+              <label className="text-xs text-secondary-600">Framework<select aria-label="Alignment framework" required className={fieldClass} value={alignmentForm.frameworkType} onChange={event => setAlignmentForm(current => ({ ...current, frameworkType: event.target.value }))}><option value="NationalDevelopmentPlan">NDP</option><option value="ProvincialGrowthStrategy">PGDS</option><option value="DistrictDevelopmentModel">DDM</option><option value="SectorPlan">Sector plan</option><option value="MunicipalGoal">Municipal goal</option><option value="Circular88">Circular 88</option><option value="TreasuryTid">Treasury TID</option></select></label>
+              <Input label="Framework reference code" required maxLength={120} value={alignmentForm.referenceCode} onChange={event => setAlignmentForm(current => ({ ...current, referenceCode: event.target.value }))} />
+              <Input label="Framework reference title" required maxLength={300} value={alignmentForm.referenceTitle} onChange={event => setAlignmentForm(current => ({ ...current, referenceTitle: event.target.value }))} />
+            </div>
+            {canWriteNotes ? <Input label="Alignment notes" maxLength={2000} value={alignmentForm.notes} onChange={event => setAlignmentForm(current => ({ ...current, notes: event.target.value }))} /> : null}
+            {!objectives.length ? <p className="text-sm text-secondary-500">Create at least one governed objective and KPI path before linking an external framework.</p> : null}
+            <div className="flex justify-end"><Button type="submit" variant="primary" disabled={savingAlignment || !objectives.length}>{savingAlignment ? 'Saving…' : 'Save Alignment Link'}</Button></div>
+          </form>
+        </Card> : null}
 
         <Card>
           <div className="overflow-x-auto">

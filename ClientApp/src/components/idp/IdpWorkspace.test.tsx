@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { IdpAlignmentMatrixPage, IdpCommunityParticipationPage, IdpHierarchyPage, IdpPlanManagementPage, IdpPlanningDashboardPage, IdpReportsPage } from './IdpWorkspace';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), setCurrentPath: vi.fn() }));
-const security = vi.hoisted(() => ({ canCreate: vi.fn<(resource: string) => boolean>(() => true), canImport: vi.fn(() => true), canReadField: vi.fn(() => false), canEditField: vi.fn(() => false) }));
+const security = vi.hoisted(() => ({ canCreate: vi.fn<(resource: string) => boolean>(() => true), canImport: vi.fn(() => true), canReadField: vi.fn<(resource: string, member: string) => boolean>(() => false), canEditField: vi.fn<(resource: string, member: string) => boolean>(() => false) }));
 const api = vi.hoisted(() => ({
   createIdpPlan: vi.fn(),
   createIdpPlanVersion: vi.fn(),
@@ -21,6 +21,7 @@ const api = vi.hoisted(() => ({
   getIdpReport: vi.fn(),
   createIdpComment: vi.fn(),
   createIdpCommunitySession: vi.fn(),
+  createIdpAlignmentLink: vi.fn(),
 }));
 
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
@@ -101,6 +102,7 @@ describe('IDP plan lineage workspace', () => {
     api.createIdpPlanVersion.mockResolvedValue({ success: true, data: {} });
     api.createIdpComment.mockResolvedValue({ success: true, data: true });
     api.createIdpCommunitySession.mockResolvedValue({ success: true, data: true });
+    api.createIdpAlignmentLink.mockResolvedValue({ success: true, data: { publicId: 'alignment-id' } });
     api.getIdpReport.mockResolvedValue({
       success: true,
       data: {
@@ -413,6 +415,27 @@ describe('IDP plan lineage workspace', () => {
       expect.objectContaining({ page: 2, search: 'service' }),
       'Circular88',
     ));
+  });
+
+  it('creates an alignment link from a governed objective and refreshes the matrix', async () => {
+    security.canEditField.mockImplementation((_resource: string, member: string) => member === 'Notes');
+    render(<IdpAlignmentMatrixPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'New Alignment Link' }));
+    await screen.findByRole('option', { name: 'OBJ1 - Reliable services' });
+    fireEvent.change(screen.getByLabelText('Alignment framework'), { target: { value: 'DistrictDevelopmentModel' } });
+    fireEvent.change(screen.getByLabelText(/Framework reference code/), { target: { value: 'DDM-1' } });
+    fireEvent.change(screen.getByLabelText(/Framework reference title/), { target: { value: 'One Plan service delivery outcome' } });
+    fireEvent.change(screen.getByLabelText(/Alignment notes/), { target: { value: 'Council-aligned priority' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Alignment Link' }));
+
+    await waitFor(() => expect(api.createIdpAlignmentLink).toHaveBeenCalledWith({
+      idpStrategicObjectivePublicId: 'objective-id',
+      frameworkType: 'DistrictDevelopmentModel',
+      frameworkReferenceCode: 'DDM-1',
+      frameworkReferenceTitle: 'One Plan service delivery outcome',
+      notes: 'Council-aligned priority',
+    }));
+    expect(app.pushToast).toHaveBeenCalledWith('success', 'Alignment link created and audit logged.');
   });
 
   it('loads a bounded stakeholder register and hides denied contact fields and sort options', async () => {

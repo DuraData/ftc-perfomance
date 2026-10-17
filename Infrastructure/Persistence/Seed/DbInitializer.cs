@@ -1123,8 +1123,8 @@ public static class DbInitializer
         await context.SaveChangesAsync();
 
         // Seed IPMS Targets
-        var opmsTargets = await context.OpmsTargets.ToDictionaryAsync(t => t.IndicatorNumber, StringComparer.OrdinalIgnoreCase);
-        var existingIpmsTargets = await context.IpmsTargets.ToDictionaryAsync(t => t.IndicatorNumber, StringComparer.OrdinalIgnoreCase);
+        var opmsTargets = await LoadPlatformOpmsTargetsAsync(context);
+        var existingIpmsTargets = await LoadPlatformIpmsTargetsAsync(context);
         foreach (var targetSeed in GetIpmsTargetSeeds())
         {
             if (!existingIpmsTargets.TryGetValue(targetSeed.IndicatorNumber, out var target))
@@ -1167,11 +1167,14 @@ public static class DbInitializer
         await context.SaveChangesAsync();
 
         // Seed OPMS Submissions
-        var opmsTargetsById = await context.OpmsTargets.ToDictionaryAsync(t => t.Id);
+        var opmsTargetsById = await context.OpmsTargets.IgnoreQueryFilters()
+            .Where(t => t.MunicipalityId == null)
+            .ToDictionaryAsync(t => t.Id);
         foreach (var submissionSeed in GetOpmsSubmissionSeeds())
         {
             var target = opmsTargetsById.Values.First(t => t.IndicatorNumber == submissionSeed.OpmsIndicatorNumber);
-            var existing = await context.OpmsSubmissions.FirstOrDefaultAsync(s => s.OpmsTargetId == target.Id && s.Quarter == submissionSeed.Quarter);
+            var existing = await context.OpmsSubmissions.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(s => s.OpmsTargetId == target.Id && s.Quarter == submissionSeed.Quarter);
             if (existing == null)
             {
                 existing = new OpmsSubmission
@@ -1207,11 +1210,14 @@ public static class DbInitializer
         await context.SaveChangesAsync();
 
         // Seed IPMS Submissions
-        var ipmsTargetsById = await context.IpmsTargets.ToDictionaryAsync(t => t.Id);
+        var ipmsTargetsById = await context.IpmsTargets.IgnoreQueryFilters()
+            .Where(t => t.MunicipalityId == null)
+            .ToDictionaryAsync(t => t.Id);
         foreach (var submissionSeed in GetIpmsSubmissionSeeds())
         {
             var target = ipmsTargetsById.Values.First(t => t.IndicatorNumber == submissionSeed.IpmsIndicatorNumber);
-            var existing = await context.IpmsSubmissions.FirstOrDefaultAsync(s => s.IpmsTargetId == target.Id && s.Quarter == submissionSeed.Quarter);
+            var existing = await context.IpmsSubmissions.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(s => s.IpmsTargetId == target.Id && s.Quarter == submissionSeed.Quarter);
             if (existing == null)
             {
                 existing = new IpmsSubmission
@@ -1246,6 +1252,16 @@ public static class DbInitializer
         }
         await context.SaveChangesAsync();
     }
+
+    internal static Task<Dictionary<string, OpmsTarget>> LoadPlatformOpmsTargetsAsync(ApplicationDbContext context) =>
+        context.OpmsTargets.IgnoreQueryFilters()
+            .Where(target => target.MunicipalityId == null)
+            .ToDictionaryAsync(target => target.IndicatorNumber, StringComparer.OrdinalIgnoreCase);
+
+    internal static Task<Dictionary<string, IpmsTarget>> LoadPlatformIpmsTargetsAsync(ApplicationDbContext context) =>
+        context.IpmsTargets.IgnoreQueryFilters()
+            .Where(target => target.MunicipalityId == null)
+            .ToDictionaryAsync(target => target.IndicatorNumber, StringComparer.OrdinalIgnoreCase);
 
     private static IReadOnlyList<PeriodSeed> GetPeriodSeeds()
     {
