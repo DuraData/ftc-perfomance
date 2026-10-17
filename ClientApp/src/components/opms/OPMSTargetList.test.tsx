@@ -65,4 +65,38 @@ describe('OPMSTargetFilters', () => {
     expect(screen.queryByTitle('Start Submission')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'New Target' })).not.toBeInTheDocument();
   });
+
+  it('exposes only edit controls to a KPI update-only user', async () => {
+    hasAnyPermission.mockImplementation(codes => codes.includes('OPMS_KPI.UPDATE'));
+    api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getOpmsTargetsPage.mockResolvedValue({ success: true, data: { items: [{ id: 'target-1', isWithdrawn: false }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+
+    render(<OPMSTargetList />);
+
+    await waitFor(() => expect(api.getOpmsTargetsPage).toHaveBeenCalled());
+    expect(screen.getByTitle('Edit')).toBeInTheDocument();
+    expect(screen.queryByText('Read Only')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Copy')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Withdraw')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Start Submission')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create From OPMS Library' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'New Target' })).not.toBeInTheDocument();
+  });
+
+  it('exposes only creation controls to a KPI create-only user', async () => {
+    hasAnyPermission.mockImplementation(codes => codes.includes('OPMS_KPI.CREATE'));
+    api.getDepartmentMastersPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    api.getOpmsTargetsPage.mockResolvedValue({ success: true, data: { items: [{ id: 'target-1', isWithdrawn: false }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+
+    render(<OPMSTargetList />);
+
+    await waitFor(() => expect(api.getOpmsTargetsPage).toHaveBeenCalled());
+    expect(screen.getByTitle('Copy')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create From OPMS Library' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New Target' })).toBeInTheDocument();
+    expect(screen.queryByText('Read Only')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Edit')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Withdraw')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Start Submission')).not.toBeInTheDocument();
+  });
 });

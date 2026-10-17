@@ -131,11 +131,13 @@ export function OPMSTargetList() {
     setCurrentPath,
     pushToast,
   } = useApp();
-  const canManageTargets = useHasAnyPermission(['OPMS_KPI.CREATE', 'OPMS_KPI.UPDATE', 'OPMS_KPI.WITHDRAW']);
+  const canCreateTarget = useHasAnyPermission(['OPMS_KPI.CREATE']);
+  const canUpdateTarget = useHasAnyPermission(['OPMS_KPI.UPDATE']);
   const canStartSubmission = useHasAnyPermission(['OPMS_SUBMISSION.CREATE']);
   const canExecuteWithdrawal = useHasAnyPermission(['OPMS_KPI.WITHDRAW']);
   const canEditWithdrawalReason = useHasAnyPermission(['OPMS_KPI.WithdrawalReason.UPDATE']);
   const canWithdrawTarget = canExecuteWithdrawal && canEditWithdrawalReason;
+  const canMutateTargets = canCreateTarget || canUpdateTarget || canWithdrawTarget;
   const [opmsTargets, setOpmsTargets] = useState<OPMSTarget[]>([]);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -281,8 +283,7 @@ export function OPMSTargetList() {
       >
         <Eye className="w-4 h-4 text-secondary-400" />
       </button>
-      {canManageTargets ? (
-        <>
+      {canUpdateTarget ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -293,6 +294,8 @@ export function OPMSTargetList() {
           >
             <Edit2 className="w-4 h-4 text-secondary-400" />
           </button>
+      ) : null}
+      {canCreateTarget ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -320,7 +323,8 @@ export function OPMSTargetList() {
           >
             <Copy className="w-4 h-4 text-secondary-400" />
           </button>
-          {canWithdrawTarget && <button
+      ) : null}
+      {canWithdrawTarget ? <button
             onClick={(e) => {
               e.stopPropagation();
               setWithdrawalTarget(row);
@@ -330,9 +334,8 @@ export function OPMSTargetList() {
             title={row.isWithdrawn ? 'Already withdrawn' : 'Withdraw'}
           >
             <Ban className="w-4 h-4 text-error-500" />
-          </button>}
-        </>
-      ) : canStartSubmission ? (
+          </button> : null}
+      {!canMutateTargets && canStartSubmission ? (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -357,13 +360,13 @@ export function OPMSTargetList() {
               {`${totalCount} targets`}
             </Badge>
             {dashboardScope.dashboardFilter ? <Badge variant="info">Dashboard filter: {dashboardScope.dashboardFilter}</Badge> : null}
-            {!canManageTargets ? <Badge variant="warning">Read Only</Badge> : null}
+            {!canMutateTargets ? <Badge variant="warning">Read Only</Badge> : null}
             {dashboardScope.dashboardFilter ? <Button size="sm" variant="ghost" onClick={() => {
               window.history.replaceState({}, '', '/opms/targets');
               setDashboardScope({});
             }}>Clear dashboard filter</Button> : null}
           </div>
-          {canManageTargets ? (
+          {canCreateTarget ? (
             <div className="flex items-center gap-2">
               <Button variant="outline" icon={<Library className="w-4 h-4" />} onClick={() => setShowLibraryModal(true)}>
                 Create From OPMS Library
@@ -401,7 +404,7 @@ export function OPMSTargetList() {
           getRowId={(row) => row.id}
         />
 
-        {canManageTargets ? (
+        {canCreateTarget ? (
           <OpmsTemplateSelectionModal
             isOpen={showLibraryModal}
             onClose={() => setShowLibraryModal(false)}
