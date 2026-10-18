@@ -51,6 +51,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
+    [AllowAnonymous]
     [EnableRateLimiting("authentication")]
     public async Task<ActionResult<ApiResponse<LoginResponse>>> Login([FromBody] LoginRequest request)
     {
@@ -121,6 +122,7 @@ public class AuthController : ControllerBase
             "This default-role registration route is retired. Use POST /api/v1/users, then assign effective roles through dynamic security administration."));
 
     [HttpPost("/api/v1/auth/password/forgot")]
+    [AllowAnonymous]
     [EnableRateLimiting("authentication")]
     public async Task<ActionResult<ApiResponse<bool>>> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
     {
@@ -141,6 +143,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("/api/v1/auth/password/reset")]
+    [AllowAnonymous]
     [EnableRateLimiting("authentication")]
     public async Task<ActionResult<ApiResponse<bool>>> ResetPassword(ResetPasswordRequest request)
     {
@@ -181,6 +184,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("refresh-token")]
+    [AllowAnonymous]
     [EnableRateLimiting("authentication")]
     public async Task<ActionResult<ApiResponse<LoginResponse>>> RefreshToken()
     {

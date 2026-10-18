@@ -1,4 +1,5 @@
 using FTCERP.Host.API.Responses;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FTCERP.Host.API.Controllers;
@@ -10,6 +11,7 @@ namespace FTCERP.Host.API.Controllers;
 /// unversioned security contract.
 /// </summary>
 [ApiController]
+[AllowAnonymous]
 [Route("api")]
 [ApiExplorerSettings(IgnoreApi = true)]
 public sealed class LegacyAuthController : ControllerBase
