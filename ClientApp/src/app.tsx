@@ -26,6 +26,7 @@ const PermissionSimulationPage = lazy(() => import('./components/admin/AccessGov
 const RoleAccessMatrixPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.RoleAccessMatrixPage })));
 const RolePermissionCrudAuditPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.RolePermissionCrudAuditPage })));
 const SystemCoverageAuditPage = lazy(() => import('./components/admin/AccessGovernancePages').then(module => ({ default: module.SystemCoverageAuditPage })));
+const SystemOperationsPage = lazy(() => import('./components/admin/SystemOperationsPage').then(module => ({ default: module.SystemOperationsPage })));
 const StrategicPlanningAdministration = lazy(() => import('./components/admin/StrategicPlanningAdministration').then(module => ({ default: module.StrategicPlanningAdministration })));
 const IPMSTargetLibraryDetail = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.IPMSTargetLibraryDetail })));
 const IPMSTargetLibraryList = lazy(() => import('./components/library/TargetLibraries').then(module => ({ default: module.IPMSTargetLibraryList })));
@@ -241,6 +242,8 @@ function AppContent() {
         return <SystemCoverageAuditPage />;
       case '/system-administration/role-permission-crud-audit':
         return <RolePermissionCrudAuditPage />;
+      case '/system-administration/operations':
+        return <SystemOperationsPage />;
       case '/admin/budget-types':
         return <StrategicPlanningAdministration kind="budget-types" />;
       case '/admin/budget-sources':

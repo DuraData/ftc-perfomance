@@ -640,6 +640,7 @@ public static class DbInitializer
                 "SystemAdministration.RoleAccessMatrix.View",
                 "SystemAdministration.PermissionSimulation.View",
                 "SystemAdministration.SystemCoverageAudit.View",
+                "SYSTEM_OPERATIONS.READ",
                 "SystemAdministration.AuditTrail.View"),
             [SecurityModel.ClientAdmin] = BaseAccess("UserDirectory.View", "Audit.Reports.View", "Reports.View", "SystemAdministration.AuditTrail.View"),
             [SecurityModel.AuditorGeneral] = BaseAccess(

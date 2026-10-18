@@ -68,6 +68,7 @@ public static class SecurityRegistrySeeder
             Resource("AUDIT_TRAIL", "Business and Security Audit Trail", false, true, false, false, true, true),
             Resource("NOTIFICATION_POLICY", "Notification Policy", true, true, true, false, true, true),
             Resource("NOTIFICATION_DELIVERY", "Notification Delivery Operations", false, true, false, false, true, true),
+            Resource("SYSTEM_OPERATIONS", "System Operations", false, true, false, false, false, false),
             Resource("C88_INDICATOR", "Circular 88 Indicator", true, true, true, false, true, true),
             Resource("C88_REPORT", "Circular 88 Report", true, true, true, false, true, true)
         };
@@ -625,7 +626,8 @@ public static class SecurityRegistrySeeder
             Nav("NAV.ADMIN.ROLE_ACCESS_MATRIX", "Role Access Matrix", "/system-administration/role-access-matrix", "grid", 70, "SystemAdministration.RoleAccessMatrix.View", rootIds["NAV.ADMIN"]),
             Nav("NAV.ADMIN.PERMISSION_SIMULATION", "Permission Simulation", "/system-administration/permission-simulation", "shield", 80, "SystemAdministration.PermissionSimulation.View", rootIds["NAV.ADMIN"]),
             Nav("NAV.ADMIN.SYSTEM_COVERAGE_AUDIT", "System Coverage Audit", "/system-administration/system-coverage-audit", "check-circle", 90, "SystemAdministration.SystemCoverageAudit.View", rootIds["NAV.ADMIN"]),
-            Nav("NAV.ADMIN.ROLE_PERMISSION_CRUD_AUDIT", "Role Permission & CRUD Audit", "/system-administration/role-permission-crud-audit", "clipboard-list", 100, "RoleImplementationAudit.View", rootIds["NAV.ADMIN"])
+            Nav("NAV.ADMIN.ROLE_PERMISSION_CRUD_AUDIT", "Role Permission & CRUD Audit", "/system-administration/role-permission-crud-audit", "clipboard-list", 100, "RoleImplementationAudit.View", rootIds["NAV.ADMIN"]),
+            Nav("NAV.ADMIN.OPERATIONS", "System Operations", "/system-administration/operations", "activity", 110, "SYSTEM_OPERATIONS.READ", rootIds["NAV.ADMIN"])
         };
         existingCodes = await context.SecurityNavigationItems.Select(item => item.Code).ToHashSetAsync(StringComparer.OrdinalIgnoreCase);
         context.SecurityNavigationItems.AddRange(children.Where(item => !existingCodes.Contains(item.Code)));
@@ -695,7 +697,7 @@ public static class SecurityRegistrySeeder
             ["UserDirectory.View"] = ["NAV.ORGANISATION.EMPLOYEES", "EMPLOYEE.READ", "EMPLOYEE.EmployeeNumber.READ", "EMPLOYEE.IdentityUserId.READ"],
             ["Admin.Users.Manage"] = ["NAV.ADMIN.USERS", "USER.CREATE", "USER.READ", "USER.UPDATE", "USER.DELETE", "USER.Email.READ", "USER.Email.UPDATE", "USER.PhoneNumber.READ", "USER.PhoneNumber.UPDATE", "USER.ENABLE", "USER.DISABLE", "EMPLOYEE.EmployeeNumber.READ", "EMPLOYEE.EmployeeNumber.UPDATE", "EMPLOYEE.EmailAddress.READ", "EMPLOYEE.EmailAddress.UPDATE", "EMPLOYEE.IdentityUserId.READ", "EMPLOYEE.IdentityUserId.UPDATE", "ROLE.ASSIGN", "SECURITY.VIEW_EFFECTIVE", "SECURITY.ASSIGN_ROLES"],
             ["Admin.Roles.Manage"] = ["NAV.ADMIN.ROLES", "SECURITY.VIEW", "SECURITY.MANAGE_ROLES", "SECURITY.ASSIGN_ROLES", "SECURITY.VIEW_EFFECTIVE"],
-            ["Admin.Permissions.Manage"] = ["NAV.ADMIN.SECURITY", "SECURITY.VIEW", "SECURITY.MANAGE_PERMISSIONS", "SECURITY.MANAGE_NAVIGATION", "SECURITY.VIEW_EFFECTIVE", "RoleImplementationAudit.View", "SystemAdministration.RoleAccessMatrix.View", "SystemAdministration.PermissionSimulation.View", "SystemAdministration.SystemCoverageAudit.View"], ["Audit.Logs.View"] = ["NAV.ADMIN.AUDIT", "AUDIT_TRAIL.READ", "AUDIT_TRAIL.EntityId.READ", "AUDIT_TRAIL.OldValue.READ", "AUDIT_TRAIL.NewValue.READ", "AUDIT_TRAIL.ChangedBy.READ", "AUDIT_TRAIL.IpAddress.READ", "AUDIT_TRAIL.CorrelationId.READ", "AUDIT_TRAIL.Reason.READ", "AUDIT_TRAIL.UserAgent.READ", "AUDIT_TRAIL.SessionId.READ"],
+            ["Admin.Permissions.Manage"] = ["NAV.ADMIN.SECURITY", "SECURITY.VIEW", "SECURITY.MANAGE_PERMISSIONS", "SECURITY.MANAGE_NAVIGATION", "SECURITY.VIEW_EFFECTIVE", "RoleImplementationAudit.View", "SystemAdministration.RoleAccessMatrix.View", "SystemAdministration.PermissionSimulation.View", "SystemAdministration.SystemCoverageAudit.View", "SYSTEM_OPERATIONS.READ"], ["Audit.Logs.View"] = ["NAV.ADMIN.AUDIT", "AUDIT_TRAIL.READ", "AUDIT_TRAIL.EntityId.READ", "AUDIT_TRAIL.OldValue.READ", "AUDIT_TRAIL.NewValue.READ", "AUDIT_TRAIL.ChangedBy.READ", "AUDIT_TRAIL.IpAddress.READ", "AUDIT_TRAIL.CorrelationId.READ", "AUDIT_TRAIL.Reason.READ", "AUDIT_TRAIL.UserAgent.READ", "AUDIT_TRAIL.SessionId.READ"],
             ["AUTHENTICATION.LINK_IDENTITIES"] = ["AUTHENTICATION.UserEmail.READ", "AUTHENTICATION.ExpectedEmail.READ", "AUTHENTICATION.ExpectedEmail.UPDATE", "AUTHENTICATION.Issuer.READ", "AUTHENTICATION.Issuer.UPDATE", "AUTHENTICATION.Subject.READ", "AUTHENTICATION.Subject.UPDATE"],
             ["AUTHENTICATION.VIEW_EVENTS"] = ["AUTHENTICATION.EventUserId.READ", "AUTHENTICATION.EventIpAddress.READ"],
             ["Audit.LoginLogs.View"] = ["LOGIN_AUDIT.READ", "LOGIN_AUDIT.UserId.READ", "LOGIN_AUDIT.Email.READ", "LOGIN_AUDIT.IpAddress.READ", "LOGIN_AUDIT.UserAgent.READ", "LOGIN_AUDIT.FailureReason.READ"],

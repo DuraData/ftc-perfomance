@@ -627,7 +627,8 @@ public sealed class ControlledSeedSecurityTests
             ["NAV.ADMIN.ROLE_ACCESS_MATRIX"] = ("/system-administration/role-access-matrix", "SystemAdministration.RoleAccessMatrix.View"),
             ["NAV.ADMIN.PERMISSION_SIMULATION"] = ("/system-administration/permission-simulation", "SystemAdministration.PermissionSimulation.View"),
             ["NAV.ADMIN.SYSTEM_COVERAGE_AUDIT"] = ("/system-administration/system-coverage-audit", "SystemAdministration.SystemCoverageAudit.View"),
-            ["NAV.ADMIN.ROLE_PERMISSION_CRUD_AUDIT"] = ("/system-administration/role-permission-crud-audit", "RoleImplementationAudit.View")
+            ["NAV.ADMIN.ROLE_PERMISSION_CRUD_AUDIT"] = ("/system-administration/role-permission-crud-audit", "RoleImplementationAudit.View"),
+            ["NAV.ADMIN.OPERATIONS"] = ("/system-administration/operations", "SYSTEM_OPERATIONS.READ")
         };
 
         foreach (var (code, definition) in expected)
@@ -640,6 +641,11 @@ public sealed class ControlledSeedSecurityTests
             var requiredPermission = await context.Permissions.SingleAsync(item => item.Code == definition.Permission);
             (await context.RolePermissions.SingleAsync(item => item.RoleId == role.Id && item.PermissionId == requiredPermission.Id)).IsAllowed.Should().BeTrue();
         }
+
+        var operationsPermission = await context.Permissions.SingleAsync(item => item.Code == "SYSTEM_OPERATIONS.READ");
+        operationsPermission.Kind.Should().Be(SecurityPermissionKind.Resource);
+        operationsPermission.ResourceCode.Should().Be("SYSTEM_OPERATIONS");
+        operationsPermission.Operation.Should().Be(SecurityOperation.Read);
     }
 
     private sealed class SystemTenantContext : ITenantContext

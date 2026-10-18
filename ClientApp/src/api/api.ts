@@ -158,6 +158,7 @@ import type {
   AuthenticationConfiguration,
   UserAuthenticator,
   AuthenticationEvent,
+  SystemOperationsOverview,
   Attachment,
   BudgetSource,
   BudgetType,
@@ -2298,6 +2299,10 @@ export async function getRoleAccessMatrixPage(query: RegisterPageQuery = {}): Pr
 
 export async function getSystemCoverageAuditPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<SystemCoverageAuditRow>>> {
   return get<PagedResult<SystemCoverageAuditRow>>(`/v1/access/system-coverage-audit/page${registerPageQuery(query)}`);
+}
+
+export async function getSystemOperationsOverview(): Promise<ApiResponse<SystemOperationsOverview>> {
+  return get<SystemOperationsOverview>('/v1/system-operations/overview');
 }
 
 export async function getRolePermissionCrudAuditPage(query: RegisterPageQuery = {}): Promise<ApiResponse<PagedResult<RolePermissionCrudAuditRow>>> {

@@ -3944,6 +3944,28 @@ export interface StrategicRiskHeatmapDto {
 
 export interface StrategicRiskOwnerOptionDto { publicId: string; fullName: string; email: string }
 
+export interface SystemOperationsOverview {
+  generatedAt: string;
+  startedAt: string;
+  uptimeSeconds: number;
+  status: 'Healthy' | 'Degraded' | 'Unhealthy';
+  totalHealthCheckDurationMilliseconds: number;
+  checks: Array<{ name: string; status: 'Healthy' | 'Degraded' | 'Unhealthy'; durationMilliseconds: number }>;
+  requests: {
+    started: number;
+    completed: number;
+    failed: number;
+    active: number;
+    failureRatePercent: number;
+    averageDurationMilliseconds: number;
+  };
+  alertThresholds: {
+    minimumRequests: number;
+    failureRatePercent: number;
+    averageDurationMilliseconds: number;
+  };
+}
+
 export interface SaveStrategicRiskTreatmentPayload {
   strategicRiskPublicId: string; title: string; description?: string | null; ownerUserPublicId: string;
   dueAt: string; status: 'OPEN' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'; progressPercent: number;

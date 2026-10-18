@@ -16,6 +16,7 @@ import {
   ClipboardList,
   BarChart3,
   Layers3,
+  Activity,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { MenuItem } from '../../types';
@@ -41,6 +42,7 @@ const iconMap: Record<string, React.ReactNode> = {
   'projects': <FolderKanban className="w-5 h-5" />,
   'library': <Library className="w-5 h-5" />,
   'map': <Map className="w-5 h-5" />,
+  'activity': <Activity className="w-5 h-5" />,
 };
 
 export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: SidebarProps) {
