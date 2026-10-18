@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { SecurityProvider } from './context/SecurityContext';
 import { Login } from './components/auth/Login';
 import { AccessDeniedPage, useCanAccessPath } from './components/security/AccessControl';
+import { TenantScopeBoundary } from './components/common/TenantScopeBoundary';
 
 const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(module => ({ default: module.Dashboard })));
 const OPMSTargetList = lazy(() => import('./components/opms/OPMSTargetList').then(module => ({ default: module.OPMSTargetList })));
@@ -65,7 +66,7 @@ const RiskHeatmapPage = lazy(() => import('./components/risk/RiskWorkspace').the
 const RiskReportsPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskReportsPage })));
 
 function AppContent() {
-  const { currentPath, isAuthenticated, accessReady } = useApp();
+  const { currentPath, isAuthenticated, accessReady, currentMunicipalityPublicId } = useApp();
   const canAccessPath = useCanAccessPath(currentPath);
 
   if (!isAuthenticated) {
@@ -334,9 +335,11 @@ function AppContent() {
   };
 
   return (
-    <Suspense fallback={<div role="status" aria-live="polite" className="p-6 text-sm text-secondary-600">Loading workspace…</div>}>
-      {renderPage()}
-    </Suspense>
+    <TenantScopeBoundary municipalityPublicId={currentMunicipalityPublicId}>
+      <Suspense fallback={<div role="status" aria-live="polite" className="p-6 text-sm text-secondary-600">Loading workspace…</div>}>
+        {renderPage()}
+      </Suspense>
+    </TenantScopeBoundary>
   );
 }
 
