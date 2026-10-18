@@ -70,6 +70,7 @@ type SubmissionRecord = OPMSSubmission | IPMSSubmission;
 interface SubmissionWorkspaceProps {
   submission: SubmissionRecord;
   submissionType: 'OPMS' | 'IPMS';
+  initialTab?: 'details' | 'evidence' | 'verification' | 'approval' | 'pms' | 'auditor' | 'comments';
   titlePrefix?: string;
   subtitle?: string;
   onBack?: () => void;
@@ -356,6 +357,7 @@ function WorkflowRail({ status, workflow }: { status: SubmissionStatus; workflow
 export function SubmissionWorkspace({
   submission,
   submissionType,
+  initialTab = 'details',
   titlePrefix = 'Workflow / Verification',
   subtitle,
   onBack,
@@ -371,7 +373,7 @@ export function SubmissionWorkspace({
   const workflowResourceCode = `${submissionType}_WORKFLOW`;
   const canReadEvidence = security.canRead(poeResourceCode);
   const canUploadEvidence = security.canExecute(`${submissionType}_POE.UPLOAD`);
-  const [activeTab, setActiveTab] = useState('details');
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [isEditing, setIsEditing] = useState(false);
   const [draftSubmission, setDraftSubmission] = useState<SubmissionRecord>(submission);
   const [workflowComment, setWorkflowComment] = useState('');
@@ -987,7 +989,7 @@ export function SubmissionWorkspace({
         <Button variant="ghost" size="sm" icon={<ChevronLeft className="h-4 w-4" />} onClick={onBack}>
           Previous
         </Button>
-        <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} variant="compact" />
+        <Tabs tabs={tabs} activeTab={activeTab} onChange={tab => setActiveTab(tab as typeof activeTab)} variant="compact" />
         <Button variant="ghost" size="sm" icon={<ChevronRight className="h-4 w-4" />} iconPosition="right">
           Next
         </Button>

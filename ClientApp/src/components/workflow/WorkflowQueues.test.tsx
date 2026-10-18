@@ -13,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
 
 const appMocks = vi.hoisted(() => ({
   pushToast: vi.fn(),
+  setCurrentPath: vi.fn(),
   currentPath: '/workflow/verification',
   userProfile: { id: 'submitter-live' },
 }));
@@ -26,6 +27,7 @@ vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: Reac
 describe('WorkflowQueues', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
     appMocks.currentPath = '/workflow/verification';
     securityMocks.canReadField.mockReturnValue(true);
   });
@@ -85,6 +87,34 @@ describe('WorkflowQueues', () => {
     expect(await screen.findByText('Returned Submissions')).toBeInTheDocument();
     expect(screen.getByText('1')).toBeInTheDocument();
     expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('my-returned', 1);
+  });
+
+  it('opens an OPMS queue record at the governed KPI workflow and reporting-period deep link', async () => {
+    apiMocks.getWorkflowQueue.mockResolvedValue({
+      success: true,
+      data: {
+        queue: 'verification', counts: { ...emptyCountsForTest(), verification: 1 },
+        page: { items: [{
+          id: 'submission-live', publicId: 'submission-public', kind: 'opms', targetId: 'target-live',
+          targetPublicId: 'target-public', targetName: 'Live Water KPI', indicatorNumber: 'LIVE-001',
+          quarter: 'Q1', status: 'pending_verification', createdAt: '2026-10-01T00:00:00Z',
+        }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+      },
+    });
+    apiMocks.getOpmsSubmission.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'submission-public', reportingPeriodPublicId: 'period-public', quarter: 'Q1', status: 'pending_verification',
+        dueDate: '2026-10-15T00:00:00Z', actualPerformance: '42', variance: -2, actualExpenditure: 10,
+        target: { id: 'target-public', targetName: 'Live Water KPI' },
+      },
+    });
+
+    render(<WorkflowQueues />);
+    fireEvent.click(await screen.findByText('Live Water KPI'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open KPI Workspace' }));
+
+    expect(appMocks.setCurrentPath).toHaveBeenCalledWith('/opms/targets/target-public?tab=workflow&period=period-public');
   });
 
   it('shows an explicit service error instead of fixture submissions', async () => {

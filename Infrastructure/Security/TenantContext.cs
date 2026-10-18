@@ -37,7 +37,8 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         var system = access.EffectivePermissions.Contains("SECURITY.SYSTEM_SCOPE", StringComparer.OrdinalIgnoreCase);
         var allowed = access.RoleAssignments.Where(item => item.MunicipalityId.HasValue).Select(item => item.MunicipalityId!.Value).Distinct().ToArray();
         long? requested = null;
-        if (context.Request.Headers.ContainsKey(LegacyHeaderName))
+        if (context.Request.Headers.TryGetValue(LegacyHeaderName, out var legacyValue)
+            && !string.IsNullOrWhiteSpace(legacyValue.ToString()))
         {
             await ApiProblemDetails.WriteAsync(context, StatusCodes.Status410Gone,
                 $"{LegacyHeaderName} is retired. Use {HeaderName} with the municipality PublicId.", "TENANT_CONTEXT_PRIVATE_KEY_RETIRED");

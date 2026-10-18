@@ -40,6 +40,7 @@ import type { OPMSTarget, IPMSTarget, OPMSSubmission, Employee, AuditTrailEntryD
 import { KpiOrderingEditor } from '../targets/KpiOrderingEditor';
 import { KpiDefinitionRevisionEditor } from '../targets/KpiDefinitionRevisionEditor';
 import { DetailCollectionPaging } from '../common/DetailCollectionPaging';
+import { readKpiDetailContext, type KpiDetailTab } from './kpiDetailNavigation';
 
 interface TargetDetailProps {
   targetId?: string;
@@ -272,6 +273,9 @@ function BudgetTab({ target, canReadAmounts = true }: { target: OPMSTarget; canR
 
 function SubmissionsTab({
   submissions,
+  initialReportingPeriodPublicId,
+  initialWorkspaceTab = 'details',
+  onSubmissionSelected,
   page,
   totalPages,
   totalCount,
@@ -280,6 +284,9 @@ function SubmissionsTab({
   onDeleteSubmission,
 }: {
   submissions: OPMSSubmission[];
+  initialReportingPeriodPublicId?: string;
+  initialWorkspaceTab?: 'details' | 'evidence' | 'verification' | 'approval' | 'pms' | 'auditor' | 'comments';
+  onSubmissionSelected?: (submission: OPMSSubmission | null) => void;
   page: number;
   totalPages: number;
   totalCount: number;
@@ -287,9 +294,15 @@ function SubmissionsTab({
   onUpdateSubmission: (submission: OPMSSubmission) => void;
   onDeleteSubmission: (submissionId: string, reason: string) => void;
 }) {
-  const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
+  const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(() =>
+    initialReportingPeriodPublicId
+      ? submissions.find(item => item.reportingPeriodPublicId === initialReportingPeriodPublicId) ?? null
+      : null);
 
-  const openSubmission = (submission: OPMSSubmission) => setSelectedSubmission(submission);
+  const openSubmission = (submission: OPMSSubmission) => {
+    setSelectedSubmission(submission);
+    onSubmissionSelected?.(submission);
+  };
 
   const columns = [
     { id: 'quarter', header: 'Reporting Period', accessor: (row: OPMSSubmission) => row.quarter },
@@ -303,13 +316,14 @@ function SubmissionsTab({
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setSelectedSubmission(null)}>
+          <Button variant="outline" size="sm" onClick={() => { setSelectedSubmission(null); onSubmissionSelected?.(null); }}>
             Back to Submissions
           </Button>
         </div>
         <SubmissionWorkspace
           submission={selectedSubmission}
           submissionType="OPMS"
+          initialTab={initialWorkspaceTab}
           onSave={(updated) => {
             onUpdateSubmission(updated as OPMSSubmission);
             setSelectedSubmission(updated as OPMSSubmission);
@@ -510,10 +524,15 @@ function HistoryTab({ entries, page, totalPages, totalCount, onPageChange }: { e
   );
 }
 
+type SubmissionWorkspaceTab = 'details' | 'evidence' | 'verification' | 'approval' | 'pms' | 'auditor' | 'comments';
+
 export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   const { setCurrentPath } = useApp();
   const security = useSecurity();
-  const [activeTab, setActiveTab] = useState('general');
+  const [initialContext] = useState(readKpiDetailContext);
+  const [activeTab, setActiveTab] = useState<KpiDetailTab>(initialContext.tab);
+  const [detailSection, setDetailSection] = useState('general');
+  const [selectedReportingPeriodPublicId, setSelectedReportingPeriodPublicId] = useState(initialContext.reportingPeriodPublicId);
   const [target, setTarget] = useState<OPMSTarget | null>(null);
   const [opmsSubmissions, setOpmsSubmissions] = useState<OPMSSubmission[]>([]);
   const [ipmsTargets, setIpmsTargets] = useState<IPMSTarget[]>([]);
@@ -531,7 +550,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
       setIsLoading(true);
       const [targetResult, submissionsResult, ipmsTargetsResult] = await Promise.all([
         getOpmsTargetApi(targetId),
-        getOpmsSubmissionsApi({ page: 1, pageSize: 25, targetPublicId: targetId }),
+        getOpmsSubmissionsApi({ page: 1, pageSize: 25, targetPublicId: targetId, ...(initialContext.reportingPeriodPublicId ? { reportingPeriodPublicId: initialContext.reportingPeriodPublicId } : {}) }),
         getIpmsTargetsApi({ page: 1, pageSize: 25, relatedOpmsTargetPublicId: targetId }),
       ]);
 
@@ -554,7 +573,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
     };
 
     setSubmissionPage(1); setRelatedPage(1); void loadData();
-  }, [targetId]);
+  }, [initialContext.reportingPeriodPublicId, targetId]);
 
   const loadSubmissionPage = async (page: number) => {
     const result = await getOpmsSubmissionsApi({ page, pageSize: 25, targetPublicId: targetId });
@@ -593,32 +612,60 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
     );
   }
 
-  const tabs = [
+  const detailTabs = [
     { id: 'general', label: 'General', icon: <FileText className="w-3.5 h-3.5" /> },
     { id: 'strategy', label: 'Strategy', icon: <Target className="w-3.5 h-3.5" /> },
-    { id: 'quarterly', label: 'Quarterly', icon: <TrendingUp className="w-3.5 h-3.5" /> },
     { id: 'budget', label: 'Budget', icon: <DollarSign className="w-3.5 h-3.5" /> },
     { id: 'ordering', label: 'Ordering', icon: <ListOrdered className="w-3.5 h-3.5" /> },
     { id: 'revisions', label: 'Revisions', icon: <History className="w-3.5 h-3.5" /> },
-    { id: 'submissions', label: 'Submissions', icon: <FileText className="w-3.5 h-3.5" />, badge: submissionMeta.totalCount },
     { id: 'votes', label: 'Votes', icon: <Layers className="w-3.5 h-3.5" /> },
     { id: 'ipms', label: 'IPMS', icon: <Link2 className="w-3.5 h-3.5" />, badge: relatedMeta.totalCount },
     { id: 'assignees', label: 'Assignees', icon: <Users className="w-3.5 h-3.5" /> },
-    { id: 'attachments', label: 'Files', icon: <Paperclip className="w-3.5 h-3.5" /> },
-    { id: 'history', label: 'Audit', icon: <History className="w-3.5 h-3.5" /> },
+    { id: 'attachments', label: 'KPI Files', icon: <Paperclip className="w-3.5 h-3.5" /> },
   ];
 
-  const renderTabContent = () => {
-    switch (activeTab) {
+  const tabs = [
+    { id: 'kpi-details', label: 'KPI Details', icon: <Target className="w-3.5 h-3.5" /> },
+    { id: 'reporting', label: 'Reporting', icon: <TrendingUp className="w-3.5 h-3.5" />, badge: submissionMeta.totalCount },
+    { id: 'poe', label: 'POE', icon: <Paperclip className="w-3.5 h-3.5" /> },
+    { id: 'workflow', label: 'Workflow', icon: <ListOrdered className="w-3.5 h-3.5" /> },
+    { id: 'pms-review', label: 'PMS Review', icon: <Users className="w-3.5 h-3.5" /> },
+    { id: 'internal-audit', label: 'Internal Audit', icon: <Layers className="w-3.5 h-3.5" /> },
+    { id: 'history', label: 'History', icon: <History className="w-3.5 h-3.5" /> },
+  ];
+
+  const navigateToTab = (tab: KpiDetailTab, reportingPeriodPublicId?: string) => {
+    setActiveTab(tab);
+    setSelectedReportingPeriodPublicId(reportingPeriodPublicId);
+    const parameters = new URLSearchParams({ tab });
+    if (reportingPeriodPublicId) parameters.set('period', reportingPeriodPublicId);
+    setCurrentPath(`/opms/targets/${target.id}?${parameters.toString()}`);
+  };
+
+  const renderDetailSection = () => {
+    switch (detailSection) {
       case 'general': return <GeneralInfoTab target={target} />;
       case 'strategy': return <StrategyTab target={target} canReadInternalReference={security.canReadField('OPMS_KPI', 'InternalReference')} canReadFmsLink={security.canReadField('OPMS_KPI', 'FmsLink')} />;
-      case 'quarterly': return <QuarterlyTargetsTab target={target} />;
       case 'budget': return <BudgetTab target={target} canReadAmounts={security.canReadField('OPMS_KPI', 'BudgetSourceAmounts')} />;
       case 'ordering': return <KpiOrderingEditor kind="opms" targetId={target.id} originalOrderNumber={target.originalOrderNumber} revisedOrderNumber={target.revisedOrderNumber} rowVersion={target.rowVersion ?? ''} onUpdated={value => setTarget(current => current ? { ...current, ...value } : current)} />;
       case 'revisions': return <KpiDefinitionRevisionEditor kind="opms" target={target} onUpdated={value => setTarget(value as OPMSTarget)} />;
-      case 'submissions': return (
-        <SubmissionsTab
+      case 'votes': return <VoteNumbersTab target={target} />;
+      case 'ipms': return <RelatedIPMSTab ipmsTargets={ipmsTargets.filter(item => item.relatedOPMSTarget?.id === target.id)} page={relatedPage} totalPages={relatedMeta.totalPages} totalCount={relatedMeta.totalCount} onPageChange={page => { void loadRelatedPage(page); }} />;
+      case 'assignees': return <AssigneesTab target={target} />;
+      case 'attachments': return <AttachmentsTab target={target} />;
+      default: return <GeneralInfoTab target={target} />;
+    }
+  };
+
+  const renderSubmissionSurface = (workspaceTab: SubmissionWorkspaceTab, description: string) => (
+    <div className="space-y-4">
+      <p className="text-sm text-secondary-600 dark:text-secondary-300">{description}</p>
+      <SubmissionsTab
+          key={`${activeTab}-${selectedReportingPeriodPublicId ?? 'register'}`}
           submissions={opmsSubmissions.filter(s => s.target.id === target.id)}
+          initialReportingPeriodPublicId={selectedReportingPeriodPublicId}
+          initialWorkspaceTab={workspaceTab}
+          onSubmissionSelected={submission => { navigateToTab(activeTab, submission?.reportingPeriodPublicId); if (!submission) void loadSubmissionPage(1); }}
           page={submissionPage}
           totalPages={submissionMeta.totalPages}
           totalCount={submissionMeta.totalCount}
@@ -648,13 +695,18 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
             })();
           }}
         />
-      );
-      case 'votes': return <VoteNumbersTab target={target} />;
-      case 'ipms': return <RelatedIPMSTab ipmsTargets={ipmsTargets.filter(item => item.relatedOPMSTarget?.id === target.id)} page={relatedPage} totalPages={relatedMeta.totalPages} totalCount={relatedMeta.totalCount} onPageChange={page => { void loadRelatedPage(page); }} />;
-      case 'assignees': return <AssigneesTab target={target} />;
-      case 'attachments': return <AttachmentsTab target={target} />;
+    </div>
+  );
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'kpi-details': return <div className="space-y-4"><Tabs tabs={detailTabs} activeTab={detailSection} onChange={setDetailSection} variant="compact" />{renderDetailSection()}</div>;
+      case 'reporting': return <div className="space-y-6"><QuarterlyTargetsTab target={target} />{renderSubmissionSurface('details', 'Select a reporting period to view or capture its authoritative actual performance, variance context and consolidation basis.')}</div>;
+      case 'poe': return renderSubmissionSurface('evidence', 'Select a reporting period to manage current, inherited and superseded proof-of-evidence records through the governed evidence register.');
+      case 'workflow': return renderSubmissionSurface('comments', 'Select a reporting period to inspect its configured workflow progression, append-only actions, RFIs, stage ratings and due-date history.');
+      case 'pms-review': return renderSubmissionSurface('pms', 'Select a reporting period to inspect the independent PMS review without changing the submitted target, actual or evidence.');
+      case 'internal-audit': return renderSubmissionSurface('auditor', 'Select a reporting period to inspect Internal Audit assessment and RFI history independently of PMS review.');
       case 'history': return <HistoryTab entries={auditEntries} page={auditPage} totalPages={auditMeta.totalPages} totalCount={auditMeta.totalCount} onPageChange={page => void loadAuditPage(page)} />;
-      default: return <GeneralInfoTab target={target} />;
     }
   };
 
@@ -677,7 +729,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setCurrentPath('/opms/targets')}>Back To Targets</Button>
-            <Button variant="primary" size="sm" onClick={() => setActiveTab('submissions')}>Manage Submissions</Button>
+            <Button variant="primary" size="sm" onClick={() => navigateToTab('reporting')}>Manage Reporting</Button>
           </div>
         </div>
 
@@ -700,7 +752,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
         {/* Tabs */}
         <Card padding="none">
           <div className="border-b border-secondary-200 dark:border-secondary-700 px-3 py-2 sticky top-0 bg-white dark:bg-secondary-900 z-10">
-            <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} variant="compact" />
+            <Tabs tabs={tabs} activeTab={activeTab} onChange={tab => navigateToTab(tab as KpiDetailTab, selectedReportingPeriodPublicId)} variant="compact" />
           </div>
           <div className="p-4">
             {renderTabContent()}

@@ -29,9 +29,11 @@ function QueueCard({ title, count, icon, color, onClick }: { title: string; coun
   );
 }
 
-function SubmissionDetailModal({ submission, kind, isOpen, onClose, showAudit = false }: { submission: SubmissionDetail | null; kind: 'opms' | 'ipms' | null; isOpen: boolean; onClose: () => void; showAudit?: boolean }) {
-  const [activeTab, setActiveTab] = useState('details');
+function SubmissionDetailModal({ submission, kind, isOpen, onClose, showAudit = false, initialTab = 'details' }: { submission: SubmissionDetail | null; kind: 'opms' | 'ipms' | null; isOpen: boolean; onClose: () => void; showAudit?: boolean; initialTab?: 'details' | 'verification' | 'approval' | 'audit' }) {
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const { setCurrentPath } = useApp();
   const security = useSecurity();
+  useEffect(() => { if (isOpen) setActiveTab(initialTab); }, [initialTab, isOpen, submission?.id]);
   if (!submission || !kind) return null;
   const resource = kind === 'opms' ? 'OPMS_SUBMISSION' : 'IPMS_SUBMISSION';
   const canReadActual = security.canReadField(resource, 'ActualPerformance');
@@ -57,7 +59,20 @@ function SubmissionDetailModal({ submission, kind, isOpen, onClose, showAudit = 
             <Badge size="sm" variant="info">{submission.quarter}</Badge>
           </div>
         </div>
-        <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} variant="compact" />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Tabs tabs={tabs} activeTab={activeTab} onChange={tab => setActiveTab(tab as typeof activeTab)} variant="compact" />
+          {kind === 'opms' && <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const tab = activeTab === 'audit' ? 'internal-audit' : activeTab === 'details' ? 'reporting' : 'workflow';
+              const parameters = new URLSearchParams({ tab });
+              if (submission.reportingPeriodPublicId) parameters.set('period', submission.reportingPeriodPublicId);
+              onClose();
+              setCurrentPath(`/opms/targets/${submission.target.id}?${parameters.toString()}`);
+            }}
+          >Open KPI Workspace</Button>}
+        </div>
         <div className="py-3">
           {activeTab === 'details' && <div className="grid grid-cols-2 gap-3">
             <div><p className="text-[10px] text-secondary-500">Due Date</p><p className="text-sm font-medium">{submission.dueDate ? new Date(submission.dueDate).toLocaleDateString() : '-'}</p></div>
@@ -164,7 +179,7 @@ export function WorkflowQueues() {
       <DataTable data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.publicId}`} />
       <QueuePagination page={page} totalPages={totalPages} onChange={setPage} />
     </Card>}
-    <SubmissionDetailModal submission={selectedSubmission} kind={selectedItem?.kind ?? null} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedItem(null); }} showAudit={selectedQueue === 'auditor' && selectedItem?.kind === 'opms'} />
+    <SubmissionDetailModal submission={selectedSubmission} kind={selectedItem?.kind ?? null} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedItem(null); }} showAudit={selectedQueue === 'auditor' && selectedItem?.kind === 'opms'} initialTab={selectedQueue === 'verification' ? 'verification' : selectedQueue === 'approval' ? 'approval' : selectedQueue === 'auditor' ? 'audit' : 'details'} />
   </div></AppShell>;
 }
 

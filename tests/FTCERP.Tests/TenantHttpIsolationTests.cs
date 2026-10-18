@@ -121,6 +121,18 @@ public sealed class TenantHttpIsolationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task EmptyPrivateTenantHeader_IsIgnoredAsAbsent()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/opms-targets/page?page=1&pageSize=10&sortBy=createdAt");
+        request.Headers.TryAddWithoutValidation(TenantResolutionMiddleware.LegacyHeaderName, string.Empty).Should().BeTrue();
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("TENANT_CONTEXT_PRIVATE_KEY_RETIRED");
+    }
+
+    [Fact]
     public async Task Unversioned_performance_prefixes_return_explicit_gone_responses()
     {
         foreach (var path in new[]
