@@ -18,6 +18,16 @@ const overview = {
   ],
   requests: { started: 51, completed: 50, failed: 2, active: 1, failureRatePercent: 4, averageDurationMilliseconds: 25.5 },
   alertThresholds: { minimumRequests: 20, failureRatePercent: 10, averageDurationMilliseconds: 2_000 },
+  operationalAlerts: {
+    historyAvailable: true,
+    configuration: { monitorEnabled: true, pollSeconds: 60, recipientsConfigured: true, channels: ['IN_APP', 'EMAIL'] },
+    items: [{
+      publicId: '11111111-1111-1111-1111-111111111111',
+      incidentPublicId: '22222222-2222-2222-2222-222222222222',
+      lifecycle: 'Raised', healthStatus: 'Degraded', checkNames: ['outbox'], occurredAt: '2026-10-18T09:55:00Z',
+      totalDeliveries: 2, deliveredDeliveries: 1, failedDeliveries: 1, terminalDeliveries: 0,
+    }],
+  },
 } as const;
 
 describe('SystemOperationsPage', () => {
@@ -32,10 +42,14 @@ describe('SystemOperationsPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Loading operational readiness');
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Readiness checks' })).toBeInTheDocument());
     expect(screen.getByText('database')).toBeInTheDocument();
-    expect(screen.getByText('outbox')).toBeInTheDocument();
+    expect(screen.getAllByText('outbox')).toHaveLength(2);
     expect(screen.getByText('50')).toBeInTheDocument();
     expect(screen.getByText('25.50 ms')).toBeInTheDocument();
     expect(screen.getByText('20 requests')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Alert handoff' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Recent operational alerts' })).toBeInTheDocument();
+    expect(screen.getByText('IN_APP, EMAIL')).toBeInTheDocument();
+    expect(screen.getByText('1/2 delivered · 1 retrying')).toBeInTheDocument();
     expect(screen.getByText('Sensitive provider details and connection information are intentionally excluded.')).toBeInTheDocument();
   });
 
@@ -48,5 +62,18 @@ describe('SystemOperationsPage', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Readiness service unavailable.'));
     expect(api.getSystemOperationsOverview).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps live readiness visible when durable alert history is unavailable', async () => {
+    api.getSystemOperationsOverview.mockResolvedValue({
+      success: true,
+      data: { ...overview, operationalAlerts: { ...overview.operationalAlerts, historyAvailable: false, items: [] } },
+    });
+
+    render(<SystemOperationsPage />);
+
+    await waitFor(() => expect(screen.getByText('History unavailable')).toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveTextContent('Alert history is temporarily unavailable');
+    expect(screen.getByRole('heading', { name: 'Readiness checks' })).toBeInTheDocument();
   });
 });

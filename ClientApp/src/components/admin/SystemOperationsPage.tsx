@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, AlertTriangle, Clock3, Gauge, HeartPulse, RefreshCw } from 'lucide-react';
+import { Activity, AlertTriangle, BellRing, Clock3, Gauge, HeartPulse, RefreshCw } from 'lucide-react';
 import { getSystemOperationsOverview } from '../../api/api';
 import type { SystemOperationsOverview } from '../../types';
 import { AppShell } from '../layout/AppShell';
@@ -95,8 +95,47 @@ export function SystemOperationsPage() {
                   <div className="flex justify-between gap-4"><dt className="text-secondary-500">Average duration</dt><dd className="font-medium text-secondary-900 dark:text-white">{overview.alertThresholds.averageDurationMilliseconds} ms</dd></div>
                 </dl>
               </Card>
+              <Card>
+                <div className="mb-3 flex items-center gap-2">
+                  <BellRing className="h-4 w-4 text-primary-700" />
+                  <h2 className="font-semibold text-secondary-900 dark:text-white">Alert handoff</h2>
+                </div>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-4"><dt className="text-secondary-500">Monitor</dt><dd className="font-medium text-secondary-900 dark:text-white">{overview.operationalAlerts.configuration.monitorEnabled ? 'Enabled' : 'Disabled'}</dd></div>
+                  <div className="flex justify-between gap-4"><dt className="text-secondary-500">Polling</dt><dd className="font-medium text-secondary-900 dark:text-white">{overview.operationalAlerts.configuration.pollSeconds}s</dd></div>
+                  <div className="flex justify-between gap-4"><dt className="text-secondary-500">Channels</dt><dd className="font-medium text-secondary-900 dark:text-white">{overview.operationalAlerts.configuration.channels.join(', ')}</dd></div>
+                  <div className="flex justify-between gap-4"><dt className="text-secondary-500">Recipients</dt><dd className="font-medium text-secondary-900 dark:text-white">{overview.operationalAlerts.configuration.recipientsConfigured ? 'Configured' : 'History only'}</dd></div>
+                </dl>
+              </Card>
             </div>
           </div>
+
+          <Card padding="none" className="overflow-hidden">
+            <div className="flex items-center justify-between border-b border-secondary-200 px-4 py-3 dark:border-secondary-700">
+              <h2 className="font-semibold text-secondary-900 dark:text-white">Recent operational alerts</h2>
+              <Badge variant={overview.operationalAlerts.historyAvailable ? 'success' : 'warning'}>{overview.operationalAlerts.historyAvailable ? 'History available' : 'History unavailable'}</Badge>
+            </div>
+            {!overview.operationalAlerts.historyAvailable ? (
+              <div role="status" className="px-4 py-6 text-sm text-secondary-500">Alert history is temporarily unavailable. Live readiness remains available.</div>
+            ) : overview.operationalAlerts.items.length === 0 ? (
+              <div className="px-4 py-6 text-sm text-secondary-500">No operational alert transitions have been recorded.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
+                  <thead className="bg-secondary-50 dark:bg-secondary-800/60"><tr>{['When', 'Lifecycle', 'Status', 'Affected checks', 'Delivery'].map(label => <th key={label} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">{label}</th>)}</tr></thead>
+                  <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">
+                    {overview.operationalAlerts.items.map(alert => <tr key={alert.publicId}>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-secondary-600 dark:text-secondary-300">{new Date(alert.occurredAt).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-secondary-900 dark:text-white">{alert.lifecycle}</td>
+                      <td className="px-4 py-3"><Badge variant={statusVariant(alert.healthStatus)}>{alert.healthStatus}</Badge></td>
+                      <td className="px-4 py-3 text-sm text-secondary-600 dark:text-secondary-300">{alert.checkNames.length ? alert.checkNames.join(', ') : 'None'}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-secondary-600 dark:text-secondary-300">{alert.deliveredDeliveries}/{alert.totalDeliveries} delivered{alert.failedDeliveries ? ` · ${alert.failedDeliveries} retrying` : ''}{alert.terminalDeliveries ? ` · ${alert.terminalDeliveries} terminal` : ''}</td>
+                    </tr>)}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
           <p className="text-xs text-secondary-500">Last checked {new Date(overview.generatedAt).toLocaleString()} · Full check completed in {overview.totalHealthCheckDurationMilliseconds.toFixed(2)} ms</p>
         </div>
       ) : null}

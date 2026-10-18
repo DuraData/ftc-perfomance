@@ -213,6 +213,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContext, HttpTenantContext>();
 builder.Services.AddHostedService<OfficialReportJobWorker>();
 builder.Services.AddSingleton<OperationalTelemetry>();
+builder.Services.AddSingleton<IOperationalAlertStore, OperationalAlertStore>();
+builder.Services.AddHostedService<OperationalAlertMonitor>();
 builder.Services.Configure<IdempotencyOptions>(builder.Configuration.GetSection(IdempotencyOptions.SectionName));
 builder.Services.AddHostedService<IdempotencyCleanupWorker>();
 

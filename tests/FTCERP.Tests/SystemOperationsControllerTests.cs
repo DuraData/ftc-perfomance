@@ -45,7 +45,8 @@ public sealed class SystemOperationsControllerTests
         var controller = new SystemOperationsController(
             new StubHealthCheckService(new HealthReport(entries, TimeSpan.FromMilliseconds(11))),
             telemetry,
-            configuration);
+            configuration,
+            new StubOperationalAlertStore());
 
         var action = await controller.GetOverview(CancellationToken.None);
 
@@ -56,6 +57,8 @@ public sealed class SystemOperationsControllerTests
         response.Data.Checks.Select(item => item.Name).Should().Equal("database", "outbox");
         response.Data.Requests.FailureRatePercent.Should().Be(100);
         response.Data.AlertThresholds.Should().Be(new SystemAlertThresholdsDto(5, 12.5, 750));
+        response.Data.OperationalAlerts.HistoryAvailable.Should().BeTrue();
+        response.Data.OperationalAlerts.Items.Should().ContainSingle(item => item.Lifecycle == "Raised");
 
         var json = JsonSerializer.Serialize(response);
         json.Should().NotContain("Server=private").And.NotContain("Password=secret")
@@ -67,5 +70,19 @@ public sealed class SystemOperationsControllerTests
         public override Task<HealthReport> CheckHealthAsync(
             Func<HealthCheckRegistration, bool>? predicate,
             CancellationToken cancellationToken = default) => Task.FromResult(report);
+    }
+
+    private sealed class StubOperationalAlertStore : IOperationalAlertStore
+    {
+        public Task ObserveAsync(HealthReport report, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<OperationalAlertHistory> GetHistoryAsync(int take = 20, CancellationToken cancellationToken = default) => Task.FromResult(
+            new OperationalAlertHistory(
+                true,
+                new OperationalAlertDeliveryConfiguration(true, 60, true, ["IN_APP"]),
+                [new OperationalAlertHistoryItem(
+                    Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                    Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                    "Raised", "Degraded", ["outbox"], DateTime.UtcNow, 1, 1, 0, 0)]));
     }
 }

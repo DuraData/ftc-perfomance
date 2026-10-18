@@ -12,7 +12,8 @@ namespace FTCERP.Host.API.Controllers;
 public sealed class SystemOperationsController(
     HealthCheckService healthChecks,
     OperationalTelemetry telemetry,
-    IConfiguration configuration) : ControllerBase
+    IConfiguration configuration,
+    IOperationalAlertStore operationalAlerts) : ControllerBase
 {
     [HttpGet("overview")]
     public async Task<ActionResult<ApiResponse<SystemOperationsOverviewDto>>> GetOverview(CancellationToken cancellationToken)
@@ -23,6 +24,7 @@ public sealed class SystemOperationsController(
         var failureRate = snapshot.RequestsCompleted == 0
             ? 0
             : snapshot.RequestsFailed * 100d / snapshot.RequestsCompleted;
+        var alertHistory = await operationalAlerts.GetHistoryAsync(20, cancellationToken);
 
         var response = new SystemOperationsOverviewDto(
             generatedAt,
@@ -44,7 +46,25 @@ public sealed class SystemOperationsController(
             new SystemAlertThresholdsDto(
                 Math.Clamp(configuration.GetValue("Observability:Alerts:MinimumRequests", 20), 1, 100_000),
                 Math.Clamp(configuration.GetValue("Observability:Alerts:FailureRatePercent", 10d), 0.1d, 100d),
-                Math.Clamp(configuration.GetValue("Observability:Alerts:AverageDurationMilliseconds", 2_000d), 1d, 300_000d)));
+                Math.Clamp(configuration.GetValue("Observability:Alerts:AverageDurationMilliseconds", 2_000d), 1d, 300_000d)),
+            new SystemOperationalAlertHistoryDto(
+                alertHistory.HistoryAvailable,
+                new SystemOperationalAlertConfigurationDto(
+                    alertHistory.Configuration.MonitorEnabled,
+                    alertHistory.Configuration.PollSeconds,
+                    alertHistory.Configuration.RecipientsConfigured,
+                    alertHistory.Configuration.Channels),
+                alertHistory.Items.Select(item => new SystemOperationalAlertDto(
+                    item.PublicId,
+                    item.IncidentPublicId,
+                    item.Lifecycle,
+                    item.HealthStatus,
+                    item.CheckNames,
+                    item.OccurredAt,
+                    item.TotalDeliveries,
+                    item.DeliveredDeliveries,
+                    item.FailedDeliveries,
+                    item.TerminalDeliveries)).ToArray()));
 
         return Ok(new ApiResponse<SystemOperationsOverviewDto>(true, response));
     }
@@ -58,7 +78,8 @@ public sealed record SystemOperationsOverviewDto(
     double TotalHealthCheckDurationMilliseconds,
     SystemHealthCheckDto[] Checks,
     SystemRequestTelemetryDto Requests,
-    SystemAlertThresholdsDto AlertThresholds);
+    SystemAlertThresholdsDto AlertThresholds,
+    SystemOperationalAlertHistoryDto OperationalAlerts);
 
 public sealed record SystemHealthCheckDto(string Name, string Status, double DurationMilliseconds);
 public sealed record SystemRequestTelemetryDto(
@@ -72,3 +93,23 @@ public sealed record SystemAlertThresholdsDto(
     int MinimumRequests,
     double FailureRatePercent,
     double AverageDurationMilliseconds);
+public sealed record SystemOperationalAlertHistoryDto(
+    bool HistoryAvailable,
+    SystemOperationalAlertConfigurationDto Configuration,
+    SystemOperationalAlertDto[] Items);
+public sealed record SystemOperationalAlertConfigurationDto(
+    bool MonitorEnabled,
+    int PollSeconds,
+    bool RecipientsConfigured,
+    string[] Channels);
+public sealed record SystemOperationalAlertDto(
+    Guid PublicId,
+    Guid IncidentPublicId,
+    string Lifecycle,
+    string HealthStatus,
+    string[] CheckNames,
+    DateTime OccurredAt,
+    int TotalDeliveries,
+    int DeliveredDeliveries,
+    int FailedDeliveries,
+    int TerminalDeliveries);

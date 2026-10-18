@@ -3964,6 +3964,27 @@ export interface SystemOperationsOverview {
     failureRatePercent: number;
     averageDurationMilliseconds: number;
   };
+  operationalAlerts: {
+    historyAvailable: boolean;
+    configuration: {
+      monitorEnabled: boolean;
+      pollSeconds: number;
+      recipientsConfigured: boolean;
+      channels: string[];
+    };
+    items: Array<{
+      publicId: string;
+      incidentPublicId: string;
+      lifecycle: 'Raised' | 'Changed' | 'Recovered';
+      healthStatus: 'Healthy' | 'Degraded' | 'Unhealthy';
+      checkNames: string[];
+      occurredAt: string;
+      totalDeliveries: number;
+      deliveredDeliveries: number;
+      failedDeliveries: number;
+      terminalDeliveries: number;
+    }>;
+  };
 }
 
 export interface SaveStrategicRiskTreatmentPayload {
