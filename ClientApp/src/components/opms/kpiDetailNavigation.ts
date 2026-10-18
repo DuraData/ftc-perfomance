@@ -1,6 +1,6 @@
-export type KpiDetailTab = 'kpi-details' | 'reporting' | 'poe' | 'workflow' | 'pms-review' | 'internal-audit' | 'history';
+export type KpiDetailTab = 'kpi-details' | 'strategic-alignment' | 'tid' | 'circular-88' | 'reporting' | 'poe' | 'workflow' | 'pms-review' | 'internal-audit' | 'history';
 
-const kpiDetailTabs = new Set<KpiDetailTab>(['kpi-details', 'reporting', 'poe', 'workflow', 'pms-review', 'internal-audit', 'history']);
+const kpiDetailTabs = new Set<KpiDetailTab>(['kpi-details', 'strategic-alignment', 'tid', 'circular-88', 'reporting', 'poe', 'workflow', 'pms-review', 'internal-audit', 'history']);
 
 export function readKpiDetailContext(search = window.location.search): { tab: KpiDetailTab; reportingPeriodPublicId?: string } {
   const parameters = new URLSearchParams(search);

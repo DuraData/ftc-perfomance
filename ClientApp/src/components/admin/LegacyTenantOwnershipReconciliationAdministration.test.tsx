@@ -26,7 +26,7 @@ describe('LegacyTenantOwnershipReconciliationAdministration', () => {
   it('executes only a ready record with a substantive governance reason and RowVersion', async () => {
     render(<LegacyTenantOwnershipReconciliationAdministration />);
     await waitFor(() => expect(api.getLegacyTenantOwnershipPreview).toHaveBeenCalledWith(1, 1, 25));
-    expect(screen.getByText('No authoritative tenant-owned relationship proves municipality ownership.')).toBeInTheDocument();
+    expect(await screen.findByText('No authoritative tenant-owned relationship proves municipality ownership.')).toBeInTheDocument();
     const buttons = screen.getAllByRole('button', { name: 'Reconcile' });
     expect(buttons[0]).toBeDisabled();
     expect(buttons[1]).toBeDisabled();

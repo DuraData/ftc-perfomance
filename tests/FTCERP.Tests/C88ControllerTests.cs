@@ -756,6 +756,7 @@ public class C88ControllerTests
         var controller = Controller(context, seed.User, seed.Municipality.Id);
         var module = await CreateCatalogueAsync(context, controller, seed);
         var effectiveFrom = new DateTime(2035, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var targetPublicIds = new List<Guid>();
         for (var index = 0; index < 11; index++)
         {
             var employee = new MunicipalEmployee
@@ -770,6 +771,7 @@ public class C88ControllerTests
             };
             context.AddRange(employee, target);
             await context.SaveChangesAsync();
+            targetPublicIds.Add(target.PublicId);
             context.AddRange(
                 new C88Assignment { MunicipalityId = seed.Municipality.Id, C88MunicipalityConfigurationId = module.Configuration.Id, Configuration = module.Configuration, C88IndicatorId = module.Indicator.Id, Indicator = module.Indicator, MunicipalEmployeeId = employee.Id, MunicipalEmployee = employee, Role = C88AssignmentRole.Contributor, EffectiveFrom = effectiveFrom.AddDays(index), IsActive = true },
                 new C88OpmsMapping { MunicipalityId = seed.Municipality.Id, C88MunicipalityConfigurationId = module.Configuration.Id, Configuration = module.Configuration, C88IndicatorId = module.Indicator.Id, Indicator = module.Indicator, OpmsTargetId = target.Id, OpmsTarget = target, MappingType = C88MappingType.Contributing, Reason = $"match mapping {index:00}", IsActive = true, CreatedAt = effectiveFrom.AddMinutes(index), CreatedByUserId = seed.User.Id, CreatedByUser = seed.User });
@@ -782,6 +784,12 @@ public class C88ControllerTests
         var mappings = Payload(await controller.GetMappingsPage(new PagedQueryRequest { Page = 2, PageSize = 3, Search = "match", SortBy = "opmsIndicator", SortDirection = "asc" }, seed.Year.PublicId));
         mappings.TotalCount.Should().Be(11);
         mappings.Items.Select(item => item.OpmsIndicatorNumber).Should().Equal("OPMS-03", "OPMS-04", "OPMS-05");
+        var exactTargetMapping = Payload(await controller.GetMappingsPage(
+            new PagedQueryRequest { PageSize = 10, SortBy = "opmsIndicator" },
+            seed.Year.PublicId,
+            opmsTargetPublicId: targetPublicIds[7]));
+        exactTargetMapping.TotalCount.Should().Be(1);
+        exactTargetMapping.Items.Should().ContainSingle().Which.OpmsIndicatorNumber.Should().Be("OPMS-07");
         (await controller.GetAssignmentsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
         (await controller.GetMappingsPage(new PagedQueryRequest { SortBy = "unsafe" })).Result.Should().BeOfType<BadRequestObjectResult>();
     }

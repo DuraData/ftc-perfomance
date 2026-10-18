@@ -427,7 +427,9 @@ public sealed class C88Controller : ControllerBase
 
     [HttpGet("mappings/page")]
     public async Task<ActionResult<ApiResponse<PagedResponse<C88MappingResponse>>>> GetMappingsPage(
-        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? municipalityFinancialYearPublicId = null, [FromQuery] Guid? indicatorPublicId = null, [FromQuery] bool? active = null)
+        [FromQuery] PagedQueryRequest request, [FromQuery] Guid? municipalityFinancialYearPublicId = null,
+        [FromQuery] Guid? indicatorPublicId = null, [FromQuery] Guid? opmsTargetPublicId = null,
+        [FromQuery] bool? active = null)
     {
         var visibility = await IndicatorVisibility<C88MappingResponse>();
         if (visibility.Error != null) return visibility.Error;
@@ -438,6 +440,7 @@ public sealed class C88Controller : ControllerBase
         if (!visibility.Manager) query = query.Where(item => visibility.IndicatorIds.Contains(item.C88IndicatorId));
         if (municipalityFinancialYearPublicId.HasValue) query = query.Where(item => item.Configuration.MunicipalityFinancialYear.PublicId == municipalityFinancialYearPublicId.Value);
         if (indicatorPublicId.HasValue) query = query.Where(item => item.Indicator.PublicId == indicatorPublicId.Value);
+        if (opmsTargetPublicId.HasValue) query = query.Where(item => item.OpmsTarget.PublicId == opmsTargetPublicId.Value);
         if (active.HasValue) query = query.Where(item => item.IsActive == active.Value);
         if (request.NormalizedSearch.Length > 0) query = query.Where(item => item.Indicator.Code.Contains(request.NormalizedSearch)
             || item.OpmsTarget.IndicatorNumber.Contains(request.NormalizedSearch)

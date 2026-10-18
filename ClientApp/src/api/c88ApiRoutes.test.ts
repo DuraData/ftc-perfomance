@@ -24,7 +24,7 @@ describe('Circular 88 API routes', () => {
 
     await getC88PlansPage({ page: 2, pageSize: 10, search: ' service ', sortBy: 'indicatorCode', sortDirection: 'asc' }, { municipalityFinancialYearPublicId: 'year/id', configurationPublicId: 'config/id', indicatorPublicId: 'indicator/id' });
     await getC88AssignmentsPage({ page: 2, pageSize: 10, search: ' owner ', sortBy: 'employeeName', sortDirection: 'asc' }, { municipalityFinancialYearPublicId: 'year/id', active: true });
-    await getC88MappingsPage({ page: 3, pageSize: 10, search: ' opms ', sortBy: 'opmsIndicator', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: 'year/id', indicatorPublicId: 'indicator/id' });
+    await getC88MappingsPage({ page: 3, pageSize: 10, search: ' opms ', sortBy: 'opmsIndicator', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: 'year/id', indicatorPublicId: 'indicator/id', opmsTargetPublicId: 'target/id' });
     await getC88CalendarsPage({ page: 4, pageSize: 10, search: ' quarter ', sortBy: 'dueAt', sortDirection: 'asc' }, { configurationPublicId: 'config/id', active: true });
     await getC88WorkflowsPage({ page: 5, pageSize: 10, search: ' verify ', sortBy: 'versionNumber', sortDirection: 'desc' }, { municipalityFinancialYearPublicId: 'year/id', configurationPublicId: 'config/id', current: true });
     await getC88ComplianceQuestionsPage({ page: 6, pageSize: 10, search: ' source ', sortBy: 'sequence', sortDirection: 'asc' }, { catalogueVersionPublicId: 'version/id', reportTypePublicId: 'report/id', active: true, required: true });
@@ -34,7 +34,7 @@ describe('Circular 88 API routes', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, expect.stringContaining('/v1/c88/plans/page?page=2&pageSize=10&search=service&sortBy=indicatorCode&sortDirection=asc&municipalityFinancialYearPublicId=year%2Fid&configurationPublicId=config%2Fid&indicatorPublicId=indicator%2Fid'), expect.anything());
     expect(fetchMock).toHaveBeenNthCalledWith(2, expect.stringContaining('/v1/c88/assignments/page?page=2&pageSize=10&search=owner&sortBy=employeeName&sortDirection=asc&municipalityFinancialYearPublicId=year%2Fid&active=true'), expect.anything());
-    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/c88/mappings/page?page=3&pageSize=10&search=opms&sortBy=opmsIndicator&sortDirection=desc&municipalityFinancialYearPublicId=year%2Fid&indicatorPublicId=indicator%2Fid'), expect.anything());
+    expect(fetchMock).toHaveBeenNthCalledWith(3, expect.stringContaining('/v1/c88/mappings/page?page=3&pageSize=10&search=opms&sortBy=opmsIndicator&sortDirection=desc&municipalityFinancialYearPublicId=year%2Fid&indicatorPublicId=indicator%2Fid&opmsTargetPublicId=target%2Fid'), expect.anything());
     expect(fetchMock).toHaveBeenNthCalledWith(4, expect.stringContaining('/v1/c88/calendars/page?page=4&pageSize=10&search=quarter&sortBy=dueAt&sortDirection=asc&configurationPublicId=config%2Fid&active=true'), expect.anything());
     expect(fetchMock).toHaveBeenNthCalledWith(5, expect.stringContaining('/v1/c88/workflows/page?page=5&pageSize=10&search=verify&sortBy=versionNumber&sortDirection=desc&municipalityFinancialYearPublicId=year%2Fid&configurationPublicId=config%2Fid&current=true'), expect.anything());
     expect(fetchMock).toHaveBeenNthCalledWith(6, expect.stringContaining('/v1/c88/compliance-questions/page?page=6&pageSize=10&search=source&sortBy=sequence&sortDirection=asc&catalogueVersionPublicId=version%2Fid&reportTypePublicId=report%2Fid&active=true&required=true'), expect.anything());

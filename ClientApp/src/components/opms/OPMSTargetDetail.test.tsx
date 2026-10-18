@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type { OPMSTarget } from '../../types';
 import { AssigneesTab, GeneralInfoTab, OPMSTargetDetail, QuarterlyTargetsTab, StrategyTab, VoteNumbersTab } from './OPMSTargetDetail';
 import { readKpiDetailContext } from './kpiDetailNavigation';
@@ -9,12 +9,20 @@ const api = vi.hoisted(() => ({
   getOpmsSubmissionsPage: vi.fn(),
   getIpmsTargetsPage: vi.fn(),
   getAuditTrailsPage: vi.fn(),
+  getTidConfiguration: vi.fn(),
+  getTidHistoryPage: vi.fn(),
+  getC88ConfigurationsPage: vi.fn(),
+  getC88MappingsPage: vi.fn(),
+  getC88IndicatorsPage: vi.fn(),
+  getC88AssignmentsPage: vi.fn(),
+  getC88PlansPage: vi.fn(),
 }));
 const app = vi.hoisted(() => ({ setCurrentPath: vi.fn() }));
+const security = vi.hoisted(() => ({ canRead: vi.fn(), canReadField: vi.fn() }));
 
 vi.mock('../../api/api', async importOriginal => ({ ...(await importOriginal<typeof import('../../api/api')>()), ...api }));
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
-vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => ({ canReadField: () => true }) }));
+vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('../common/Tabs', () => ({ Tabs: ({ tabs, onChange }: { tabs: Array<{ id: string; label: string; badge?: number }>; onChange: (id: string) => void }) => <div>{tabs.map(tab => <button key={tab.id} type="button" onClick={() => onChange(tab.id)}>{tab.label} {tab.badge ?? ''}</button>)}</div> }));
 
@@ -26,12 +34,22 @@ const liveTarget = {
 } as OPMSTarget;
 
 describe('OPMS target relational tabs', () => {
+  beforeEach(() => {
+    security.canRead.mockReturnValue(true);
+    security.canReadField.mockReturnValue(true);
+    api.getTidConfiguration.mockResolvedValue({ success: true, data: { municipalityPublicId: 'municipality-1', tidEnabled: false, allKpisRequired: false, scopedKpiCount: 1, currentTidCount: 0, missingTidCount: 0, rowVersion: 'AQ==' } });
+    api.getC88ConfigurationsPage.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 1, totalCount: 0, totalPages: 0 } });
+  });
+
   it('accepts only governed KPI-detail deep-link tabs and preserves reporting-period context', () => {
     expect(readKpiDetailContext('?tab=internal-audit&period=period-public')).toEqual({
       tab: 'internal-audit',
       reportingPeriodPublicId: 'period-public',
     });
     expect(readKpiDetailContext('?tab=made-up&period=')).toEqual({ tab: 'kpi-details', reportingPeriodPublicId: undefined });
+    expect(readKpiDetailContext('?tab=tid')).toEqual({ tab: 'tid', reportingPeriodPublicId: undefined });
+    expect(readKpiDetailContext('?tab=circular-88')).toEqual({ tab: 'circular-88', reportingPeriodPublicId: undefined });
+    expect(readKpiDetailContext('?tab=strategic-alignment')).toEqual({ tab: 'strategic-alignment', reportingPeriodPublicId: undefined });
   });
 
   it('preserves the selected reporting period when moving between governed workspace tabs', async () => {

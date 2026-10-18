@@ -11,6 +11,8 @@ import {
   History,
   Layers,
   ListOrdered,
+  BookOpen,
+  Landmark,
 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
@@ -41,6 +43,8 @@ import { KpiOrderingEditor } from '../targets/KpiOrderingEditor';
 import { KpiDefinitionRevisionEditor } from '../targets/KpiDefinitionRevisionEditor';
 import { DetailCollectionPaging } from '../common/DetailCollectionPaging';
 import { readKpiDetailContext, type KpiDetailTab } from './kpiDetailNavigation';
+import { KpiCircular88ReferenceTab, KpiStrategicAlignmentTab, KpiTidReferenceTab } from './KpiReferenceTabs';
+import { useKpiOptionalModuleState } from './kpiOptionalModules';
 
 interface TargetDetailProps {
   targetId?: string;
@@ -544,6 +548,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   const [auditPage, setAuditPage] = useState(1);
   const [auditMeta, setAuditMeta] = useState({ totalCount: 0, totalPages: 0 });
   const [isLoading, setIsLoading] = useState(true);
+  const optionalModules = useKpiOptionalModuleState(target);
 
   useEffect(() => {
     const loadData = async () => {
@@ -592,6 +597,17 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
 
   useEffect(() => { setAuditPage(1); void loadAuditPage(1); }, [loadAuditPage]);
 
+  useEffect(() => {
+    if (optionalModules.loading || !target) return;
+    const unavailable = activeTab === 'tid' && !optionalModules.tidVisible
+      || activeTab === 'circular-88' && !optionalModules.c88Visible;
+    if (!unavailable) return;
+    setActiveTab('kpi-details');
+    const parameters = new URLSearchParams({ tab: 'kpi-details' });
+    if (selectedReportingPeriodPublicId) parameters.set('period', selectedReportingPeriodPublicId);
+    setCurrentPath(`/opms/targets/${target.id}?${parameters.toString()}`);
+  }, [activeTab, optionalModules.c88Visible, optionalModules.loading, optionalModules.tidVisible, selectedReportingPeriodPublicId, setCurrentPath, target]);
+
   if (isLoading) {
     return (
       <AppShell title="OPMS Target Detail" subtitle="Loading target">
@@ -626,6 +642,9 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
 
   const tabs = [
     { id: 'kpi-details', label: 'KPI Details', icon: <Target className="w-3.5 h-3.5" /> },
+    { id: 'strategic-alignment', label: 'Strategic Alignment', icon: <Landmark className="w-3.5 h-3.5" /> },
+    ...((optionalModules.tidVisible || optionalModules.loading && activeTab === 'tid') ? [{ id: 'tid', label: 'TID', icon: <BookOpen className="w-3.5 h-3.5" /> }] : []),
+    ...((optionalModules.c88Visible || optionalModules.loading && activeTab === 'circular-88') ? [{ id: 'circular-88', label: 'Circular 88', icon: <Layers className="w-3.5 h-3.5" /> }] : []),
     { id: 'reporting', label: 'Reporting', icon: <TrendingUp className="w-3.5 h-3.5" />, badge: submissionMeta.totalCount },
     { id: 'poe', label: 'POE', icon: <Paperclip className="w-3.5 h-3.5" /> },
     { id: 'workflow', label: 'Workflow', icon: <ListOrdered className="w-3.5 h-3.5" /> },
@@ -701,6 +720,13 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'kpi-details': return <div className="space-y-4"><Tabs tabs={detailTabs} activeTab={detailSection} onChange={setDetailSection} variant="compact" />{renderDetailSection()}</div>;
+      case 'strategic-alignment': return <KpiStrategicAlignmentTab target={target} />;
+      case 'tid': return optionalModules.tidVisible || optionalModules.loading
+        ? <KpiTidReferenceTab targetPublicId={target.id} configurationError={optionalModules.tidError} />
+        : <KpiStrategicAlignmentTab target={target} />;
+      case 'circular-88': return optionalModules.c88Visible || optionalModules.loading
+        ? <KpiCircular88ReferenceTab targetPublicId={target.id} configuration={optionalModules.c88Configuration} configurationError={optionalModules.c88Error} />
+        : <KpiStrategicAlignmentTab target={target} />;
       case 'reporting': return <div className="space-y-6"><QuarterlyTargetsTab target={target} />{renderSubmissionSurface('details', 'Select a reporting period to view or capture its authoritative actual performance, variance context and consolidation basis.')}</div>;
       case 'poe': return renderSubmissionSurface('evidence', 'Select a reporting period to manage current, inherited and superseded proof-of-evidence records through the governed evidence register.');
       case 'workflow': return renderSubmissionSurface('comments', 'Select a reporting period to inspect its configured workflow progression, append-only actions, RFIs, stage ratings and due-date history.');

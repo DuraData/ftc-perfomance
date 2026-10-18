@@ -9915,6 +9915,14 @@
             }
           },
           {
+            "name": "opmsTargetPublicId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
             "name": "active",
             "in": "query",
             "schema": {

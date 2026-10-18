@@ -3296,11 +3296,12 @@ export async function getC88AssignmentsPage(query: RegisterPageQuery = {}, filte
   return get<PagedResult<C88Assignment>>(`/v1/c88/assignments/page?${parameters.toString()}`);
 }
 
-export async function getC88MappingsPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; indicatorPublicId?: string; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88Mapping>>> {
+export async function getC88MappingsPage(query: RegisterPageQuery = {}, filters: { municipalityFinancialYearPublicId?: string; indicatorPublicId?: string; opmsTargetPublicId?: string; active?: boolean } = {}): Promise<ApiResponse<PagedResult<C88Mapping>>> {
   const pageQuery = registerPageQuery(query);
   const parameters = new URLSearchParams(pageQuery.startsWith('?') ? pageQuery.slice(1) : pageQuery);
   if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
   if (filters.indicatorPublicId) parameters.set('indicatorPublicId', filters.indicatorPublicId);
+  if (filters.opmsTargetPublicId) parameters.set('opmsTargetPublicId', filters.opmsTargetPublicId);
   if (filters.active !== undefined) parameters.set('active', String(filters.active));
   return get<PagedResult<C88Mapping>>(`/v1/c88/mappings/page?${parameters.toString()}`);
 }
