@@ -16,6 +16,11 @@ $migrationPath = Join-Path $evidenceRoot "$runId-migrations.sql"
 $results = [Collections.Generic.List[object]]::new()
 $startedAt = [DateTime]::UtcNow
 
+if ($env:OPMS_LOCAL_QUALITY_GATE_ACTIVE -eq '1') {
+    throw 'A nested OPMS local quality-gate invocation was blocked.'
+}
+$env:OPMS_LOCAL_QUALITY_GATE_ACTIVE = '1'
+
 function Invoke-NativeCommand {
     param(
         [Parameter(Mandatory)] [string]$FilePath,
