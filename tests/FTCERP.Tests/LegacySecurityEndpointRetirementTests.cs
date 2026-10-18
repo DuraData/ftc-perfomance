@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Swashbuckle.AspNetCore.Swagger;
+using System.Text.Json;
 
 namespace FTCERP.Tests;
 
@@ -379,6 +380,64 @@ public sealed class LegacySecurityEndpointRetirementTests
         {
             Assert.True(paths.ContainsKey(publicPath), $"Public-ID path missing from OpenAPI: {publicPath}");
         }
+    }
+
+    [Fact]
+    public async Task Generated_openapi_is_a_complete_versioned_contract_with_exact_anonymous_security_overrides()
+    {
+        using var factory = new TenantApplicationFactory("openapi-contract-user");
+        using var client = factory.CreateClient();
+        using var response = await client.GetAsync("/swagger/v1/swagger.json");
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+
+        Assert.StartsWith("3.", root.GetProperty("openapi").GetString(), StringComparison.Ordinal);
+        Assert.True(root.GetProperty("components").GetProperty("securitySchemes").TryGetProperty("Bearer", out _));
+        Assert.Contains(root.GetProperty("security").EnumerateArray(), requirement => requirement.TryGetProperty("Bearer", out _));
+
+        var expectedAnonymous = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "POST /api/v1/auth/login",
+            "POST /api/v1/auth/password/forgot",
+            "POST /api/v1/auth/password/reset",
+            "POST /api/v1/auth/refresh-token",
+            "POST /api/v1/auth/enterprise/options",
+            "GET /api/v1/auth/enterprise/options/{municipalityCode}",
+            "GET /api/v1/auth/enterprise/challenge/{municipalityCode}/{providerCode}",
+            "GET /api/v1/auth/enterprise/complete"
+        };
+        var actualAnonymous = new HashSet<string>(StringComparer.Ordinal);
+        var operationIds = new HashSet<string>(StringComparer.Ordinal);
+        var operationCount = 0;
+
+        foreach (var path in root.GetProperty("paths").EnumerateObject())
+        {
+            Assert.False(path.Name.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+                && !path.Name.StartsWith("/api/v1/", StringComparison.OrdinalIgnoreCase));
+
+            foreach (var method in path.Value.EnumerateObject().Where(item =>
+                         item.Name is "get" or "put" or "post" or "delete" or "patch" or "options" or "head" or "trace"))
+            {
+                operationCount++;
+                var operation = method.Value;
+                var operationId = operation.GetProperty("operationId").GetString();
+                Assert.False(string.IsNullOrWhiteSpace(operationId));
+                Assert.True(operationIds.Add(operationId!), $"Duplicate operationId: {operationId}");
+
+                var responses = operation.GetProperty("responses");
+                foreach (var status in new[] { "400", "401", "403", "404", "409", "429", "500" })
+                    Assert.True(responses.TryGetProperty(status, out _),
+                        $"Missing {status} response on {method.Name.ToUpperInvariant()} {path.Name}");
+
+                if (operation.TryGetProperty("security", out var security)
+                    && security.ValueKind == JsonValueKind.Array && security.GetArrayLength() == 0)
+                    actualAnonymous.Add($"{method.Name.ToUpperInvariant()} {path.Name}");
+            }
+        }
+
+        Assert.True(operationCount > 400, "The OpenAPI contract must cover the complete production surface.");
+        Assert.Equal(expectedAnonymous.Order(), actualAnonymous.Order());
     }
 
     private static ApplicationRole Role(string id, long municipalityId, string code, string name) => new()

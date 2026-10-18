@@ -113,10 +113,11 @@ function Invoke-BackendDependencyAudit {
 }
 
 $stepNames = @(
-    if (-not $SkipRestore) { 'Restore backend and tests' }
+    if (-not $SkipRestore) { 'Restore backend, tests, and local tools' }
     'Build backend'
     'Test backend'
     'Validate migrations'
+    'Validate version-controlled OpenAPI contract'
     'Validate recovery and performance safety contracts'
     'Audit backend dependencies'
     if (-not $SkipRestore) { 'Install frontend dependencies' }
@@ -147,8 +148,9 @@ try {
     }
 
     if (-not $SkipRestore) {
-        Invoke-QualityStep 'Restore backend and tests' {
+        Invoke-QualityStep 'Restore backend, tests, and local tools' {
             Invoke-NativeCommand 'dotnet' @('restore', 'tests/FTCERP.Tests/FTCERP.Tests.csproj', '--configfile', 'NuGet.Config') $repositoryRoot
+            Invoke-NativeCommand 'dotnet' @('restore', 'tools/FTCERP.OpenApiExporter/FTCERP.OpenApiExporter.csproj', '--configfile', 'NuGet.Config') $repositoryRoot
         }
     }
 
@@ -166,6 +168,13 @@ try {
         if (-not (Test-Path -LiteralPath $migrationPath) -or (Get-Item -LiteralPath $migrationPath).Length -eq 0) {
             throw 'The idempotent migration script was not generated or was empty.'
         }
+    }
+
+    Invoke-QualityStep 'Validate version-controlled OpenAPI contract' {
+        Invoke-NativeCommand 'dotnet' @(
+            'run', '--project', 'tools/FTCERP.OpenApiExporter/FTCERP.OpenApiExporter.csproj', '--no-restore',
+            '--configuration', 'Release', '--', '--output', 'docs/api/openapi-v1.json', '--check'
+        ) $repositoryRoot
     }
 
     Invoke-QualityStep 'Validate recovery and performance safety contracts' {

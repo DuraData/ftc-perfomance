@@ -25,6 +25,8 @@ jobs:
           cache-dependency-path: ClientApp/package-lock.json
       - name: Restore backend and tests
         run: dotnet restore tests/FTCERP.Tests/FTCERP.Tests.csproj --configfile NuGet.Config
+      - name: Restore OpenAPI exporter
+        run: dotnet restore tools/FTCERP.OpenApiExporter/FTCERP.OpenApiExporter.csproj --configfile NuGet.Config
       - name: Build backend
         run: dotnet build FTCERP.Host.csproj --no-restore -p:SkipClientBuild=true --configuration Release
       - name: Test backend
@@ -34,6 +36,8 @@ jobs:
           dotnet tool install --global dotnet-ef --version 10.0.0
           dotnet ef migrations script --project FTCERP.Host.csproj --no-build --configuration Release --idempotent --output "$RUNNER_TEMP/migrations.sql"
           test -s "$RUNNER_TEMP/migrations.sql"
+      - name: Validate version-controlled OpenAPI contract
+        run: dotnet run --project tools/FTCERP.OpenApiExporter/FTCERP.OpenApiExporter.csproj --no-restore --configuration Release -- --output docs/api/openapi-v1.json --check
       - name: Validate recovery drill safety contract
         shell: pwsh
         run: |

@@ -21,6 +21,7 @@ using Microsoft.OpenApi;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -48,6 +49,16 @@ builder.Services.AddSwaggerGen(c =>
     {
         [new OpenApiSecuritySchemeReference("Bearer", document)] = new List<string>()
     });
+    c.CustomOperationIds(description =>
+    {
+        var routeValues = description.ActionDescriptor.RouteValues;
+        var controller = routeValues.TryGetValue("controller", out var controllerValue) ? controllerValue ?? "Api" : "Api";
+        var action = routeValues.TryGetValue("action", out var actionValue) ? actionValue ?? "Operation" : "Operation";
+        var method = description.HttpMethod ?? "ANY";
+        var route = Regex.Replace(description.RelativePath ?? "root", "[^A-Za-z0-9]+", "_").Trim('_');
+        return $"{controller}_{action}_{method}_{route}";
+    });
+    c.OperationFilter<AnonymousSecurityOperationFilter>();
     c.OperationFilter<IdempotencyOperationFilter>();
     c.OperationFilter<ProblemDetailsOperationFilter>();
 });
