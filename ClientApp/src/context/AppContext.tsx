@@ -14,6 +14,7 @@ import {
   getMyTenantContextsPage,
   login as apiLogin,
   completeEnterpriseLogin,
+  AUTH_SESSION_EXPIRED_EVENT,
   isAuthenticated,
   logout as apiLogout,
   setCurrentMunicipalityPublicId,
@@ -77,6 +78,14 @@ export const RESTRICTED_ACCOUNT_MENU: MenuItem[] = [{
   code: 'NAV.ACCOUNT.SECURITY',
 }];
 
+function safeSetItem(key: string, value: string) {
+  try { localStorage.setItem(key, value); } catch { /* ignore */ }
+}
+
+function safeRemoveItem(key: string) {
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
+}
+
 function readAuthenticationGate(): AuthenticationGate | null {
   try {
     const storedGate = localStorage.getItem(AUTHENTICATION_GATE_STORAGE_KEY);
@@ -121,13 +130,6 @@ export function resolveAppNavigation(path: string) {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const safeSetItem = (key: string, value: string) => {
-    try { localStorage.setItem(key, value); } catch { /* ignore */ }
-  };
-  const safeRemoveItem = (key: string) => {
-    try { localStorage.removeItem(key); } catch { /* ignore */ }
-  };
-
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
@@ -375,7 +377,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return 'success';
   }, [loadTenantContexts]);
 
-  const logout = (notifyServer = true) => {
+  const logout = useCallback((notifyServer = true) => {
     if (notifyServer) void apiLogout();
     setUserProfile(null);
     setRoles([]);
@@ -397,7 +399,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     safeRemoveItem(AUTHENTICATION_GATE_STORAGE_KEY);
     window.history.pushState({}, '', '/login');
     setCurrentPathState('/login');
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleExpiredSession = () => logout(false);
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, handleExpiredSession);
+    return () => window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, handleExpiredSession);
+  }, [logout]);
 
   const toggleSidebar = () => {
     setSidebarCollapsed(prev => !prev);

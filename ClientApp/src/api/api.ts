@@ -188,6 +188,7 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const SESSION_MARKER_KEY = 'auth_session';
+export const AUTH_SESSION_EXPIRED_EVENT = 'opms:auth-session-expired';
 const TENANT_STORAGE_KEY = 'municipality_context_public_id';
 const LEGACY_TENANT_STORAGE_KEY = 'municipality_context_id';
 let refreshPromise: Promise<ApiResponse<LoginResponse>> | null = null;
@@ -220,6 +221,12 @@ function clearTokens() {
   sessionStorage.removeItem(SESSION_MARKER_KEY);
   // Remove legacy browser-readable tokens left by older deployments.
   sessionStorage.removeItem('auth_token');
+}
+
+function expireSession() {
+  clearTokens();
+  setCurrentMunicipalityPublicId(null);
+  window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED_EVENT));
 }
 
 function createIdempotencyKey(): string {
@@ -1211,7 +1218,7 @@ async function fetchApi<T>(
   if (response.status === 401 && endpoint !== '/v1/auth/refresh-token' && endpoint !== '/v1/auth/login') {
     try {
       const refreshResult = await refreshAccessToken();
-      if (refreshResult.success) {
+      if (refreshResult.success && refreshResult.data) {
         const retryHeaders: Record<string, string> = {
           ...(isFormDataBody ? {} : { 'Content-Type': 'application/json' }),
           'X-OPMS-Request': 'same-origin',
@@ -1224,12 +1231,12 @@ async function fetchApi<T>(
           headers: retryHeaders,
           credentials: 'include',
         });
+        if (retryResponse.status === 401) expireSession();
         return await readApiResponse<T>(retryResponse);
       }
-      clearTokens();
+      expireSession();
     } catch {
-      clearTokens();
-      window.location.href = '/login';
+      expireSession();
     }
   }
 

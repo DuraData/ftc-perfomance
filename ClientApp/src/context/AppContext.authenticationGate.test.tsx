@@ -2,9 +2,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProvider, RESTRICTED_ACCOUNT_MENU, useApp } from './AppContext';
 import { canAccessPath } from '../components/security/AccessControl';
-import { login as apiLogin, getMyMenu, getMyPermissions, getMyTenantContextsPage } from '../api/api';
+import { AUTH_SESSION_EXPIRED_EVENT, login as apiLogin, getMyMenu, getMyPermissions, getMyTenantContextsPage } from '../api/api';
 
 vi.mock('../api/api', () => ({
+  AUTH_SESSION_EXPIRED_EVENT: 'opms:auth-session-expired',
   getCurrentMunicipalityPublicId: vi.fn(() => null),
   getMyMenu: vi.fn(),
   getMyPermissions: vi.fn(),
@@ -34,6 +35,7 @@ function Harness() {
     <output aria-label="path">{app.currentPath}</output>
     <output aria-label="menu">{app.menuItems.map(item => item.code).join(',')}</output>
     <output aria-label="access-ready">{String(app.accessReady)}</output>
+    <output aria-label="authenticated">{String(app.isAuthenticated)}</output>
   </>;
 }
 
@@ -133,5 +135,25 @@ describe('mandatory account-security bootstrap', () => {
     expect(localStorage.getItem('permissions')).toContain('SECURITY.SYSTEM_SCOPE');
     expect(localStorage.getItem('menu_items')).toContain('NAV.DASHBOARD');
     expect(screen.getByLabelText('access-ready')).toHaveTextContent('true');
+  });
+
+  it('clears stale authenticated state when the API reports an expired session', async () => {
+    localStorage.setItem('user_profile', JSON.stringify({ ...requiredUser, mustChangePassword: false }));
+    localStorage.setItem('roles', JSON.stringify(['Super Admin']));
+    localStorage.setItem('permissions', JSON.stringify(['SECURITY.SYSTEM_SCOPE']));
+    localStorage.setItem('menu_items', JSON.stringify([{ label: 'Dashboard', path: '/dashboard', isDivider: false, code: 'NAV.DASHBOARD' }]));
+    window.history.replaceState({}, '', '/settings');
+
+    render(<AppProvider><Harness /></AppProvider>);
+    await waitFor(() => expect(screen.getByLabelText('authenticated')).toHaveTextContent('true'));
+
+    window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED_EVENT));
+
+    await waitFor(() => expect(screen.getByLabelText('authenticated')).toHaveTextContent('false'));
+    expect(screen.getByLabelText('path')).toHaveTextContent('/login');
+    expect(localStorage.getItem('user_profile')).toBeNull();
+    expect(localStorage.getItem('roles')).toBeNull();
+    expect(localStorage.getItem('permissions')).toBeNull();
+    expect(localStorage.getItem('menu_items')).toBeNull();
   });
 });
