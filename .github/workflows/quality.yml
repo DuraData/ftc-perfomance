@@ -39,6 +39,7 @@ jobs:
         run: |
           ./tools/Invoke-OpmsSqlServerRecoveryDrill.ps1 -ValidateOnly
           dotnet run --project tools/FTCERP.RecoveryDrill/FTCERP.RecoveryDrill.csproj --no-restore --configuration Release -- --validate-only
+          dotnet run --project tools/FTCERP.PerformanceAcceptance/FTCERP.PerformanceAcceptance.csproj --no-restore --configuration Release -- --validate-only
       - name: Audit backend dependencies
         shell: pwsh
         run: |

@@ -27,5 +27,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\FTCERP.Host.csproj" />
     <ProjectReference Include="..\..\tools\FTCERP.RecoveryDrill\FTCERP.RecoveryDrill.csproj" />
+    <ProjectReference Include="..\..\tools\FTCERP.PerformanceAcceptance\FTCERP.PerformanceAcceptance.csproj" />
   </ItemGroup>
 </Project>
