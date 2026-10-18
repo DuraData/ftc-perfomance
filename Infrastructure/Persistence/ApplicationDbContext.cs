@@ -2607,6 +2607,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             .Where(entry => entry.Entity is StrategicPlanningMasterBase)
             .ToArray();
         EnforceStrategicPlanningMasterHistory(strategicMasterEntries);
+        EnforceStrategicPlanningRelationshipHistory();
         EnforceGlobalStrategicReferenceHistory();
         if (ChangeTracker.Entries<DueDateExtension>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
             || ChangeTracker.Entries<ReviewComment>().Any(entry => entry.State is EntityState.Modified or EntityState.Deleted)
@@ -4774,6 +4775,130 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
             if (audits.Length != 1)
                 throw new InvalidOperationException($"{entityName} changes require one exact actor-bound same-transaction before/after audit.");
         }
+    }
+
+    private void EnforceStrategicPlanningRelationshipHistory()
+    {
+        var entries = ChangeTracker.Entries()
+            .Where(entry => entry.Entity is StrategicPlanningRelationshipBase)
+            .ToArray();
+
+        foreach (var entry in entries)
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Strategic-planning relationship history cannot be hard deleted.");
+            if (entry.State is not (EntityState.Added or EntityState.Modified)) continue;
+
+            if (entry.State == EntityState.Modified)
+            {
+                var allowedProperties = new HashSet<string>(StringComparer.Ordinal)
+                {
+                    nameof(StrategicPlanningRelationshipBase.IsActive),
+                    nameof(StrategicPlanningRelationshipBase.RowVersion)
+                };
+                if (entry.Properties.Any(property => property.IsModified && !allowedProperties.Contains(property.Metadata.Name)))
+                    throw new InvalidOperationException("Strategic-planning relationship identity, tenant ownership and parent/child associations are immutable.");
+                var changed = entry.Properties.Where(property => property.IsModified
+                        && property.Metadata.Name != nameof(StrategicPlanningRelationshipBase.RowVersion))
+                    .Select(property => property.Metadata.Name)
+                    .ToArray();
+                if (changed.Length == 0) continue;
+                if (changed.Length != 1 || changed[0] != nameof(StrategicPlanningRelationshipBase.IsActive)
+                    || entry.OriginalValues.GetValue<bool>(nameof(StrategicPlanningRelationshipBase.IsActive))
+                        == entry.CurrentValues.GetValue<bool>(nameof(StrategicPlanningRelationshipBase.IsActive)))
+                    throw new InvalidOperationException("Strategic-planning relationships may only transition between active and inactive states.");
+            }
+
+            var relationship = (StrategicPlanningRelationshipBase)entry.Entity;
+            var useOriginalValues = entry.State == EntityState.Modified;
+            var municipalityId = useOriginalValues
+                ? entry.OriginalValues.GetValue<long>(nameof(StrategicPlanningRelationshipBase.MunicipalityId))
+                : relationship.MunicipalityId;
+            var publicId = useOriginalValues
+                ? entry.OriginalValues.GetValue<Guid>(nameof(StrategicPlanningRelationshipBase.PublicId))
+                : relationship.PublicId;
+            var (parentPublicId, childPublicId) = ResolveStrategicPlanningRelationshipPublicIds(entry, useOriginalValues);
+            if (municipalityId <= 0 || publicId == Guid.Empty || !parentPublicId.HasValue || !childPublicId.HasValue)
+                throw new InvalidOperationException("Strategic-planning relationships require stable tenant, public and parent/child identities.");
+
+            var originalActive = entry.State == EntityState.Modified
+                && entry.OriginalValues.GetValue<bool>(nameof(StrategicPlanningRelationshipBase.IsActive));
+            var currentActive = entry.CurrentValues.GetValue<bool>(nameof(StrategicPlanningRelationshipBase.IsActive));
+            if (entry.State == EntityState.Added && !currentActive)
+                throw new InvalidOperationException("New strategic-planning relationships must begin active.");
+
+            var action = entry.State == EntityState.Added
+                ? "CreateRelationship"
+                : currentActive ? "ReactivateRelationship" : "DisableRelationship";
+            var oldSnapshot = new Dictionary<string, object?>
+            {
+                ["ParentPublicId"] = parentPublicId.Value,
+                ["ChildPublicId"] = childPublicId.Value,
+                [nameof(StrategicPlanningRelationshipBase.IsActive)] = originalActive
+            };
+            var newSnapshot = new Dictionary<string, object?>
+            {
+                ["ParentPublicId"] = parentPublicId.Value,
+                ["ChildPublicId"] = childPublicId.Value,
+                [nameof(StrategicPlanningRelationshipBase.IsActive)] = currentActive
+            };
+            var audits = ChangeTracker.Entries<AuditTrail>().Where(candidate =>
+                candidate.State == EntityState.Added
+                && candidate.Entity.MunicipalityId == municipalityId
+                && candidate.Entity.EntityName == entry.Metadata.ClrType.Name
+                && candidate.Entity.EntityId == publicId.ToString()
+                && candidate.Entity.Action == action
+                && GovernanceActorMatches(candidate.Entity.ChangedBy, _tenantContext?.UserId)
+                && candidate.Entity.ChangedAt != default
+                && candidate.Entity.ChangedAt <= DateTime.UtcNow.AddMinutes(5)
+                && !string.IsNullOrWhiteSpace(candidate.Entity.Reason)
+                && (entry.State == EntityState.Added
+                    ? candidate.Entity.OldValue == null
+                    : ExactSnapshotMatches(candidate.Entity.OldValue, oldSnapshot))
+                && ExactSnapshotMatches(candidate.Entity.NewValue, newSnapshot)).ToArray();
+            if (audits.Length != 1)
+                throw new InvalidOperationException("Strategic-planning relationship lifecycle changes require one exact actor-bound same-transaction before/after audit.");
+        }
+    }
+
+    private (Guid? ParentPublicId, Guid? ChildPublicId) ResolveStrategicPlanningRelationshipPublicIds(
+        EntityEntry entry, bool useOriginalValues) => entry.Entity switch
+    {
+        MunicipalKpaStrategicGoal => (
+            ResolveStrategicPlanningMasterPublicId<MunicipalKpa>(RelationshipKey(entry, nameof(MunicipalKpaStrategicGoal.MunicipalKpaId), useOriginalValues)),
+            ResolveStrategicPlanningMasterPublicId<MunicipalStrategicGoal>(RelationshipKey(entry, nameof(MunicipalKpaStrategicGoal.StrategicGoalId), useOriginalValues))),
+        StrategicGoalIntervention => (
+            ResolveStrategicPlanningMasterPublicId<MunicipalStrategicGoal>(RelationshipKey(entry, nameof(StrategicGoalIntervention.StrategicGoalId), useOriginalValues)),
+            ResolveStrategicPlanningMasterPublicId<StrategicIntervention>(RelationshipKey(entry, nameof(StrategicGoalIntervention.StrategicInterventionId), useOriginalValues))),
+        StrategicGoalObjective => (
+            ResolveStrategicPlanningMasterPublicId<MunicipalStrategicGoal>(RelationshipKey(entry, nameof(StrategicGoalObjective.StrategicGoalId), useOriginalValues)),
+            ResolveStrategicPlanningMasterPublicId<MunicipalStrategicObjective>(RelationshipKey(entry, nameof(StrategicGoalObjective.StrategicObjectiveId), useOriginalValues))),
+        StrategicInterventionObjective => (
+            ResolveStrategicPlanningMasterPublicId<StrategicIntervention>(RelationshipKey(entry, nameof(StrategicInterventionObjective.StrategicInterventionId), useOriginalValues)),
+            ResolveStrategicPlanningMasterPublicId<MunicipalStrategicObjective>(RelationshipKey(entry, nameof(StrategicInterventionObjective.StrategicObjectiveId), useOriginalValues))),
+        StrategicObjectivePerformanceObjective => (
+            ResolveStrategicPlanningMasterPublicId<MunicipalStrategicObjective>(RelationshipKey(entry, nameof(StrategicObjectivePerformanceObjective.StrategicObjectiveId), useOriginalValues)),
+            ResolveStrategicPlanningMasterPublicId<PerformanceObjective>(RelationshipKey(entry, nameof(StrategicObjectivePerformanceObjective.PerformanceObjectiveId), useOriginalValues))),
+        _ => (null, null)
+    };
+
+    private static long RelationshipKey(EntityEntry entry, string propertyName, bool useOriginalValues) =>
+        useOriginalValues
+            ? entry.OriginalValues.GetValue<long>(propertyName)
+            : entry.CurrentValues.GetValue<long>(propertyName);
+
+    private Guid? ResolveStrategicPlanningMasterPublicId<TEntity>(long id)
+        where TEntity : StrategicPlanningMasterBase
+    {
+        var tracked = ChangeTracker.Entries<TEntity>()
+            .Where(candidate => candidate.State is not EntityState.Detached and not EntityState.Deleted
+                && candidate.Entity.Id == id)
+            .Select(candidate => (Guid?)candidate.Entity.PublicId)
+            .SingleOrDefault();
+        return tracked ?? Set<TEntity>().IgnoreQueryFilters().AsNoTracking()
+            .Where(candidate => candidate.Id == id)
+            .Select(candidate => (Guid?)candidate.PublicId)
+            .SingleOrDefault();
     }
 
     private static bool StrategicPlanningMasterSnapshotMatches(string? json, PropertyValues values,

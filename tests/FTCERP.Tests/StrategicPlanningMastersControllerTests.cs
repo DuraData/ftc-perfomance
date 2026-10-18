@@ -70,6 +70,55 @@ public sealed class StrategicPlanningMastersControllerTests
     }
 
     [Fact]
+    public async Task Strategic_relationship_persistence_rejects_unaudited_create_identity_rewrite_and_delete()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await using var context = fixture.Context(fixture.MunicipalityA.Id);
+        var controller = Controller(context, fixture.MunicipalityA.Id);
+        var kpa = Data(await controller.CreateMunicipalKpa(new(null, "Governed KPA", null, null, null, 1, true,
+            "Create governed relationship parent")));
+        var firstGoal = Data(await controller.CreateStrategicGoal(new(null, "First governed goal", null, null, null, 1, true,
+            "Create first relationship child")));
+        var secondGoal = Data(await controller.CreateStrategicGoal(new(null, "Second governed goal", null, null, null, 2, true,
+            "Create second relationship child")));
+
+        var kpaId = await context.MunicipalKpas.Where(item => item.PublicId == kpa.PublicId).Select(item => item.Id).SingleAsync();
+        var firstGoalId = await context.MunicipalStrategicGoals.Where(item => item.PublicId == firstGoal.PublicId).Select(item => item.Id).SingleAsync();
+        var secondGoalId = await context.MunicipalStrategicGoals.Where(item => item.PublicId == secondGoal.PublicId).Select(item => item.Id).SingleAsync();
+        context.MunicipalKpaStrategicGoals.Add(new MunicipalKpaStrategicGoal
+        {
+            MunicipalityId = fixture.MunicipalityA.Id,
+            MunicipalKpaId = kpaId,
+            StrategicGoalId = firstGoalId
+        });
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        var linked = await controller.LinkMunicipalKpaToGoal(new(kpa.PublicId, firstGoal.PublicId,
+            "Council approved governed relationship"));
+        var relationship = Assert.IsType<OkObjectResult>(linked.Result).Value.As<ApiResponse<StrategicPlanningRelationshipDto>>().Data!;
+
+        context.ChangeTracker.Clear();
+        var stored = await context.MunicipalKpaStrategicGoals.SingleAsync(item => item.PublicId == relationship.PublicId);
+        stored.IsActive = false;
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*one exact actor-bound same-transaction before/after audit*");
+
+        context.ChangeTracker.Clear();
+        stored = await context.MunicipalKpaStrategicGoals.SingleAsync(item => item.PublicId == relationship.PublicId);
+        stored.StrategicGoalId = secondGoalId;
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*parent/child associations are immutable*");
+
+        context.ChangeTracker.Clear();
+        stored = await context.MunicipalKpaStrategicGoals.SingleAsync(item => item.PublicId == relationship.PublicId);
+        context.MunicipalKpaStrategicGoals.Remove(stored);
+        (await FluentActions.Awaiting(() => context.SaveChangesAsync()).Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*cannot be hard deleted*");
+    }
+
+    [Fact]
     public async Task StaleMasterRowVersionReturnsConflict()
     {
         await using var fixture = await Fixture.CreateAsync(); Guid id; string stale;

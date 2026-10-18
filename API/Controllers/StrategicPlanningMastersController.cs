@@ -276,8 +276,12 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
         if (entity == null) return NotFound(Fail<StrategicPlanningRelationshipDto>("Strategic relationship not found."));
         if (!entity.IsActive) return Conflict(Fail<StrategicPlanningRelationshipDto>("Strategic relationship is already inactive."));
         context.Entry((object)entity).Property(nameof(entity.RowVersion)).OriginalValue = expected;
+        var relationshipIdentity = await ResolveRelationshipAuditIdentity(entity);
         entity.IsActive = false;
-        AddAudit(entity.GetType().Name, entity.PublicId, "DisableRelationship", new { IsActive = true }, new { IsActive = false }, request.Reason);
+        AddAudit(entity.GetType().Name, entity.PublicId, "DisableRelationship",
+            new StrategicPlanningRelationshipAuditSnapshot(relationshipIdentity.ParentPublicId, relationshipIdentity.ChildPublicId, true),
+            new StrategicPlanningRelationshipAuditSnapshot(relationshipIdentity.ParentPublicId, relationshipIdentity.ChildPublicId, false),
+            request.Reason);
         try { await context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicPlanningRelationshipDto>("The relationship changed before this update. Reload and retry.")); }
         return Ok(new ApiResponse<StrategicPlanningRelationshipDto>(true, new(entity.PublicId, entity.GetType().Name, Guid.Empty, string.Empty, Guid.Empty, string.Empty, false, Convert.ToBase64String(entity.RowVersion))));
@@ -481,13 +485,37 @@ public sealed class StrategicPlanningMastersController(ApplicationDbContext cont
             context.Entry(existing).Property(item => item.RowVersion).OriginalValue = expected;
             entity = existing; entity.IsActive = true;
         }
-        AddAudit(typeof(TEntity).Name, entity.PublicId, existing == null ? "CreateRelationship" : "ReactivateRelationship", null, new { ParentPublicId = parent.PublicId, ChildPublicId = child.PublicId, IsActive = true }, request.Reason);
+        var currentSnapshot = new StrategicPlanningRelationshipAuditSnapshot(parent.PublicId, child.PublicId, true);
+        AddAudit(typeof(TEntity).Name, entity.PublicId, existing == null ? "CreateRelationship" : "ReactivateRelationship",
+            existing == null ? null : new StrategicPlanningRelationshipAuditSnapshot(parent.PublicId, child.PublicId, false),
+            currentSnapshot, request.Reason);
         try { await context.SaveChangesAsync(); } catch (DbUpdateConcurrencyException) { return Conflict(Fail<StrategicPlanningRelationshipDto>("The relationship changed before reactivation. Reload and retry.")); } catch (DbUpdateException) { return Conflict(Fail<StrategicPlanningRelationshipDto>("This strategic relationship already exists.")); }
         return Ok(new ApiResponse<StrategicPlanningRelationshipDto>(true, new(entity.PublicId, type, parent.PublicId, parent.Name, child.PublicId, child.Name, true, Convert.ToBase64String(entity.RowVersion))));
     }
 
     private static string ParentKey<TEntity>() => typeof(TEntity) == typeof(MunicipalKpaStrategicGoal) ? nameof(MunicipalKpaStrategicGoal.MunicipalKpaId) : typeof(TEntity) == typeof(StrategicGoalIntervention) || typeof(TEntity) == typeof(StrategicGoalObjective) ? nameof(StrategicGoalIntervention.StrategicGoalId) : typeof(TEntity) == typeof(StrategicInterventionObjective) ? nameof(StrategicInterventionObjective.StrategicInterventionId) : nameof(StrategicObjectivePerformanceObjective.StrategicObjectiveId);
     private static string ChildKey<TEntity>() => typeof(TEntity) == typeof(MunicipalKpaStrategicGoal) ? nameof(MunicipalKpaStrategicGoal.StrategicGoalId) : typeof(TEntity) == typeof(StrategicGoalIntervention) ? nameof(StrategicGoalIntervention.StrategicInterventionId) : typeof(TEntity) == typeof(StrategicGoalObjective) || typeof(TEntity) == typeof(StrategicInterventionObjective) ? nameof(StrategicGoalObjective.StrategicObjectiveId) : nameof(StrategicObjectivePerformanceObjective.PerformanceObjectiveId);
+
+    private async Task<(Guid ParentPublicId, Guid ChildPublicId)> ResolveRelationshipAuditIdentity(
+        IStrategicPlanningRelationship relationship) => relationship switch
+    {
+        MunicipalKpaStrategicGoal item => (
+            await context.MunicipalKpas.Where(parent => parent.Id == item.MunicipalKpaId).Select(parent => parent.PublicId).SingleAsync(),
+            await context.MunicipalStrategicGoals.Where(child => child.Id == item.StrategicGoalId).Select(child => child.PublicId).SingleAsync()),
+        StrategicGoalIntervention item => (
+            await context.MunicipalStrategicGoals.Where(parent => parent.Id == item.StrategicGoalId).Select(parent => parent.PublicId).SingleAsync(),
+            await context.StrategicInterventions.Where(child => child.Id == item.StrategicInterventionId).Select(child => child.PublicId).SingleAsync()),
+        StrategicGoalObjective item => (
+            await context.MunicipalStrategicGoals.Where(parent => parent.Id == item.StrategicGoalId).Select(parent => parent.PublicId).SingleAsync(),
+            await context.MunicipalStrategicObjectives.Where(child => child.Id == item.StrategicObjectiveId).Select(child => child.PublicId).SingleAsync()),
+        StrategicInterventionObjective item => (
+            await context.StrategicInterventions.Where(parent => parent.Id == item.StrategicInterventionId).Select(parent => parent.PublicId).SingleAsync(),
+            await context.MunicipalStrategicObjectives.Where(child => child.Id == item.StrategicObjectiveId).Select(child => child.PublicId).SingleAsync()),
+        StrategicObjectivePerformanceObjective item => (
+            await context.MunicipalStrategicObjectives.Where(parent => parent.Id == item.StrategicObjectiveId).Select(parent => parent.PublicId).SingleAsync(),
+            await context.PerformanceObjectives.Where(child => child.Id == item.PerformanceObjectiveId).Select(child => child.PublicId).SingleAsync()),
+        _ => throw new InvalidOperationException("Unsupported strategic-planning relationship type.")
+    };
 
     private void Apply(StrategicPlanningMasterBase entity, SaveStrategicPlanningMasterRequest request, string? code, MunicipalityFinancialYear? from, MunicipalityFinancialYear? to) { entity.Code = code; entity.Name = request.Name.Trim(); entity.Description = Clean(request.Description); entity.EffectiveFromFinancialYearId = from?.Id; entity.EffectiveToFinancialYearId = to?.Id; entity.DisplayOrder = request.DisplayOrder; entity.IsActive = request.IsActive; if (entity is GovernedKpiUnitOfMeasure unit) unit.Symbol = Clean(request.Symbol); }
     private async Task LoadYears(StrategicPlanningMasterBase entity) { if (entity.EffectiveFromFinancialYearId.HasValue) await context.Entry(entity).Reference(item => item.EffectiveFromFinancialYear).Query().Include(item => item.FinancialYear).LoadAsync(); if (entity.EffectiveToFinancialYearId.HasValue) await context.Entry(entity).Reference(item => item.EffectiveToFinancialYear).Query().Include(item => item.FinancialYear).LoadAsync(); }
@@ -530,6 +558,7 @@ public sealed class StrategicPlanningPageRequest
 public sealed record StrategicPlanningMasterDto(Guid PublicId, string? Code, string Name, string? Description, Guid? EffectiveFromFinancialYearPublicId, string? EffectiveFromFinancialYearCode, Guid? EffectiveToFinancialYearPublicId, string? EffectiveToFinancialYearCode, int DisplayOrder, bool IsActive, string RowVersion, string? Symbol = null);
 public sealed record SaveStrategicPlanningMasterRequest(string? Code, string Name, string? Description, Guid? EffectiveFromFinancialYearPublicId, Guid? EffectiveToFinancialYearPublicId, int DisplayOrder, bool IsActive, string Reason, string? RowVersion = null, string? Symbol = null);
 public sealed record StrategicPlanningRelationshipDto(Guid PublicId, string RelationshipType, Guid ParentPublicId, string ParentName, Guid ChildPublicId, string ChildName, bool IsActive, string RowVersion);
+internal sealed record StrategicPlanningRelationshipAuditSnapshot(Guid ParentPublicId, Guid ChildPublicId, bool IsActive);
 internal sealed class StrategicPlanningRelationshipPageRow
 {
     public Guid PublicId { get; init; }

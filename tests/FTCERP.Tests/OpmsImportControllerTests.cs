@@ -244,12 +244,29 @@ public sealed class OpmsImportControllerTests
         var setup = await SeedAsync(context);
         var configuredGoal = new MunicipalStrategicGoal { MunicipalityId = setup.Municipality.Id, Code = "ONLY-GOAL", Name = "Only configured goal" };
         context.Add(configuredGoal); await context.SaveChangesAsync();
-        context.Add(new MunicipalKpaStrategicGoal
+        var relationship = new MunicipalKpaStrategicGoal
         {
             MunicipalityId = setup.Municipality.Id,
             MunicipalKpaId = setup.MunicipalKpa.Id,
             StrategicGoalId = configuredGoal.Id,
             IsActive = true
+        };
+        context.AddRange(relationship, new AuditTrail
+        {
+            MunicipalityId = setup.Municipality.Id,
+            EntityName = nameof(MunicipalKpaStrategicGoal),
+            EntityId = relationship.PublicId.ToString(),
+            Action = "CreateRelationship",
+            OldValue = null,
+            NewValue = JsonSerializer.Serialize(new
+            {
+                ParentPublicId = setup.MunicipalKpa.PublicId,
+                ChildPublicId = configuredGoal.PublicId,
+                IsActive = true
+            }),
+            ChangedBy = setup.User.Id,
+            ChangedAt = DateTime.UtcNow,
+            Reason = "Configure strategic hierarchy for import validation"
         });
         await context.SaveChangesAsync();
 
