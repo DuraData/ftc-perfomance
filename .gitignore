@@ -31,6 +31,7 @@ secure-files/
 # Ignore published output
 publish/
 artifacts/recovery-drills/
+artifacts/local-quality-gate/
 
 # IDE and editor files
 .vs/

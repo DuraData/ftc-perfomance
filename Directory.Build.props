@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Generated evidence trees can contain copied source projects. Excluding every
+         artifacts directory up front prevents recursive SDK item discovery locally. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\**\artifacts\**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>
