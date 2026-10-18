@@ -141,7 +141,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
         )}
         {title && (
           <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold text-secondary-900 dark:text-white sm:text-lg">{title}</h1>
+            <h1 id="page-title" className="truncate text-base font-semibold text-secondary-900 dark:text-white sm:text-lg">{title}</h1>
             {subtitle && (
               <p className="hidden truncate text-sm text-secondary-500 dark:text-secondary-400 sm:block">{subtitle}</p>
             )}

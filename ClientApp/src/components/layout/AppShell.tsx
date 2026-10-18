@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { useApp } from '../../context/AppContext';
@@ -12,6 +12,10 @@ interface AppShellProps {
 export function AppShell({ children, title, subtitle }: AppShellProps) {
   const { sidebarCollapsed, toasts } = useApp();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
+
+  useEffect(() => {
+    document.title = title ? `${title} | OPMS` : 'OPMS | Municipal Performance Management';
+  }, [title]);
 
   return (
     <div className="min-h-screen bg-secondary-50 dark:bg-secondary-950">
@@ -27,7 +31,13 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
       <Sidebar mobileOpen={mobileNavigationOpen} onMobileClose={() => setMobileNavigationOpen(false)} />
       <div className={`transition-[margin-left] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'}`}>
         <TopBar title={title} subtitle={subtitle} onOpenNavigation={() => setMobileNavigationOpen(true)} />
-        <main id="main-content" tabIndex={-1} className="p-4 focus:outline-none sm:p-6">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          aria-labelledby={title ? 'page-title' : undefined}
+          aria-label={title ? undefined : 'Application workspace'}
+          className="p-4 focus:outline-none sm:p-6"
+        >
           {children}
         </main>
       </div>

@@ -5,7 +5,7 @@ import { AppShell } from '../layout/AppShell';
 import { Checkbox, Input, Select, Textarea } from './Form';
 
 vi.mock('../layout/Sidebar', () => ({ Sidebar: () => <nav aria-label="Primary navigation" /> }));
-vi.mock('../layout/TopBar', () => ({ TopBar: ({ title }: { title?: string }) => <header><h1>{title}</h1></header> }));
+vi.mock('../layout/TopBar', () => ({ TopBar: ({ title }: { title?: string }) => <header><h1 id="page-title">{title}</h1></header> }));
 vi.mock('../../context/AppContext', () => ({
   useApp: () => ({ sidebarCollapsed: false, toasts: [{ id: 'notice', type: 'success', message: 'Saved' }] }),
 }));
@@ -26,6 +26,8 @@ describe('shared accessibility baseline', () => {
 
     expect(getByText('Skip to main content')).toHaveAttribute('href', '#main-content');
     expect(getByRole('main')).toHaveAttribute('id', 'main-content');
+    expect(getByRole('main', { name: 'Governed workspace' })).toHaveAttribute('aria-labelledby', 'page-title');
+    expect(document.title).toBe('Governed workspace | OPMS');
     expect(getByRole('status')).toHaveTextContent('Saved');
     await expectNoAutomatedViolations(container);
   });
