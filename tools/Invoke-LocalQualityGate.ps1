@@ -112,28 +112,6 @@ function Invoke-BackendDependencyAudit {
     }
 }
 
-function Invoke-TrackedSecretScan {
-    $patterns = @(
-        'BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY',
-        'AKIA[0-9A-Z]{16}',
-        'gh[pousr]_[A-Za-z0-9_]{30,}',
-        'xox[baprs]-[A-Za-z0-9-]{20,}'
-    )
-
-    $arguments = @('grep', '-I', '-l', '-E', ($patterns -join '|'), '--', '.')
-    $matches = & git @arguments 2>$null
-    $exitCode = $LASTEXITCODE
-    if ($exitCode -eq 0) {
-        $files = @($matches | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-        throw "The tracked-file secret scan found a credential-shaped value in: $($files -join ', '). Content was intentionally not printed."
-    }
-    if ($exitCode -ne 1) {
-        throw "The tracked-file secret scan failed with exit code $exitCode."
-    }
-
-    Write-Host 'No credential-shaped values were found in tracked files.'
-}
-
 $stepNames = @(
     if (-not $SkipRestore) { 'Restore backend and tests' }
     'Build backend'
@@ -148,7 +126,7 @@ $stepNames = @(
     'Test accessibility baseline'
     'Build frontend and enforce bundle budget'
     'Audit frontend dependencies'
-    'Scan tracked files for credential-shaped values'
+    'Self-test and scan pushable content for credential-shaped values'
 )
 
 if ($ListSteps) {
@@ -210,7 +188,10 @@ try {
     Invoke-QualityStep 'Test accessibility baseline' { Invoke-NativeCommand 'npm' @('run', 'test:a11y') $frontendRoot }
     Invoke-QualityStep 'Build frontend and enforce bundle budget' { Invoke-NativeCommand 'npm' @('run', 'build:verify') $frontendRoot }
     Invoke-QualityStep 'Audit frontend dependencies' { Invoke-NativeCommand 'npm' @('audit', '--audit-level=high') $frontendRoot }
-    Invoke-QualityStep 'Scan tracked files for credential-shaped values' { Invoke-TrackedSecretScan }
+    Invoke-QualityStep 'Self-test and scan pushable content for credential-shaped values' {
+        & (Join-Path $PSScriptRoot 'Test-RepositorySecrets.ps1') -SelfTest
+        & (Join-Path $PSScriptRoot 'Test-RepositorySecrets.ps1') -RepositoryRoot $repositoryRoot
+    }
 
     $succeeded = $true
 }
