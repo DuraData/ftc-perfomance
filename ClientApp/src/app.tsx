@@ -2,8 +2,9 @@ import { lazy, Suspense } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { SecurityProvider } from './context/SecurityContext';
 import { Login } from './components/auth/Login';
-import { AccessDeniedPage, useCanAccessPath } from './components/security/AccessControl';
+import { AccessDeniedPage, NotFoundPage, useCanAccessPath } from './components/security/AccessControl';
 import { TenantScopeBoundary } from './components/common/TenantScopeBoundary';
+import { isKnownApplicationPath } from './routing/appRoutes';
 
 const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(module => ({ default: module.Dashboard })));
 const OPMSTargetList = lazy(() => import('./components/opms/OPMSTargetList').then(module => ({ default: module.OPMSTargetList })));
@@ -76,6 +77,10 @@ function AppContent() {
 
   if (!accessReady) {
     return <div role="status" aria-live="polite" className="flex min-h-screen items-center justify-center bg-secondary-50 p-6 text-sm text-secondary-600 dark:bg-secondary-950 dark:text-secondary-300">Loading your authorised workspace…</div>;
+  }
+
+  if (!isKnownApplicationPath(currentPath)) {
+    return <NotFoundPage />;
   }
 
   if (!canAccessPath) {
@@ -333,7 +338,7 @@ function AppContent() {
       case '/my-profile':
         return <Settings />;
       default:
-        return <Dashboard />;
+        return <NotFoundPage />;
     }
   };
 

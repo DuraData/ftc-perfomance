@@ -28,6 +28,8 @@ describe('AppContext state management', () => {
     expect(normalizeAppPath('/admin/users/new')).toBe('/system-administration/users');
     expect(normalizeAppPath('/admin/roles')).toBe('/system-administration/roles');
     expect(normalizeAppPath('/dashboard')).toBe('/dashboard');
+    expect(normalizeAppPath('/dashboard/')).toBe('/dashboard');
+    expect(normalizeAppPath('/')).toBe('/');
   });
 
   it('preserves governed dashboard filters while resolving the client route', () => {

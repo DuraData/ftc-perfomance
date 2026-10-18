@@ -113,7 +113,8 @@ function systemPrefersDark() {
 }
 
 export function normalizeAppPath(path: string) {
-  const routePath = path.split(/[?#]/, 1)[0];
+  const rawRoutePath = path.split(/[?#]/, 1)[0];
+  const routePath = rawRoutePath.replace(/\/+$/, '') || '/';
   if (routePath.startsWith('/admin/users')) return '/system-administration/users';
   if (routePath.startsWith('/admin/roles')) return '/system-administration/roles';
   if (routePath.startsWith('/admin/permissions')) return '/system-administration/permissions';

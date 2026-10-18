@@ -2,6 +2,7 @@ import { render } from '@testing-library/react';
 import axe from 'axe-core';
 import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '../layout/AppShell';
+import { NotFoundPage } from '../security/AccessControl';
 import { Checkbox, Input, Select, Textarea } from './Form';
 
 vi.mock('../layout/Sidebar', () => ({ Sidebar: () => <nav aria-label="Primary navigation" /> }));
@@ -46,6 +47,15 @@ describe('shared accessibility baseline', () => {
     expect(getByLabelText('Reporting period')).toHaveAccessibleDescription('Select a period');
     expect(getByLabelText('Comment')).toHaveAccessibleDescription('Explain the change');
     expect(getByLabelText('Published')).toHaveAccessibleDescription('Makes this visible to authorised readers');
+    await expectNoAutomatedViolations(container);
+  });
+
+  it('renders an honest accessible not-found workspace instead of substitute content', async () => {
+    const { container, getByRole, getByText } = render(<NotFoundPage />);
+
+    expect(getByRole('main', { name: 'Page Not Found' })).toBeInTheDocument();
+    expect(getByText('The address does not match a registered OPMS workspace. No substitute page was loaded.')).toBeInTheDocument();
+    expect(document.title).toBe('Page Not Found | OPMS');
     await expectNoAutomatedViolations(container);
   });
 });

@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useMemo } from 'react';
-import { ShieldAlert } from 'lucide-react';
+import { FileQuestion, ShieldAlert } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Card } from '../ui';
 import { useApp } from '../../context/AppContext';
@@ -95,6 +95,38 @@ export function AccessDeniedPage() {
               <h2 className="text-lg font-semibold text-secondary-900 dark:text-white">You do not have access to this route</h2>
               <p className="mt-1 text-sm text-secondary-500 dark:text-secondary-400">
                 The page is protected by backend-driven permissions. If you believe this is incorrect, ask an authorised security administrator to review your role, scope, and assignments.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="primary" onClick={() => setCurrentPath('/dashboard')}>
+                Go To Dashboard
+              </Button>
+              <Button variant="outline" onClick={() => window.history.back()}>
+                Go Back
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Card>
+    </AppShell>
+  );
+}
+
+export function NotFoundPage() {
+  const { setCurrentPath } = useApp();
+
+  return (
+    <AppShell title="Page Not Found" subtitle="The requested application route does not exist">
+      <Card className="max-w-3xl">
+        <div className="flex items-start gap-4">
+          <div className="rounded-full bg-secondary-100 p-3 text-secondary-600 dark:bg-secondary-800 dark:text-secondary-300">
+            <FileQuestion className="h-6 w-6" aria-hidden="true" />
+          </div>
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-lg font-semibold text-secondary-900 dark:text-white">Page not found</h2>
+              <p className="mt-1 text-sm text-secondary-500 dark:text-secondary-400">
+                The address does not match a registered OPMS workspace. No substitute page was loaded.
               </p>
             </div>
             <div className="flex gap-2">
