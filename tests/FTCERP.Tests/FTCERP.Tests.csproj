@@ -26,5 +26,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\FTCERP.Host.csproj" />
+    <ProjectReference Include="..\..\tools\FTCERP.RecoveryDrill\FTCERP.RecoveryDrill.csproj" />
   </ItemGroup>
 </Project>

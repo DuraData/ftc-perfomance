@@ -36,7 +36,9 @@ jobs:
           test -s "$RUNNER_TEMP/migrations.sql"
       - name: Validate recovery drill safety contract
         shell: pwsh
-        run: ./tools/Invoke-OpmsSqlServerRecoveryDrill.ps1 -ValidateOnly
+        run: |
+          ./tools/Invoke-OpmsSqlServerRecoveryDrill.ps1 -ValidateOnly
+          dotnet run --project tools/FTCERP.RecoveryDrill/FTCERP.RecoveryDrill.csproj --no-restore --configuration Release -- --validate-only
       - name: Audit backend dependencies
         shell: pwsh
         run: |

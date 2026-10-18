@@ -48,6 +48,7 @@
     <None Remove="App_Data\**" />
     <Content Remove="App_Data\**" />
     <EmbeddedResource Remove="App_Data\**" />
+    <Compile Remove="tools\**\*.cs" />
   </ItemGroup>
 
   <Target Name="EnsureNodeEnvironment" BeforeTargets="Build;Publish" Condition="'$(SkipClientBuild)' != 'true'">
