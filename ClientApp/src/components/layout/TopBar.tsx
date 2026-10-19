@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Search,
   Menu,
@@ -23,6 +23,72 @@ interface TopBarProps {
 }
 
 type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
+
+function useFlyoutBoundary(isOpen: boolean, onDismiss: () => void) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const onDismissRef = useRef(onDismiss);
+
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const trigger = triggerRef.current;
+    const focusableSelector = [
+      'a[href]',
+      'button:not([disabled])',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',');
+    const focusFirstControl = () => {
+      const focusable = panelRef.current?.querySelector<HTMLElement>(focusableSelector);
+      (focusable ?? panelRef.current)?.focus();
+    };
+    const animationFrame = window.requestAnimationFrame(focusFirstControl);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onDismissRef.current();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(focusableSelector));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      document.removeEventListener('keydown', handleKeyDown);
+      if (trigger?.isConnected) trigger.focus();
+    };
+  }, [isOpen]);
+
+  return { panelRef, triggerRef };
+}
 
 export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
   const {
@@ -53,6 +119,13 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [tenantSearchInput, setTenantSearchInput] = useState(tenantContextSearch);
   const canViewNotifications = permissions.includes('Notifications.View');
+  const tenantFlyoutId = useId();
+  const notificationFlyoutId = useId();
+  const notificationTitleId = useId();
+  const userFlyoutId = useId();
+  const { panelRef: tenantPanelRef, triggerRef: tenantTriggerRef } = useFlyoutBoundary(showTenantMenu, () => setShowTenantMenu(false));
+  const { panelRef: notificationPanelRef, triggerRef: notificationTriggerRef } = useFlyoutBoundary(showNotifications, () => setShowNotifications(false));
+  const { panelRef: userPanelRef, triggerRef: userTriggerRef } = useFlyoutBoundary(showUserMenu, () => setShowUserMenu(false));
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setTenantContextSearch(tenantSearchInput.trim()), 300);
@@ -174,9 +247,12 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
         {hasTenantContexts && (
           <div className="relative lg:hidden">
             <button
+              ref={tenantTriggerRef}
               type="button"
               aria-label="Choose municipality context"
               aria-expanded={showTenantMenu}
+              aria-controls={tenantFlyoutId}
+              aria-haspopup="dialog"
               onClick={() => {
                 setShowNotifications(false);
                 setShowUserMenu(false);
@@ -189,7 +265,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
             {showTenantMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowTenantMenu(false)} />
-                <div role="dialog" aria-label="Municipality context selector" className="fixed left-3 right-3 top-16 z-20 mt-1 w-auto space-y-3 rounded-lg border border-secondary-200 bg-white p-3 shadow-lg dark:border-secondary-700 dark:bg-secondary-800">
+                <div ref={tenantPanelRef} id={tenantFlyoutId} role="dialog" aria-label="Municipality context selector" tabIndex={-1} className="fixed left-3 right-3 top-16 z-20 mt-1 w-auto space-y-3 rounded-lg border border-secondary-200 bg-white p-3 shadow-lg dark:border-secondary-700 dark:bg-secondary-800">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-secondary-600 dark:text-secondary-300" htmlFor="mobile-municipality-context-search">Find municipality</label>
                     <input id="mobile-municipality-context-search" aria-label="Search municipality contexts on narrow screens" value={tenantSearchInput} onChange={event => setTenantSearchInput(event.target.value)} placeholder="Code or name" className="w-full rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100" />
@@ -218,6 +294,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary-400" />
           <input
             type="text"
+            aria-label="Search application"
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -228,6 +305,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
         {/* Dark mode toggle */}
         <button type="button"
           onClick={toggleDarkMode}
+          aria-label={darkMode ? 'Use light mode' : 'Use dark mode'}
           className="p-2 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"
           title={darkMode ? 'Light mode' : 'Dark mode'}
         >
@@ -241,10 +319,13 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
         {/* Notifications */}
         {authenticationGate === null && canViewNotifications && <div className="relative">
           <button type="button"
+            ref={notificationTriggerRef}
             className="p-2 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors relative"
             onClick={toggleNotifications}
             aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
             aria-expanded={showNotifications}
+            aria-controls={notificationFlyoutId}
+            aria-haspopup="dialog"
           >
             <Bell className="w-5 h-5 text-secondary-500 dark:text-secondary-400" />
             {unreadCount > 0 && (
@@ -256,10 +337,10 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
           {showNotifications && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowNotifications(false)} />
-              <div className="absolute right-0 top-full z-20 mt-1 w-96 rounded-lg border border-secondary-200 bg-white shadow-lg dark:border-secondary-700 dark:bg-secondary-800">
+              <div ref={notificationPanelRef} id={notificationFlyoutId} role="dialog" aria-labelledby={notificationTitleId} tabIndex={-1} className="absolute right-0 top-full z-20 mt-1 w-96 rounded-lg border border-secondary-200 bg-white shadow-lg dark:border-secondary-700 dark:bg-secondary-800">
                 <div className="flex items-center justify-between border-b border-secondary-200 px-4 py-3 dark:border-secondary-700">
                   <div>
-                    <p className="text-sm font-semibold text-secondary-900 dark:text-white">Notifications</p>
+                    <p id={notificationTitleId} className="text-sm font-semibold text-secondary-900 dark:text-white">Notifications</p>
                     <p className="text-xs text-secondary-500 dark:text-secondary-400">{unreadCount} unread</p>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => { void loadNotifications(); }}>
@@ -325,7 +406,12 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
         {userProfile && (
           <div className="relative">
             <button type="button"
+              ref={userTriggerRef}
               onClick={toggleUserMenu}
+              aria-label={`Open account menu for ${userProfile.fullName}`}
+              aria-expanded={showUserMenu}
+              aria-controls={userFlyoutId}
+              aria-haspopup="dialog"
               className="flex items-center gap-2 rounded-lg px-1 py-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 sm:gap-3 sm:px-3"
             >
               <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center overflow-hidden">
@@ -341,7 +427,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
             {showUserMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowUserMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-secondary-800 rounded-lg shadow-lg border border-secondary-200 dark:border-secondary-700 py-1 z-20">
+                <div ref={userPanelRef} id={userFlyoutId} role="dialog" aria-label="Account menu" tabIndex={-1} className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-secondary-800 rounded-lg shadow-lg border border-secondary-200 dark:border-secondary-700 py-1 z-20">
                   <div className="px-4 py-3 border-b border-secondary-200 dark:border-secondary-700">
                     <p className="text-sm font-medium text-secondary-900 dark:text-white">{userProfile.fullName}</p>
                     <p className="text-xs text-secondary-500 dark:text-secondary-400">{userProfile.email}</p>

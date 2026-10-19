@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import axe from 'axe-core';
 import { TopBar } from './TopBar';
 
 const app = vi.hoisted(() => ({
@@ -92,13 +93,71 @@ describe('TopBar notification feed', () => {
     api.getNotifications.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 8, totalCount: 0, totalPages: 0, unreadCount: 0 } });
 
     render(<TopBar />);
-    fireEvent.click(screen.getByRole('button', { name: 'Choose municipality context' }));
+    const trigger = screen.getByRole('button', { name: 'Choose municipality context' });
+    fireEvent.click(trigger);
     const narrowSelector = screen.getByRole('dialog', { name: 'Municipality context selector' });
+    expect(trigger).toHaveAttribute('aria-controls', narrowSelector.id);
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Search municipality contexts on narrow screens' })).toHaveFocus());
     fireEvent.change(narrowSelector.querySelector('select')!, { target: { value: '88888888-8888-8888-8888-888888888888' } });
 
     await waitFor(() => expect(app.switchMunicipality).toHaveBeenCalledWith('88888888-8888-8888-8888-888888888888'));
     expect(app.pushToast).toHaveBeenCalledWith('success', 'Municipality context changed');
     expect(screen.queryByRole('dialog', { name: 'Municipality context selector' })).not.toBeInTheDocument();
+  });
+
+  it('provides a named keyboard-contained notification flyout and restores its trigger', async () => {
+    api.getNotifications.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 8, totalCount: 0, totalPages: 0, unreadCount: 0 } });
+
+    const result = render(<TopBar title="Dashboard" />);
+    const trigger = await screen.findByRole('button', { name: 'Notifications' });
+    fireEvent.click(trigger);
+
+    const flyout = screen.getByRole('dialog', { name: 'Notifications' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(trigger).toHaveAttribute('aria-controls', flyout.id);
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    const refresh = screen.getByRole('button', { name: 'Refresh' });
+    const openSettings = screen.getByRole('button', { name: 'Open settings' });
+    await waitFor(() => expect(refresh).toHaveFocus());
+
+    openSettings.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(refresh).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(openSettings).toHaveFocus();
+
+    const accessibility = await axe.run(result.container, { rules: { 'color-contrast': { enabled: false } } });
+    expect(accessibility.violations).toEqual([]);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Notifications' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('gives the account flyout a complete trigger relationship and Escape boundary', async () => {
+    api.getNotifications.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 8, totalCount: 0, totalPages: 0, unreadCount: 0 } });
+
+    render(<TopBar title="Dashboard" />);
+    const trigger = screen.getByRole('button', { name: 'Open account menu for Test User' });
+    fireEvent.click(trigger);
+
+    const flyout = screen.getByRole('dialog', { name: 'Account menu' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(trigger).toHaveAttribute('aria-controls', flyout.id);
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Profile' })).toHaveFocus());
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Account menu' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('names the application search and appearance toggle', async () => {
+    api.getNotifications.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 8, totalCount: 0, totalPages: 0, unreadCount: 0 } });
+
+    render(<TopBar title="Dashboard" />);
+
+    expect(screen.getByRole('textbox', { name: 'Search application' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use dark mode' })).toBeInTheDocument();
   });
 
   it('does not request or expose notifications while account security remediation is required', () => {
