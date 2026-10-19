@@ -1011,7 +1011,7 @@ export function SubmissionWorkspace({
                 ? <div className="md:col-span-3"><PerformanceValueInput
                     configuration={currentSubmission.valueConfiguration}
                     value={currentSubmission.actualPerformance ?? ''}
-                    onChange={(value) => updateDraftSubmission(current => ({ ...current, actualPerformance: value, actual: Number.isFinite(Number(value)) ? Number(value) : 0 }))}
+                    onChange={(value) => updateDraftSubmission(current => ({ ...current, actualPerformance: value }))}
                   /></div>
                 : <Field label="Actual Performance" value={currentSubmission.actualPerformance ?? ''} />)}
               {canReadActual && <Field

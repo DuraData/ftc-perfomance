@@ -587,7 +587,6 @@ export interface OPMSSubmission {
   quarter: Quarter;
   dueDate: string;
   extendedDueDate?: string;
-  actual: number;
   actualPerformance?: string;
   valueConfiguration?: PerformanceValueConfiguration;
   systemSuggestedActualPerformance?: string;
@@ -600,14 +599,12 @@ export interface OPMSSubmission {
   achievementPercent?: number;
   targetAchieved?: boolean;
   reportingPeriodPublicId?: string;
-  actualDescription?: string;
   actualExpenditure?: number;
   variance?: number;
   varianceReason?: string;
   correctiveMeasure?: string;
   requiredPoeDescription?: string;
   requiresPoe?: boolean;
-  actualPerformanceDescription?: string;
   submitterScore?: number;
   submitterStatus?: string;
   verifierStatus?: string;
@@ -667,7 +664,6 @@ export interface IPMSSubmission {
   quarter: Quarter;
   dueDate: string;
   extendedDueDate?: string;
-  actual: number;
   actualPerformance?: string;
   valueConfiguration?: PerformanceValueConfiguration;
   systemSuggestedActualPerformance?: string;
@@ -680,8 +676,6 @@ export interface IPMSSubmission {
   achievementPercent?: number;
   targetAchieved?: boolean;
   reportingPeriodPublicId?: string;
-  actualDescription?: string;
-  actualPerformanceDescription?: string;
   actualExpenditure?: number;
   variance?: number;
   varianceReason?: string;

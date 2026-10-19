@@ -151,7 +151,10 @@ describe('OPMS target relational tabs', () => {
       unitOfMeasure: { id: 'unit-1', name: 'Percent' }, kpiType: 'Quantitative', indicatorType: 'Output', annualTarget: 100, baseline: 50, weight: 10,
     } as unknown as OPMSTarget;
     api.getOpmsTarget.mockResolvedValue({ success: true, data: detailTarget });
-    api.getOpmsSubmissionsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: 26, totalPages: 2 } }));
+    api.getOpmsSubmissionsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: {
+      items: page === 1 ? [{ id: 'submission-qualitative', target: detailTarget, quarter: 'Q1', dueDate: '2026-09-30T00:00:00Z', actualPerformance: 'Service restored', status: 'submitted' }] : [],
+      page, pageSize: 25, totalCount: 26, totalPages: 2,
+    } }));
     api.getIpmsTargetsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: 27, totalPages: 2 } }));
     api.getAuditTrailsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: 26, totalPages: 2 } }));
 
@@ -162,6 +165,7 @@ describe('OPMS target relational tabs', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Reporting 26' }));
     expect(screen.getByText('26 submissions · Page 1 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Service restored')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next submissions' }));
     await waitFor(() => expect(api.getOpmsSubmissionsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, targetPublicId: 'target-public' }));
 

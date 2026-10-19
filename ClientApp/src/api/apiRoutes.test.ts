@@ -885,11 +885,12 @@ describe('versioned API routes', () => {
         period: { fiscalYear: '2026/27' },
         unitOfMeasure: { name: 'Households', symbol: '#' },
       },
-      actualPerformance: '4', actual: 4,
+      actualPerformance: '4',
       submitter: { id: 'submitter-live', displayName: 'Live Submitter' },
       verifier: { id: 'verifier-live', displayName: 'Live Verifier' },
       attachments: [], comments: [], history: [],
     });
+    expect(submissions.data?.items[0]).not.toHaveProperty('actual');
     expect(attachments.data?.items[0].uploadedBy).toMatchObject({ id: '11111111-1111-1111-1111-111111111111', displayName: 'Live Uploader' });
     expect(attachments.data?.items[0]).toMatchObject({ id: '44444444-4444-4444-4444-444444444444', publicId: '44444444-4444-4444-4444-444444444444' });
     expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/v1/opms-submissions/submission-live/attachments/page?page=2&pageSize=25&search=evidence&scanStatus=Clean&quarantined=false&active=true'), expect.anything());

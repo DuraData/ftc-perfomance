@@ -4,8 +4,7 @@ describe('Submission form validation and handling', () => {
   interface SubmissionFormData {
     targetId: string;
     quarter: string;
-    actual?: number;
-    actualDescription?: string;
+    actualPerformance?: string;
     varianceReason?: string;
     actualExpenditure?: number;
   }
@@ -21,10 +20,6 @@ describe('Submission form validation and handling', () => {
       }
     });
 
-    if (data.actual !== undefined && data.actual < 0) {
-      errors.push('Actual value cannot be negative');
-    }
-
     if (data.actualExpenditure !== undefined && data.actualExpenditure < 0) {
       errors.push('Actual expenditure cannot be negative');
     }
@@ -36,7 +31,7 @@ describe('Submission form validation and handling', () => {
     const validForm: SubmissionFormData = {
       targetId: 'target-1',
       quarter: 'Q1',
-      actual: 100,
+      actualPerformance: '100',
     };
 
     expect(validateForm(validForm)).toHaveLength(0);
@@ -62,15 +57,11 @@ describe('Submission form validation and handling', () => {
     expect(errors).toContain('quarter is required');
   });
 
-  it('rejects negative actual values', () => {
-    const invalidForm: SubmissionFormData = {
-      targetId: 'target-1',
-      quarter: 'Q1',
-      actual: -50,
-    };
+  it.each(['-50', '2026-10-19', '4:5', 'Service restored'])('preserves canonical actual performance %s without client-side numeric coercion', actualPerformance => {
+    const form: SubmissionFormData = { targetId: 'target-1', quarter: 'Q1', actualPerformance };
 
-    const errors = validateForm(invalidForm);
-    expect(errors).toContain('Actual value cannot be negative');
+    expect(validateForm(form)).toHaveLength(0);
+    expect(form.actualPerformance).toBe(actualPerformance);
   });
 
   it('rejects negative expenditure values', () => {

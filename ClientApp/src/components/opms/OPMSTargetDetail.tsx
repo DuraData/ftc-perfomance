@@ -311,7 +311,7 @@ function SubmissionsTab({
   const columns = [
     { id: 'quarter', header: 'Reporting Period', accessor: (row: OPMSSubmission) => row.quarter },
     { id: 'due', header: 'Due', accessor: (row: OPMSSubmission) => new Date(row.dueDate).toLocaleDateString() },
-    { id: 'actual', header: 'Actual', accessor: (row: OPMSSubmission) => row.actual?.toLocaleString() ?? '-' },
+    { id: 'actual', header: 'Actual', accessor: (row: OPMSSubmission) => row.actualPerformance?.trim() || '-' },
     { id: 'variance', header: 'Var', accessor: (row: OPMSSubmission) => <span className={row.variance && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{row.variance ? `${row.variance > 0 ? '+' : ''}${row.variance}%` : '-'}</span> },
     { id: 'status', header: 'Status', accessor: (row: OPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status === 'pending_verification' ? 'warning' : 'default'}>{row.status.replace('_', ' ')}</Badge> },
   ];
@@ -694,7 +694,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
               const result = await updateOpmsSubmissionApi(submission.id, {
                 opmsTargetPublicId: submission.target.id,
                 reportingPeriodPublicId: submission.reportingPeriodPublicId ?? '',
-                actualPerformance: submission.actualPerformance ?? String(submission.actual),
+                actualPerformance: submission.actualPerformance,
                 varianceReason: submission.varianceReason ?? null,
                 correctiveMeasure: submission.correctiveMeasure ?? null,
               });

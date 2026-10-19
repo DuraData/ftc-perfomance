@@ -62,7 +62,10 @@ describe('IPMS target detail', () => {
       unitOfMeasure: { id: 'uom-live', name: 'Percent' }, kpiType: 'Quantitative', indicatorType: 'Output', annualTarget: 100, baseline: 50, weight: 20,
     } as unknown as IPMSTarget;
     api.getIpmsTarget.mockResolvedValue({ success: true, data: target });
-    api.getIpmsSubmissionsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: 26, totalPages: 2 } }));
+    api.getIpmsSubmissionsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: {
+      items: page === 1 ? [{ id: 'submission-ratio', target, quarter: 'Q1', dueDate: '2026-09-30T00:00:00Z', actualPerformance: '4:5', status: 'submitted' }] : [],
+      page, pageSize: 25, totalCount: 26, totalPages: 2,
+    } }));
     api.getAuditTrailsPage.mockImplementation(async ({ page }: { page: number }) => ({ success: true, data: { items: [], page, pageSize: 25, totalCount: 26, totalPages: 2 } }));
 
     render(<IPMSTargetDetail targetId="target-public" />);
@@ -70,6 +73,7 @@ describe('IPMS target detail', () => {
     await waitFor(() => expect(api.getAuditTrailsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, sortBy: 'createdAt', sortDirection: 'desc' }, { entityName: 'IpmsTarget', entityId: 'target-public' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Submissions 26' }));
     expect(screen.getByText('26 submissions · Page 1 of 2')).toBeInTheDocument();
+    expect(screen.getByText('4:5')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next submissions' }));
     await waitFor(() => expect(api.getIpmsSubmissionsPage).toHaveBeenLastCalledWith({ page: 2, pageSize: 25, targetPublicId: 'target-public' }));
 

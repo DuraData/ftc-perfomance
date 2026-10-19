@@ -10,7 +10,7 @@ vi.mock('../common/CalendarMasterPicker', () => ({
 }));
 
 const row = {
-  id: 'submission-1', baseState: 'SUBMITTED', quarter: 'Q1', dueDate: '2026-09-30T00:00:00Z', actual: 8,
+  id: 'submission-1', baseState: 'SUBMITTED', quarter: 'Q1', dueDate: '2026-09-30T00:00:00Z', actualPerformance: '8',
   achievementPercent: 80, status: 'returned_for_info', attachments: [], comments: [], history: [],
   target: { id: 'target-1', indicatorNumber: 'KPI-1', targetName: 'Service delivery', submissions: [], periodTargets: [], targetUnitType: 'NUMBER' },
 };

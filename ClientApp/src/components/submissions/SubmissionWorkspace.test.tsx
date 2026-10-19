@@ -38,7 +38,6 @@ const submission = {
   baseState: 'IN_PROGRESS',
   quarter: 'Q1',
   dueDate: '2026-10-31T00:00:00Z',
-  actual: 50,
   actualPerformance: '50',
   variance: 5,
   varianceReason: 'Private reason',
@@ -157,7 +156,7 @@ describe('SubmissionWorkspace member security', () => {
 
   it('renders an omitted draft actual as blank rather than a fabricated numeric zero', () => {
     security.canReadField.mockImplementation((_resource: string, member: string) => member === 'ActualPerformance');
-    render(<SubmissionWorkspace submission={{ ...submission, actual: 0, actualPerformance: undefined }} submissionType="OPMS" />);
+    render(<SubmissionWorkspace submission={{ ...submission, actualPerformance: undefined }} submissionType="OPMS" />);
 
     const actualSummary = screen.getByText('Actual', { selector: 'p' }).parentElement;
     expect(actualSummary).toHaveTextContent('Actual-');

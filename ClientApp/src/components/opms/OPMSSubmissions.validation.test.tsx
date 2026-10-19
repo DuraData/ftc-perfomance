@@ -127,7 +127,6 @@ describe('OPMS submission creation validation', () => {
           target: { targetName: 'Road maintenance', indicatorNumber: 'KPI-001' },
           quarter: 'Q1',
           dueDate: '',
-          actual: 0,
           actualPerformance: undefined,
           status: 'draft',
         }],

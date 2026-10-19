@@ -256,7 +256,7 @@ function SubmissionsTab({
   const columns = [
     { id: 'quarter', header: 'Reporting Period', accessor: (row: IPMSSubmission) => row.quarter },
     { id: 'due', header: 'Due', accessor: (row: IPMSSubmission) => new Date(row.dueDate).toLocaleDateString() },
-    { id: 'actual', header: 'Actual', accessor: (row: IPMSSubmission) => row.actual?.toLocaleString() ?? '-' },
+    { id: 'actual', header: 'Actual', accessor: (row: IPMSSubmission) => row.actualPerformance?.trim() || '-' },
     { id: 'variance', header: 'Var', accessor: (row: IPMSSubmission) => <span className={row.variance && row.variance < 0 ? 'text-error-600' : 'text-success-600'}>{row.variance ? `${row.variance > 0 ? '+' : ''}${row.variance}%` : '-'}</span> },
     { id: 'status', header: 'Status', accessor: (row: IPMSSubmission) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status === 'pending_verification' ? 'warning' : 'default'}>{row.status.replace('_', ' ')}</Badge> },
   ];
@@ -503,7 +503,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
               const result = await updateIpmsSubmissionApi(submission.id, {
                 ipmsTargetPublicId: submission.target.id,
                 reportingPeriodPublicId: submission.reportingPeriodPublicId ?? '',
-                actualPerformance: submission.actualPerformance ?? String(submission.actual),
+                actualPerformance: submission.actualPerformance,
                 varianceReason: submission.varianceReason ?? null,
                 correctiveMeasure: submission.correctiveMeasure ?? null,
               });

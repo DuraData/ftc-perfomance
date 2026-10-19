@@ -4,8 +4,7 @@ describe('API type mapping and data transformation', () => {
   interface OpmsSubmissionPayload {
     targetId: string;
     quarter: string;
-    actual?: number;
-    actualDescription?: string | null;
+    actualPerformance?: string | null;
     varianceReason?: string;
     actualExpenditure?: number;
     dueDate: string;
@@ -15,8 +14,7 @@ describe('API type mapping and data transformation', () => {
     id: string;
     targetId: string;
     quarter: string;
-    actual?: number;
-    actualDescription?: string | null;
+    actualPerformance?: string | null;
     varianceReason?: string;
     actualExpenditure?: number;
     dueDate: string;
@@ -26,8 +24,7 @@ describe('API type mapping and data transformation', () => {
   const toOpmsSubmissionPayload = (dto: OpmsSubmissionDto): OpmsSubmissionPayload => ({
     targetId: dto.targetId,
     quarter: dto.quarter,
-    actual: dto.actual,
-    actualDescription: dto.actualDescription,
+    actualPerformance: dto.actualPerformance,
     varianceReason: dto.varianceReason,
     actualExpenditure: dto.actualExpenditure,
     dueDate: dto.dueDate,
@@ -44,8 +41,7 @@ describe('API type mapping and data transformation', () => {
       id: 'sub-1',
       targetId: 'target-1',
       quarter: 'Q1',
-      actual: 100,
-      actualDescription: 'Completed successfully',
+      actualPerformance: 'Completed successfully',
       actualExpenditure: 5000,
       dueDate: '2026-06-30',
       status: 'submitted',
@@ -55,8 +51,7 @@ describe('API type mapping and data transformation', () => {
 
     expect(payload.targetId).toBe('target-1');
     expect(payload.quarter).toBe('Q1');
-    expect(payload.actual).toBe(100);
-    expect(payload.actualDescription).toBe('Completed successfully');
+    expect(payload.actualPerformance).toBe('Completed successfully');
     expect(payload.actualExpenditure).toBe(5000);
   });
 
@@ -79,7 +74,7 @@ describe('API type mapping and data transformation', () => {
     const payload: OpmsSubmissionPayload = {
       targetId: 'target-1',
       quarter: 'Q1',
-      actual: 100,
+      actualPerformance: '100',
       dueDate: '2026-06-30',
     };
 
@@ -104,8 +99,7 @@ describe('API type mapping and data transformation', () => {
       status: 'draft',
     });
 
-    expect(payload.actual).toBeUndefined();
-    expect(payload.actualDescription).toBeUndefined();
+    expect(payload.actualPerformance).toBeUndefined();
     expect(payload.varianceReason).toBeUndefined();
   });
 
@@ -124,24 +118,21 @@ describe('API type mapping and data transformation', () => {
       id: 'sub-1',
       targetId: 'target-1',
       quarter: 'Q1',
-      actual: undefined,
-      actualDescription: null,
+      actualPerformance: null,
       dueDate: '2026-06-30',
       status: 'draft',
     };
 
     const payload = toOpmsSubmissionPayload(dto);
 
-    expect(payload.actual).toBeUndefined();
-    expect(payload.actualDescription).toBeNull();
+    expect(payload.actualPerformance).toBeNull();
   });
 
   it('preserves data integrity through round-trip transformation', () => {
     const originalPayload: OpmsSubmissionPayload = {
       targetId: 'target-123',
       quarter: 'Q2',
-      actual: 250,
-      actualDescription: 'Q2 target achieved',
+      actualPerformance: '250 households connected',
       varianceReason: 'Better than expected',
       actualExpenditure: 12500,
       dueDate: '2026-06-30',
@@ -155,8 +146,7 @@ describe('API type mapping and data transformation', () => {
 
     expect(roundTripPayload.targetId).toBe(originalPayload.targetId);
     expect(roundTripPayload.quarter).toBe(originalPayload.quarter);
-    expect(roundTripPayload.actual).toBe(originalPayload.actual);
-    expect(roundTripPayload.actualDescription).toBe(originalPayload.actualDescription);
+    expect(roundTripPayload.actualPerformance).toBe(originalPayload.actualPerformance);
     expect(roundTripPayload.actualExpenditure).toBe(originalPayload.actualExpenditure);
   });
 });

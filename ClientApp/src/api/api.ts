@@ -937,12 +937,6 @@ function toSubmissionBaseState(dto: OpmsSubmissionDto | IpmsSubmissionDto) {
   return { baseState: baseState === 'SUBMITTED' ? 'SUBMITTED' as const : 'IN_PROGRESS' as const };
 }
 
-function numericActualProjection(value?: string | null): number {
-  if (!value?.trim()) return 0;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 function toOpmsSubmissionModel(dto: OpmsSubmissionDto): OPMSSubmission {
   const target = unresolvedOpmsTarget(dto.opmsTargetPublicId, dto.targetName, dto.targetIndicatorNumber, {
     departmentPublicId: dto.targetDepartmentPublicId,
@@ -961,7 +955,6 @@ function toOpmsSubmissionModel(dto: OpmsSubmissionDto): OPMSSubmission {
     quarter: coerceQuarter(dto.quarter),
     dueDate: dto.dueDate ?? '',
     extendedDueDate: dto.extendedDueDate ?? undefined,
-    actual: numericActualProjection(dto.actualPerformance),
     actualPerformance: dto.actualPerformance ?? undefined,
     valueConfiguration: dto.valueConfiguration ?? undefined,
     systemSuggestedActualPerformance: dto.systemSuggestedActualPerformance ?? undefined,
@@ -1050,7 +1043,6 @@ function toIpmsSubmissionModel(dto: IpmsSubmissionDto): IPMSSubmission {
     quarter: coerceQuarter(dto.quarter),
     dueDate: dto.dueDate ?? '',
     extendedDueDate: dto.extendedDueDate ?? undefined,
-    actual: numericActualProjection(dto.actualPerformance),
     actualPerformance: dto.actualPerformance ?? undefined,
     valueConfiguration: dto.valueConfiguration ?? undefined,
     systemSuggestedActualPerformance: dto.systemSuggestedActualPerformance ?? undefined,
