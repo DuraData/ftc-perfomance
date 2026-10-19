@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import axe from 'axe-core';
 import { C88Workspace } from './C88Workspace';
 import type { C88CatalogueItem, C88IndicatorReport } from '../../types';
 
@@ -72,6 +73,19 @@ describe('Circular 88 workspace', () => {
     expect(api.getC88ComplianceQuestionsPage).toHaveBeenCalled();
     expect(screen.queryByText('Versioned Treasury catalogue')).not.toBeInTheDocument();
     expect(screen.getByText('Calculated value: 42 · Stage 1')).toBeInTheDocument();
+  });
+
+  it('exposes an accessible fully permissioned administration and reporting workspace', async () => {
+    const result = render(<C88Workspace />);
+    await screen.findByText(/C88-1 · v1/);
+
+    expect(screen.getByRole('combobox', { name: 'Draft catalogue edition' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Catalogue item type' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Reporting calendar' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Catalogue edition date')).toBeInTheDocument();
+    expect(screen.getByLabelText('Catalogue effective from')).toBeInTheDocument();
+    const accessibility = await axe.run(result.container, { rules: { 'color-contrast': { enabled: false } } });
+    expect(accessibility.violations).toEqual([]);
   });
 
   it('submits the independent report action with its RowVersion and reason', async () => {
