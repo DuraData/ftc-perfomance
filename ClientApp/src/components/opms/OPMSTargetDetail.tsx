@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
-import { Tabs } from '../common/Tabs';
+import { TabPanel, Tabs } from '../common/Tabs';
 import { Input, Select, Textarea, FormSection, FormRow } from '../common/Form';
 import { FileUpload } from '../common/FileUpload';
 import { DataTable } from '../common/DataTable';
@@ -719,7 +719,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'kpi-details': return <div className="space-y-4"><Tabs ariaLabel="KPI detail sections" tabs={detailTabs} activeTab={detailSection} onChange={setDetailSection} variant="compact" />{renderDetailSection()}</div>;
+      case 'kpi-details': return <div className="space-y-4"><Tabs id="kpi-detail-sections" ariaLabel="KPI detail sections" tabs={detailTabs} activeTab={detailSection} onChange={setDetailSection} variant="compact" /><TabPanel tabSetId="kpi-detail-sections" tabId={detailSection}>{renderDetailSection()}</TabPanel></div>;
       case 'strategic-alignment': return <KpiStrategicAlignmentTab target={target} />;
       case 'tid': return optionalModules.tidVisible || optionalModules.loading
         ? <KpiTidReferenceTab targetPublicId={target.id} configurationError={optionalModules.tidError} />
@@ -778,11 +778,11 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
         {/* Tabs */}
         <Card padding="none">
           <div className="border-b border-secondary-200 dark:border-secondary-700 px-3 py-2 sticky top-0 bg-white dark:bg-secondary-900 z-10">
-            <Tabs ariaLabel="OPMS target detail" tabs={tabs} activeTab={activeTab} onChange={tab => navigateToTab(tab as KpiDetailTab, selectedReportingPeriodPublicId)} variant="compact" />
+            <Tabs id="opms-target-detail" ariaLabel="OPMS target detail" tabs={tabs} activeTab={activeTab} onChange={tab => navigateToTab(tab as KpiDetailTab, selectedReportingPeriodPublicId)} variant="compact" />
           </div>
-          <div className="p-4">
+          <TabPanel tabSetId="opms-target-detail" tabId={activeTab} className="p-4">
             {renderTabContent()}
-          </div>
+          </TabPanel>
         </Card>
       </div>
     </AppShell>

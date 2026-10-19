@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { User, Bell, Shield, Palette, Globe, Save, RefreshCw } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Card, Badge } from '../ui';
-import { Tabs } from '../common/Tabs';
+import { TabPanel, Tabs } from '../common/Tabs';
 import { Input, Select, Checkbox, FormSection, FormRow } from '../common/Form';
 import { useApp } from '../../context/AppContext';
 import { changePassword, disableMfa, enableMfa, getAuthSessionsPage, getMfaStatus, getMyNotificationPreferences, revokeAllAuthSessions, revokeAuthSession, saveMyNotificationPreferences, setupMfa, updateMyProfile } from '../../api/api';
@@ -373,9 +373,11 @@ export function Settings({ routeTab }: { routeTab?: SettingsTabId }) {
   return (
     <AppShell title={shell.title} subtitle={shell.subtitle}>
       <div className="max-w-3xl mx-auto space-y-4">
-        <Tabs ariaLabel="Account settings" tabs={authenticationGate === null ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id === 'security')} activeTab={authenticationGate === null ? activeTab : 'security'} onChange={(tabId) => setActiveTab(tabId as SettingsTabId)} variant="underline" />
+        <Tabs id="account-settings" ariaLabel="Account settings" tabs={authenticationGate === null ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id === 'security')} activeTab={authenticationGate === null ? activeTab : 'security'} onChange={(tabId) => setActiveTab(tabId as SettingsTabId)} variant="underline" />
         <Card>
-          {renderTabContent()}
+          <TabPanel tabSetId="account-settings" tabId={authenticationGate === null ? activeTab : 'security'}>
+            {renderTabContent()}
+          </TabPanel>
         </Card>
       </div>
     </AppShell>

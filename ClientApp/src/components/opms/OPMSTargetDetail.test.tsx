@@ -24,7 +24,10 @@ vi.mock('../../api/api', async importOriginal => ({ ...(await importOriginal<typ
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
-vi.mock('../common/Tabs', () => ({ Tabs: ({ tabs, onChange }: { tabs: Array<{ id: string; label: string; badge?: number }>; onChange: (id: string) => void }) => <div>{tabs.map(tab => <button key={tab.id} type="button" onClick={() => onChange(tab.id)}>{tab.label} {tab.badge ?? ''}</button>)}</div> }));
+vi.mock('../common/Tabs', () => ({
+  Tabs: ({ tabs, onChange }: { tabs: Array<{ id: string; label: string; badge?: number }>; onChange: (id: string) => void }) => <div>{tabs.map(tab => <button key={tab.id} type="button" onClick={() => onChange(tab.id)}>{tab.label} {tab.badge ?? ''}</button>)}</div>,
+  TabPanel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
 
 const liveTarget = {
   department: { id: '17', name: 'Live Water Services' },

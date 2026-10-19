@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '../layout/AppShell';
 import { NotFoundPage } from '../security/AccessControl';
 import { Checkbox, Input, Select, Textarea } from './Form';
+import { TabPanel, Tabs } from './Tabs';
 
 vi.mock('../layout/Sidebar', () => ({ Sidebar: () => <nav aria-label="Primary navigation" /> }));
 vi.mock('../layout/TopBar', () => ({ TopBar: ({ title }: { title?: string }) => <header><h1 id="page-title">{title}</h1></header> }));
@@ -56,6 +57,23 @@ describe('shared accessibility baseline', () => {
     expect(getByRole('main', { name: 'Page Not Found' })).toBeInTheDocument();
     expect(getByText('The address does not match a registered OPMS workspace. No substitute page was loaded.')).toBeInTheDocument();
     expect(document.title).toBe('Page Not Found | OPMS');
+    await expectNoAutomatedViolations(container);
+  });
+
+  it('associates a named tab set with its selected panel', async () => {
+    const { container, getByRole } = render(<>
+      <Tabs
+        id="accessibility-sections"
+        ariaLabel="Accessible sections"
+        tabs={[{ id: 'summary', label: 'Summary' }, { id: 'history', label: 'History' }]}
+        activeTab="summary"
+        onChange={vi.fn()}
+      />
+      <TabPanel tabSetId="accessibility-sections" tabId="summary">Summary content</TabPanel>
+    </>);
+
+    expect(getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-controls', 'accessibility-sections-summary-panel');
+    expect(getByRole('tabpanel', { name: 'Summary' })).toHaveAttribute('aria-labelledby', 'accessibility-sections-summary-tab');
     await expectNoAutomatedViolations(container);
   });
 });

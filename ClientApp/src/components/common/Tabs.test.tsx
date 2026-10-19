@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { Tabs } from './Tabs';
+import { TabPanel, Tabs } from './Tabs';
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
@@ -12,18 +12,23 @@ const tabs = [
 
 function TabsHarness({ variant = 'default' }: { variant?: 'default' | 'pills' | 'underline' | 'compact' }) {
   const [activeTab, setActiveTab] = useState('overview');
-  return <Tabs ariaLabel="KPI workspace" tabs={tabs} activeTab={activeTab} onChange={setActiveTab} variant={variant} />;
+  return <>
+    <Tabs id="kpi-workspace" ariaLabel="KPI workspace" tabs={tabs} activeTab={activeTab} onChange={setActiveTab} variant={variant} />
+    <TabPanel tabSetId="kpi-workspace" tabId={activeTab}>{activeTab} content</TabPanel>
+  </>;
 }
 
 describe('Tabs', () => {
-  it.each(['default', 'pills', 'underline'] as const)('exposes tab semantics for the %s variant', (variant) => {
+  it.each(['default', 'pills', 'underline', 'compact'] as const)('exposes tab semantics for the %s variant', (variant) => {
     render(<TabsHarness variant={variant} />);
 
     expect(screen.getByRole('tablist', { name: 'KPI workspace' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-controls', 'kpi-workspace-overview-panel');
     expect(screen.getByRole('tab', { name: 'History' })).toHaveAttribute('aria-selected', 'false');
     expect(screen.getByRole('tab', { name: 'History' })).toHaveAttribute('tabindex', '-1');
+    expect(screen.getByRole('tabpanel', { name: 'Overview' })).toHaveAttribute('id', 'kpi-workspace-overview-panel');
   });
 
   it('supports wrapped arrow navigation, Home and End while skipping disabled tabs', async () => {

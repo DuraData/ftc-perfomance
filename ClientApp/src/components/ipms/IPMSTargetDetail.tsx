@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Badge, Card } from '../ui';
-import { Tabs } from '../common/Tabs';
+import { TabPanel, Tabs } from '../common/Tabs';
 import { Input, Select, Textarea, FormSection, FormRow } from '../common/Form';
 import { FileUpload } from '../common/FileUpload';
 import { DataTable } from '../common/DataTable';
@@ -572,11 +572,11 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
         {/* Tabs */}
         <Card padding="none">
           <div className="border-b border-secondary-200 dark:border-secondary-700 px-3 py-2 sticky top-0 bg-white dark:bg-secondary-900 z-10">
-            <Tabs ariaLabel="IPMS target detail" tabs={tabs} activeTab={activeTab} onChange={setActiveTab} variant="compact" />
+            <Tabs id="ipms-target-detail" ariaLabel="IPMS target detail" tabs={tabs} activeTab={activeTab} onChange={setActiveTab} variant="compact" />
           </div>
-          <div className="p-4">
+          <TabPanel tabSetId="ipms-target-detail" tabId={activeTab} className="p-4">
             {renderTabContent()}
-          </div>
+          </TabPanel>
         </Card>
       </div>
     </AppShell>

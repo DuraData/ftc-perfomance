@@ -10,12 +10,42 @@ interface Tab {
 }
 
 interface TabsProps {
+  id: string;
   tabs: Tab[];
   activeTab: string;
   onChange: (tabId: string) => void;
   variant?: 'default' | 'pills' | 'underline' | 'compact';
   size?: 'sm' | 'md' | 'lg';
   ariaLabel?: string;
+}
+
+interface TabPanelProps {
+  tabSetId: string;
+  tabId: string;
+  children: React.ReactNode;
+  className?: string;
+}
+
+function tabId(tabSetId: string, value: string) {
+  return `${tabSetId}-${value}-tab`;
+}
+
+function tabPanelId(tabSetId: string, value: string) {
+  return `${tabSetId}-${value}-panel`;
+}
+
+export function TabPanel({ tabSetId, tabId: value, children, className }: TabPanelProps) {
+  return (
+    <div
+      role="tabpanel"
+      id={tabPanelId(tabSetId, value)}
+      aria-labelledby={tabId(tabSetId, value)}
+      tabIndex={0}
+      className={className}
+    >
+      {children}
+    </div>
+  );
 }
 
 function useTabKeyboard(tabs: Tab[], activeTab: string, onChange: (tabId: string) => void) {
@@ -48,7 +78,7 @@ function useTabKeyboard(tabs: Tab[], activeTab: string, onChange: (tabId: string
   return { onKeyDown, register };
 }
 
-export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'md', ariaLabel = 'Sections' }: TabsProps) {
+export function Tabs({ id, tabs, activeTab, onChange, variant = 'default', size = 'md', ariaLabel = 'Sections' }: TabsProps) {
   const keyboard = useTabKeyboard(tabs, activeTab, onChange);
   const sizeStyles = {
     sm: 'text-xs',
@@ -58,11 +88,13 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
 
   if (variant === 'pills') {
     return (
-      <div role="tablist" aria-label={ariaLabel} className="flex flex-wrap gap-1.5">
+      <div id={`${id}-tablist`} role="tablist" aria-label={ariaLabel} className="flex flex-wrap gap-1.5">
         {tabs.map(tab => (
           <button
             type="button"
             role="tab"
+            id={tabId(id, tab.id)}
+            aria-controls={tabPanelId(id, tab.id)}
             aria-selected={activeTab === tab.id}
             tabIndex={activeTab === tab.id ? 0 : -1}
             ref={keyboard.register(tab.id)}
@@ -98,11 +130,13 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
   if (variant === 'underline') {
     return (
       <div className="max-w-full overflow-x-auto border-b border-secondary-200 dark:border-secondary-700">
-        <div role="tablist" aria-label={ariaLabel} className="flex min-w-max gap-0.5">
+        <div id={`${id}-tablist`} role="tablist" aria-label={ariaLabel} className="flex min-w-max gap-0.5">
           {tabs.map(tab => (
             <button
               type="button"
               role="tab"
+              id={tabId(id, tab.id)}
+              aria-controls={tabPanelId(id, tab.id)}
               aria-selected={activeTab === tab.id}
               tabIndex={activeTab === tab.id ? 0 : -1}
               ref={keyboard.register(tab.id)}
@@ -140,16 +174,18 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
   }
 
   if (variant === 'compact') {
-    return <CompactScrollableTabs tabs={tabs} activeTab={activeTab} onChange={onChange} ariaLabel={ariaLabel} />;
+    return <CompactScrollableTabs id={id} tabs={tabs} activeTab={activeTab} onChange={onChange} ariaLabel={ariaLabel} />;
   }
 
   // Default variant
   return (
-    <div role="tablist" aria-label={ariaLabel} className="bg-secondary-100 dark:bg-secondary-800 p-0.5 rounded-md inline-flex">
+    <div id={`${id}-tablist`} role="tablist" aria-label={ariaLabel} className="bg-secondary-100 dark:bg-secondary-800 p-0.5 rounded-md inline-flex">
       {tabs.map(tab => (
         <button
           type="button"
           role="tab"
+          id={tabId(id, tab.id)}
+          aria-controls={tabPanelId(id, tab.id)}
           aria-selected={activeTab === tab.id}
           tabIndex={activeTab === tab.id ? 0 : -1}
           ref={keyboard.register(tab.id)}
@@ -183,7 +219,7 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
 }
 
 // Compact scrollable tabs with navigation arrows
-function CompactScrollableTabs({ tabs, activeTab, onChange, ariaLabel }: { tabs: Tab[]; activeTab: string; onChange: (id: string) => void; ariaLabel: string }) {
+function CompactScrollableTabs({ id, tabs, activeTab, onChange, ariaLabel }: { id: string; tabs: Tab[]; activeTab: string; onChange: (id: string) => void; ariaLabel: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const keyboard = useTabKeyboard(tabs, activeTab, onChange);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -215,7 +251,7 @@ function CompactScrollableTabs({ tabs, activeTab, onChange, ariaLabel }: { tabs:
     if (containerRef.current) {
       const activeEl = containerRef.current.querySelector(`[data-tab-id="${activeTab}"]`);
       if (activeEl) {
-        activeEl.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+        activeEl.scrollIntoView?.({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
       }
     }
   }, [activeTab]);
@@ -250,6 +286,7 @@ function CompactScrollableTabs({ tabs, activeTab, onChange, ariaLabel }: { tabs:
       {/* Tabs container - no scrollbar */}
       <div
         ref={containerRef}
+        id={`${id}-tablist`}
         role="tablist"
         aria-label={ariaLabel}
         className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide"
@@ -263,6 +300,8 @@ function CompactScrollableTabs({ tabs, activeTab, onChange, ariaLabel }: { tabs:
           <button
             type="button"
             role="tab"
+            id={tabId(id, tab.id)}
+            aria-controls={tabPanelId(id, tab.id)}
             aria-selected={activeTab === tab.id}
             tabIndex={activeTab === tab.id ? 0 : -1}
             ref={keyboard.register(tab.id)}

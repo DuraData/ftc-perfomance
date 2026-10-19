@@ -16,7 +16,7 @@ import {
   TimerReset,
 } from 'lucide-react';
 import { Button, Badge, Card } from '../ui';
-import { Tabs } from '../common/Tabs';
+import { TabPanel, Tabs } from '../common/Tabs';
 import { FileUpload } from '../common/FileUpload';
 import { InternalAuditAssessmentPanel } from '../workflow/InternalAuditAssessmentPanel';
 import { submissionStatusLabels as statusLabels } from './submissionStatus';
@@ -989,12 +989,13 @@ export function SubmissionWorkspace({
         <Button variant="ghost" size="sm" icon={<ChevronLeft className="h-4 w-4" />} onClick={onBack}>
           Previous
         </Button>
-        <Tabs ariaLabel="Submission workspace" tabs={tabs} activeTab={activeTab} onChange={tab => setActiveTab(tab as typeof activeTab)} variant="compact" />
+        <Tabs id="submission-workspace" ariaLabel="Submission workspace" tabs={tabs} activeTab={activeTab} onChange={tab => setActiveTab(tab as typeof activeTab)} variant="compact" />
         <Button variant="ghost" size="sm" icon={<ChevronRight className="h-4 w-4" />} iconPosition="right">
           Next
         </Button>
       </div>
 
+      <TabPanel tabSetId="submission-workspace" tabId={activeTab}>
       {activeTab === 'details' && (
         <div className="space-y-4">
           <Section title="Reporting Period" icon={<TimerReset className="h-4 w-4" />}>
@@ -1303,6 +1304,7 @@ export function SubmissionWorkspace({
           <StageRatingHistory kind={submissionType === 'OPMS' ? 1 : 2} submissionId={currentSubmission.id} />
         </Section>
       )}
+      </TabPanel>
 
       {!currentSubmission.isDisabled && ((onWorkflowAction && hasWorkflowAction) || (onExtendDueDate && canExtendDueDate)) && (
         <Section title="Workflow Actions" icon={<Check className="h-4 w-4" />}>

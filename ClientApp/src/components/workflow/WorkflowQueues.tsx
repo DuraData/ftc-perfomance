@@ -6,7 +6,7 @@ import { useSecurity } from '../../context/SecurityContext';
 import type { IPMSSubmission, OPMSSubmission, WorkflowQueueCountsDto, WorkflowQueueItemDto, WorkflowQueueName } from '../../types';
 import { DataTable } from '../common/DataTable';
 import { Modal } from '../common/Modal';
-import { Tabs } from '../common/Tabs';
+import { TabPanel, Tabs } from '../common/Tabs';
 import { AppShell } from '../layout/AppShell';
 import { submissionStatusColors as statusColors, submissionStatusLabels as statusLabels } from '../submissions/submissionStatus';
 import { Badge, Button, Card, EmptyState } from '../ui';
@@ -60,7 +60,7 @@ function SubmissionDetailModal({ submission, kind, isOpen, onClose, showAudit = 
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Tabs ariaLabel="Workflow queues" tabs={tabs} activeTab={activeTab} onChange={tab => setActiveTab(tab as typeof activeTab)} variant="compact" />
+          <Tabs id="workflow-queue-detail" ariaLabel="Workflow queues" tabs={tabs} activeTab={activeTab} onChange={tab => setActiveTab(tab as typeof activeTab)} variant="compact" />
           {kind === 'opms' && <Button
             variant="outline"
             size="sm"
@@ -73,7 +73,7 @@ function SubmissionDetailModal({ submission, kind, isOpen, onClose, showAudit = 
             }}
           >Open KPI Workspace</Button>}
         </div>
-        <div className="py-3">
+        <TabPanel tabSetId="workflow-queue-detail" tabId={activeTab} className="py-3">
           {activeTab === 'details' && <div className="grid grid-cols-2 gap-3">
             <div><p className="text-[10px] text-secondary-500">Due Date</p><p className="text-sm font-medium">{submission.dueDate ? new Date(submission.dueDate).toLocaleDateString() : '-'}</p></div>
             {canReadActual && <div><p className="text-[10px] text-secondary-500">Actual</p><p className="text-sm font-medium">{submission.actualPerformance ?? '-'}</p></div>}
@@ -93,7 +93,7 @@ function SubmissionDetailModal({ submission, kind, isOpen, onClose, showAudit = 
             <div><p className="text-[10px] text-secondary-500">Approved At</p><p className="text-sm font-medium">{submission.approvedAt ? new Date(submission.approvedAt).toLocaleDateString() : '-'}</p></div>
           </div>}
           {activeTab === 'audit' && <InternalAuditAssessmentPanel submissionId={submission.id} canAssess={showAudit} />}
-        </div>
+        </TabPanel>
       </div>
     </Modal>
   );
