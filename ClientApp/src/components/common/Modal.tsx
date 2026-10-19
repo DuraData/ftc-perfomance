@@ -1,4 +1,4 @@
-import React, { useEffect, useId } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '../ui';
 
@@ -30,11 +30,69 @@ export function Modal({
   footer,
 }: ModalProps) {
   const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
 
   useEffect(() => {
-    if (isOpen) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = 'unset';
-    return () => { document.body.style.overflow = 'unset'; };
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusableSelector = [
+      'a[href]',
+      'button:not([disabled])',
+      'input:not([disabled])',
+      'select:not([disabled])',
+      'textarea:not([disabled])',
+      '[tabindex]:not([tabindex="-1"])',
+    ].join(',');
+    const focusDialog = () => {
+      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
+      (focusable[0] ?? dialogRef.current)?.focus();
+    };
+    const animationFrame = window.requestAnimationFrame(focusDialog);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -43,9 +101,12 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-secondary-900/50 backdrop-blur-sm" aria-hidden="true" onClick={onClose} />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
+        aria-label={title ? undefined : 'Dialog'}
+        tabIndex={-1}
         className={`relative bg-white dark:bg-secondary-900 rounded-lg shadow-xl w-full ${modalSizes[size]} max-h-[85vh] flex flex-col animate-slide-up`}
       >
         {(title || showCloseButton) && (
@@ -90,21 +151,23 @@ export function ConfirmDialog({
   cancelLabel = 'Cancel',
   variant = 'danger',
 }: ConfirmDialogProps) {
-  if (!isOpen) return null;
-
   const buttonVariants = { danger: 'error', warning: 'warning', info: 'primary' } as const;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-secondary-900/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white dark:bg-secondary-900 rounded-lg shadow-xl w-full max-w-sm p-4 animate-slide-up">
-        <h3 className="text-sm font-semibold text-secondary-900 dark:text-white mb-1">{title}</h3>
-        <p className="text-xs text-secondary-600 dark:text-secondary-400 mb-4">{message}</p>
-        <div className="flex items-center justify-end gap-2">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      size="sm"
+      showCloseButton={false}
+      footer={(
+        <>
           <Button variant="outline" size="sm" onClick={onClose}>{cancelLabel}</Button>
           <Button variant={buttonVariants[variant]} size="sm" onClick={onConfirm}>{confirmLabel}</Button>
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    >
+      <p className="text-xs text-secondary-600 dark:text-secondary-400">{message}</p>
+    </Modal>
   );
 }

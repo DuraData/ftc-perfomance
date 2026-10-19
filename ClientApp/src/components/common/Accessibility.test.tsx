@@ -5,6 +5,7 @@ import { AppShell } from '../layout/AppShell';
 import { NotFoundPage } from '../security/AccessControl';
 import { Checkbox, Input, Select, Textarea } from './Form';
 import { Accordion, TabPanel, Tabs } from './Tabs';
+import { ConfirmDialog } from './Modal';
 
 vi.mock('../layout/Sidebar', () => ({ Sidebar: () => <nav aria-label="Primary navigation" /> }));
 vi.mock('../layout/TopBar', () => ({ TopBar: ({ title }: { title?: string }) => <header><h1 id="page-title">{title}</h1></header> }));
@@ -86,6 +87,23 @@ describe('shared accessibility baseline', () => {
     expect(getByRole('button', { name: 'Definition' })).toHaveAttribute('aria-expanded', 'true');
     expect(getByRole('region', { name: 'Definition' })).toBeInTheDocument();
     expect(getByRole('button', { name: 'History' })).toHaveAttribute('aria-expanded', 'false');
+    await expectNoAutomatedViolations(container);
+  });
+
+  it('names governed confirmation dialogs and exposes their modal boundary', async () => {
+    const { container, getByRole } = render(
+      <ConfirmDialog
+        isOpen
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        title="Disable user"
+        message="The user will no longer be able to sign in."
+      />,
+    );
+
+    expect(getByRole('dialog', { name: 'Disable user' })).toHaveAttribute('aria-modal', 'true');
+    expect(getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'Confirm' })).toBeInTheDocument();
     await expectNoAutomatedViolations(container);
   });
 });
