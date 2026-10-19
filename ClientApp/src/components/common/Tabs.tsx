@@ -26,9 +26,11 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
 
   if (variant === 'pills') {
     return (
-      <div className="flex flex-wrap gap-1.5">
+      <div role="group" aria-label="Sections" className="flex flex-wrap gap-1.5">
         {tabs.map(tab => (
           <button
+            type="button"
+            aria-pressed={activeTab === tab.id}
             key={tab.id}
             onClick={() => !tab.disabled && onChange(tab.id)}
             disabled={tab.disabled}
@@ -60,9 +62,11 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
   if (variant === 'underline') {
     return (
       <div className="max-w-full overflow-x-auto border-b border-secondary-200 dark:border-secondary-700">
-        <div className="flex min-w-max gap-0.5">
+        <div role="group" aria-label="Sections" className="flex min-w-max gap-0.5">
           {tabs.map(tab => (
             <button
+              type="button"
+              aria-pressed={activeTab === tab.id}
               key={tab.id}
               onClick={() => !tab.disabled && onChange(tab.id)}
               disabled={tab.disabled}
@@ -101,9 +105,11 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
 
   // Default variant
   return (
-    <div className="bg-secondary-100 dark:bg-secondary-800 p-0.5 rounded-md inline-flex">
+    <div role="group" aria-label="Sections" className="bg-secondary-100 dark:bg-secondary-800 p-0.5 rounded-md inline-flex">
       {tabs.map(tab => (
         <button
+          type="button"
+          aria-pressed={activeTab === tab.id}
           key={tab.id}
           onClick={() => !tab.disabled && onChange(tab.id)}
           disabled={tab.disabled}
@@ -183,6 +189,8 @@ function CompactScrollableTabs({ tabs, activeTab, onChange }: { tabs: Tab[]; act
     <div className="flex items-center gap-0.5">
       {/* Left scroll button */}
       <button
+        type="button"
+        aria-label="Scroll tabs left"
         onClick={() => scroll('left')}
         className={`flex-shrink-0 p-1 rounded transition-all ${
           canScrollLeft
@@ -197,6 +205,8 @@ function CompactScrollableTabs({ tabs, activeTab, onChange }: { tabs: Tab[]; act
       {/* Tabs container - no scrollbar */}
       <div
         ref={containerRef}
+        role="group"
+        aria-label="Sections"
         className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide"
         style={{
           scrollbarWidth: 'none',
@@ -206,6 +216,8 @@ function CompactScrollableTabs({ tabs, activeTab, onChange }: { tabs: Tab[]; act
       >
         {tabs.map(tab => (
           <button
+            type="button"
+            aria-pressed={activeTab === tab.id}
             key={tab.id}
             data-tab-id={tab.id}
             onClick={() => !tab.disabled && onChange(tab.id)}
@@ -235,6 +247,8 @@ function CompactScrollableTabs({ tabs, activeTab, onChange }: { tabs: Tab[]; act
 
       {/* Right scroll button */}
       <button
+        type="button"
+        aria-label="Scroll tabs right"
         onClick={() => scroll('right')}
         className={`flex-shrink-0 p-1 rounded transition-all ${
           canScrollRight

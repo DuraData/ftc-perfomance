@@ -9,7 +9,7 @@ import { changePassword, disableMfa, enableMfa, getAuthSessionsPage, getMfaStatu
 import type { AuthSessionDto, MfaSetupDto, MfaStatusDto, NotificationPreferenceDto } from '../../types';
 import type { ThemePreference } from '../../context/AppContext';
 
-type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
+export type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
 
 const SETTINGS_TAB_STORAGE_KEY = 'settings_active_tab';
 const SETTINGS_TABS: { id: SettingsTabId; label: string; icon: JSX.Element }[] = [
@@ -333,9 +333,13 @@ function SecuritySettings() {
   );
 }
 
-export function Settings() {
+export function Settings({ routeTab }: { routeTab?: SettingsTabId }) {
   const { authenticationGate } = useApp();
-  const [activeTab, setActiveTab] = useState<SettingsTabId>(() => readStoredSettingsTab());
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(() => routeTab ?? readStoredSettingsTab());
+
+  useEffect(() => {
+    if (authenticationGate === null && routeTab) setActiveTab(routeTab);
+  }, [authenticationGate, routeTab]);
 
   useEffect(() => {
     if (authenticationGate !== null && activeTab !== 'security') setActiveTab('security');
@@ -360,8 +364,14 @@ export function Settings() {
     }
   };
 
+  const shell = routeTab === 'notifications'
+    ? { title: 'Notifications', subtitle: 'Optional delivery preferences and mandatory-notice guidance' }
+    : routeTab === 'profile'
+      ? { title: 'My Profile', subtitle: 'Personal account details' }
+      : { title: 'Settings', subtitle: 'Account preferences' };
+
   return (
-    <AppShell title="Settings" subtitle="Account preferences">
+    <AppShell title={shell.title} subtitle={shell.subtitle}>
       <div className="max-w-3xl mx-auto space-y-4">
         <Tabs tabs={authenticationGate === null ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id === 'security')} activeTab={authenticationGate === null ? activeTab : 'security'} onChange={(tabId) => setActiveTab(tabId as SettingsTabId)} variant="underline" />
         <Card>

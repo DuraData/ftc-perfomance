@@ -64,6 +64,25 @@ describe('Security session settings', () => {
     await waitFor(() => expect(api.saveMyNotificationPreferences).toHaveBeenCalledWith(expect.objectContaining({ smsEnabled: true, rowVersion: 'AQ==' })));
   });
 
+  it('opens the notification route on Notifications regardless of the stored settings tab', async () => {
+    localStorage.setItem('settings_active_tab', 'appearance');
+    render(<Settings routeTab="notifications" />);
+
+    await waitFor(() => expect(api.getMyNotificationPreferences).toHaveBeenCalledOnce());
+    expect(screen.getByRole('button', { name: 'Notifications' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Appearance' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('opens the profile route on Profile regardless of the stored settings tab', () => {
+    localStorage.setItem('settings_active_tab', 'security');
+    app.userProfile = { publicId: 'user-1', userName: 'user@example.test', firstName: 'Test', lastName: 'User', fullName: 'Test User', email: 'user@example.test', isActive: true, mustChangePassword: false };
+    render(<Settings routeTab="profile" />);
+
+    expect(screen.getByRole('button', { name: 'Profile' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Email')).toHaveValue('user@example.test');
+    expect(api.getMfaStatus).not.toHaveBeenCalled();
+  });
+
   it('shows real sessions and revokes a selected session', async () => {
     render(<Settings />);
     expect(await screen.findByText(/Test Browser/)).toBeInTheDocument();

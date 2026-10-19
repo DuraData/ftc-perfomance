@@ -334,9 +334,9 @@ function AppContent() {
       case '/settings':
         return <Settings />;
       case '/notifications':
-        return <Settings />;
+        return <Settings routeTab="notifications" />;
       case '/my-profile':
-        return <Settings />;
+        return <Settings routeTab="profile" />;
       default:
         return <NotFoundPage />;
     }
