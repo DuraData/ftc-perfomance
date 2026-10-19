@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import axe from 'axe-core';
 import { SdbipImportWorkspace } from './SdbipImportWorkspace';
 
 const security = vi.hoisted(() => ({ canReadField: vi.fn(() => false) }));
@@ -77,5 +78,20 @@ describe('SDBIP import workspace member security', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter SDBIP import status' }), { target: { value: 'Staged' } });
     await waitFor(() => expect(screen.queryByText('Unable to load import history.')).not.toBeInTheDocument());
     expect(screen.getByText('No import batches match the current filters.')).toBeInTheDocument();
+  });
+
+  it('exposes an accessible fully permitted staged-import workspace', async () => {
+    security.canReadField.mockReturnValue(true);
+    const result = render(<SdbipImportWorkspace />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'SDBIP layer' }), { target: { value: 'layer-1' } });
+    fireEvent.click(await screen.findByRole('button', { name: /SECRET-FILE\.csv · Staged/i }));
+    await waitFor(() => expect(screen.getByText('Source: SECRET-FILE.csv')).toBeInTheDocument());
+
+    expect(screen.getByRole('textbox', { name: 'Commit reason' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Approval reference for changed rows' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Revision effective date and time')).toBeInTheDocument();
+
+    const accessibility = await axe.run(result.container, { rules: { 'color-contrast': { enabled: false } } });
+    expect(accessibility.violations).toEqual([]);
   });
 });
