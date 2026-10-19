@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { RiskRegisterPage } from './RiskWorkspace';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn() }));
@@ -33,6 +33,8 @@ const link = {
   linkedAt: '2026-10-01T00:00:00Z', linkReason: 'hostile link rationale',
   unlinkedAt: '2026-10-02T00:00:00Z', unlinkReason: 'hostile mitigation outcome', rowVersion: 'Ag==',
 };
+
+const activeLink = { ...link, isActive: true, unlinkedAt: null, unlinkReason: null };
 
 describe('Strategic risk member security', () => {
   beforeEach(() => {
@@ -71,5 +73,47 @@ describe('Strategic risk member security', () => {
     expect(screen.queryByRole('button', { name: 'Unlink' })).not.toBeInTheDocument();
     expect(security.canEditField).toHaveBeenCalledWith('STRATEGIC_RISK', 'LinkReason');
     expect(security.canEditField).toHaveBeenCalledWith('STRATEGIC_RISK', 'UnlinkReason');
+  });
+
+  it('requires and submits a governed unlink reason without using a native prompt', async () => {
+    security.canExecute.mockReturnValue(true);
+    security.canEditField.mockReturnValue(true);
+    api.getStrategicRiskLinksPage.mockResolvedValue({ success: true, data: { items: [activeLink], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.unlinkStrategicRisk.mockResolvedValue({ success: true, data: { ...activeLink, isActive: false } });
+    const nativePrompt = vi.spyOn(window, 'prompt');
+    render(<RiskRegisterPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Unlink' }));
+    const dialog = screen.getByRole('dialog', { name: 'Unlink strategic risk from KPI' });
+    const confirm = screen.getByRole('button', { name: 'Unlink risk' });
+    expect(dialog).toHaveTextContent('SR-1 · Water interruption');
+    expect(dialog).toHaveTextContent('KPI-1 · Maintain supply');
+    expect(confirm).toBeDisabled();
+
+    fireEvent.change(within(dialog).getByLabelText(/Governance reason/), { target: { value: '  Control has been retired  ' } });
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(api.unlinkStrategicRisk).toHaveBeenCalledWith('link-1', { reason: 'Control has been retired', rowVersion: 'Ag==' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Unlink strategic risk from KPI' })).not.toBeInTheDocument());
+    expect(app.pushToast).toHaveBeenCalledWith('success', 'Risk link closed; history was retained.');
+    expect(nativePrompt).not.toHaveBeenCalled();
+    nativePrompt.mockRestore();
+  });
+
+  it('keeps the governed unlink dialog and reason available when the API rejects the change', async () => {
+    security.canExecute.mockReturnValue(true);
+    security.canEditField.mockReturnValue(true);
+    api.getStrategicRiskLinksPage.mockResolvedValue({ success: true, data: { items: [activeLink], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 } });
+    api.unlinkStrategicRisk.mockResolvedValue({ success: false, message: 'The relationship was changed by another user.' });
+    render(<RiskRegisterPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Unlink' }));
+    const dialog = screen.getByRole('dialog', { name: 'Unlink strategic risk from KPI' });
+    fireEvent.change(within(dialog).getByLabelText(/Governance reason/), { target: { value: 'Risk treatment completed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlink risk' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The relationship was changed by another user.');
+    expect(screen.getByRole('dialog', { name: 'Unlink strategic risk from KPI' })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Governance reason/)).toHaveValue('Risk treatment completed');
   });
 });

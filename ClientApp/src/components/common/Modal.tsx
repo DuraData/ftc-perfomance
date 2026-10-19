@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useId } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '../ui';
 
@@ -29,6 +29,8 @@ export function Modal({
   showCloseButton = true,
   footer,
 }: ModalProps) {
+  const titleId = useId();
+
   useEffect(() => {
     if (isOpen) document.body.style.overflow = 'hidden';
     else document.body.style.overflow = 'unset';
@@ -39,13 +41,18 @@ export function Modal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-secondary-900/50 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative bg-white dark:bg-secondary-900 rounded-lg shadow-xl w-full ${modalSizes[size]} max-h-[85vh] flex flex-col animate-slide-up`}>
+      <div className="absolute inset-0 bg-secondary-900/50 backdrop-blur-sm" aria-hidden="true" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+        className={`relative bg-white dark:bg-secondary-900 rounded-lg shadow-xl w-full ${modalSizes[size]} max-h-[85vh] flex flex-col animate-slide-up`}
+      >
         {(title || showCloseButton) && (
           <div className="flex items-center justify-between px-4 py-3 border-b border-secondary-200 dark:border-secondary-700">
-            {title && <h2 className="text-sm font-semibold text-secondary-900 dark:text-white">{title}</h2>}
+            {title && <h2 id={titleId} className="text-sm font-semibold text-secondary-900 dark:text-white">{title}</h2>}
             {showCloseButton && (
-              <button onClick={onClose} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800">
+              <button type="button" aria-label={title ? `Close ${title}` : 'Close dialog'} onClick={onClose} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800">
                 <X className="w-4 h-4 text-secondary-500" />
               </button>
             )}

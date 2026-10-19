@@ -14,6 +14,7 @@ import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
 import type { MunicipalityFinancialYearMasterDto, StrategicRiskDto, StrategicRiskKpiLinkDto, StrategicRiskOwnerOptionDto, StrategicRiskSummaryDto } from '../../types';
 import { FormPanel, Input, Select, Textarea } from '../common/Form';
+import { GovernedReasonDialog } from '../common/GovernedReasonDialog';
 import { TargetPicker } from '../common/TargetPicker';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card, EmptyState, StatCard } from '../ui';
@@ -45,6 +46,7 @@ function RiskWorkspace({ view }: { view: RiskView }) {
   const [linkRiskPublicId, setLinkRiskPublicId] = useState('');
   const [primary, setPrimary] = useState(false);
   const [linkReason, setLinkReason] = useState('');
+  const [unlinkTarget, setUnlinkTarget] = useState<StrategicRiskKpiLinkDto | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('active');
@@ -122,13 +124,12 @@ function RiskWorkspace({ view }: { view: RiskView }) {
     }
     setBusy(false);
   };
-  const unlink = async (link: StrategicRiskKpiLinkDto) => {
-    const reason = window.prompt('Reason for unlinking this strategic risk from the KPI:')?.trim();
-    if (!reason) return;
+  const unlink = async (reason: string) => {
+    if (!unlinkTarget) return;
     setBusy(true); setError(null);
-    const result = await unlinkStrategicRisk(link.publicId, { reason, rowVersion: link.rowVersion });
+    const result = await unlinkStrategicRisk(unlinkTarget.publicId, { reason, rowVersion: unlinkTarget.rowVersion });
     if (!result.success) setError(result.message ?? 'Risk link could not be closed.');
-    else { pushToast('success', 'Risk link closed; history was retained.'); await load(); }
+    else { pushToast('success', 'Risk link closed; history was retained.'); setUnlinkTarget(null); await load(); }
     setBusy(false);
   };
 
@@ -198,10 +199,19 @@ function RiskWorkspace({ view }: { view: RiskView }) {
       <Card>
         <div className="flex items-center justify-between"><h2 className="font-semibold">KPI relationship register</h2><Badge variant="info">{links.length} shown</Badge></div>
         <div className="mt-3 space-y-2">
-          {links.map(link => <div key={link.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{link.riskReference ? `${link.riskReference} · ` : ''}{link.riskTitle}</p><p className="text-sm text-secondary-600 dark:text-secondary-300">{link.indicatorNumber} · {link.targetName}</p><p className="text-xs text-secondary-500">{link.departmentName ?? 'No department'}{link.unitName ? ` / ${link.unitName}` : ''} · linked {new Date(link.linkedAt).toLocaleDateString()}</p>{canReadLinkReason && link.linkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Link reason: {link.linkReason}</p>}{canReadUnlinkReason && link.unlinkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Unlink reason: {link.unlinkReason}</p>}</div><div className="flex items-center gap-2">{link.isPrimary && <Badge variant="primary">Primary</Badge>}<Badge variant={link.isActive ? 'success' : 'default'}>{link.isActive ? 'Active' : 'Unlinked'}</Badge>{canEditRegister && link.isActive && security.canExecute('STRATEGIC_RISK.UNLINK_KPI') && canEditUnlinkReason && <Button size="sm" variant="outline" icon={<Unlink className="h-3.5 w-3.5" />} disabled={busy} onClick={() => void unlink(link)}>Unlink</Button>}</div></div>)}
+          {links.map(link => <div key={link.publicId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-secondary-200 p-3 dark:border-secondary-700"><div><p className="font-medium">{link.riskReference ? `${link.riskReference} · ` : ''}{link.riskTitle}</p><p className="text-sm text-secondary-600 dark:text-secondary-300">{link.indicatorNumber} · {link.targetName}</p><p className="text-xs text-secondary-500">{link.departmentName ?? 'No department'}{link.unitName ? ` / ${link.unitName}` : ''} · linked {new Date(link.linkedAt).toLocaleDateString()}</p>{canReadLinkReason && link.linkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Link reason: {link.linkReason}</p>}{canReadUnlinkReason && link.unlinkReason && <p className="mt-1 text-xs text-secondary-600 dark:text-secondary-300">Unlink reason: {link.unlinkReason}</p>}</div><div className="flex items-center gap-2">{link.isPrimary && <Badge variant="primary">Primary</Badge>}<Badge variant={link.isActive ? 'success' : 'default'}>{link.isActive ? 'Active' : 'Unlinked'}</Badge>{canEditRegister && link.isActive && security.canExecute('STRATEGIC_RISK.UNLINK_KPI') && canEditUnlinkReason && <Button size="sm" variant="outline" icon={<Unlink className="h-3.5 w-3.5" />} disabled={busy} onClick={() => setUnlinkTarget(link)}>Unlink</Button>}</div></div>)}
           {!links.length && <EmptyState title="No authorised KPI relationships" description="No strategic-risk link falls within your current KPI read scope." />}
         </div>
       </Card>
+      <GovernedReasonDialog
+        isOpen={Boolean(unlinkTarget)}
+        title="Unlink strategic risk from KPI"
+        description={unlinkTarget ? `Close the relationship between ${unlinkTarget.riskReference ? `${unlinkTarget.riskReference} · ` : ''}${unlinkTarget.riskTitle} and ${unlinkTarget.indicatorNumber} · ${unlinkTarget.targetName}. The relationship and reason remain in history.` : ''}
+        confirmLabel="Unlink risk"
+        busy={busy}
+        onClose={() => setUnlinkTarget(null)}
+        onConfirm={(reason) => { void unlink(reason); }}
+      />
       </>}
     </div>
   </AppShell>;
