@@ -60,7 +60,7 @@ function SubmissionDetailModal({ submission, kind, isOpen, onClose, showAudit = 
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Tabs tabs={tabs} activeTab={activeTab} onChange={tab => setActiveTab(tab as typeof activeTab)} variant="compact" />
+          <Tabs ariaLabel="Workflow queues" tabs={tabs} activeTab={activeTab} onChange={tab => setActiveTab(tab as typeof activeTab)} variant="compact" />
           {kind === 'opms' && <Button
             variant="outline"
             size="sm"

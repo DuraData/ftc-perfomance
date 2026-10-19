@@ -373,7 +373,7 @@ export function Settings({ routeTab }: { routeTab?: SettingsTabId }) {
   return (
     <AppShell title={shell.title} subtitle={shell.subtitle}>
       <div className="max-w-3xl mx-auto space-y-4">
-        <Tabs tabs={authenticationGate === null ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id === 'security')} activeTab={authenticationGate === null ? activeTab : 'security'} onChange={(tabId) => setActiveTab(tabId as SettingsTabId)} variant="underline" />
+        <Tabs ariaLabel="Account settings" tabs={authenticationGate === null ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id === 'security')} activeTab={authenticationGate === null ? activeTab : 'security'} onChange={(tabId) => setActiveTab(tabId as SettingsTabId)} variant="underline" />
         <Card>
           {renderTabContent()}
         </Card>

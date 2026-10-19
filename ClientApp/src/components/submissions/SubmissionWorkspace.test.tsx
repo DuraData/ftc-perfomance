@@ -125,7 +125,7 @@ describe('SubmissionWorkspace member security', () => {
     });
     const rendered = render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Proof of Evidence/i }));
     await waitFor(() => expect(screen.getByText('quarantined.pdf')).toBeInTheDocument());
     expect(screen.queryByText(/Drop files here/i)).not.toBeInTheDocument();
     expect(screen.queryByTitle('Rescan quarantined evidence')).not.toBeInTheDocument();
@@ -306,7 +306,7 @@ describe('SubmissionWorkspace member security', () => {
     });
 
     render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Comments & History' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Comments & History' }));
 
     await waitFor(() => expect(screen.getByText('1 immutable extension')).toBeInTheDocument());
     expect(screen.getByText(/Council-approved extension/)).toBeInTheDocument();
@@ -331,7 +331,7 @@ describe('SubmissionWorkspace member security', () => {
     });
 
     render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Comments & History' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Comments & History' }));
 
     await waitFor(() => expect(screen.getByText('1 immutable extension')).toBeInTheDocument());
     expect(screen.getByText(/Original Restricted · Extended Restricted/)).toBeInTheDocument();
@@ -436,7 +436,7 @@ describe('SubmissionWorkspace member security', () => {
     } as OPMSSubmission;
 
     render(<SubmissionWorkspace submission={completed} submissionType="OPMS" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Auditor Information' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Auditor Information' }));
 
     expect(screen.getByTestId('internal-audit-assessment-panel')).toHaveTextContent('1:7:true');
   });
@@ -453,7 +453,7 @@ describe('SubmissionWorkspace member security', () => {
       });
     render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Proof of Evidence/i }));
     await waitFor(() => expect(screen.getByText('first.pdf')).toBeInTheDocument());
     expect(screen.getByText('26 evidence records')).toBeInTheDocument();
 
@@ -469,7 +469,7 @@ describe('SubmissionWorkspace member security', () => {
     });
     render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Proof of Evidence/i }));
     await waitFor(() => expect(screen.getByText('protected.pdf')).toBeInTheDocument());
     expect(screen.queryByText(/Private scanner diagnostic/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Private Uploader/)).not.toBeInTheDocument();
@@ -484,7 +484,7 @@ describe('SubmissionWorkspace member security', () => {
     });
     render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Proof of Evidence/i }));
     await waitFor(() => expect(screen.getByText(/Authorized scanner diagnostic/)).toBeInTheDocument());
     expect(screen.getByText(/Authorized Uploader/)).toBeInTheDocument();
   });
@@ -504,7 +504,7 @@ describe('SubmissionWorkspace member security', () => {
     });
     render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Proof of Evidence/i }));
     await waitFor(() => expect(screen.getByText('governed.pdf')).toBeInTheDocument());
     for (const secret of ['Secret assessment note', 'Secret Assessor', 'Secret replacement reason', 'CASE-1', 'Preservation', 'Secret Legal Actor', 'COUNCIL-1', 'Retention elapsed', 'Secret Disposal Actor', 'Secret disposal failure'])
       expect(screen.queryByText(new RegExp(secret))).not.toBeInTheDocument();
@@ -538,7 +538,7 @@ describe('SubmissionWorkspace member security', () => {
     });
     const rendered = render(<SubmissionWorkspace submission={submission} submissionType="OPMS" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Proof of Evidence/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /Proof of Evidence/i }));
     await waitFor(() => expect(screen.getByText('expired.pdf')).toBeInTheDocument());
     expect(screen.queryByLabelText('Legal hold reference for expired.pdf')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Disposal approval reference for expired.pdf')).not.toBeInTheDocument();
@@ -663,16 +663,16 @@ describe('SubmissionWorkspace member security', () => {
     render(<SubmissionWorkspace submission={hostile} submissionType="OPMS" />);
     expect(screen.queryByText('Secret Submitter')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Verification' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Verification' }));
     expect(screen.queryByText('Secret Verifier')).not.toBeInTheDocument();
     expect(screen.queryByText('Secret verification comment')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Approval' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Approval' }));
     expect(screen.queryByText('Secret Approver')).not.toBeInTheDocument();
     expect(screen.queryByText('Secret approval comment')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'PMS Section' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'PMS Section' }));
     expect(screen.queryByText('Secret PMS Officer')).not.toBeInTheDocument();
     expect(screen.queryByText('Secret PMS comment')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Auditor Information' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Auditor Information' }));
     expect(screen.queryByText('Secret Auditor')).not.toBeInTheDocument();
     expect(screen.queryByText('Secret audit comment')).not.toBeInTheDocument();
     expect(security.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'VerifierComment');

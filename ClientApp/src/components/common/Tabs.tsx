@@ -15,9 +15,41 @@ interface TabsProps {
   onChange: (tabId: string) => void;
   variant?: 'default' | 'pills' | 'underline' | 'compact';
   size?: 'sm' | 'md' | 'lg';
+  ariaLabel?: string;
 }
 
-export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'md' }: TabsProps) {
+function useTabKeyboard(tabs: Tab[], activeTab: string, onChange: (tabId: string) => void) {
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const pendingFocus = useRef<string | null>(null);
+  const selectAndFocus = (tabId: string) => {
+    pendingFocus.current = tabId;
+    onChange(tabId);
+  };
+  useEffect(() => {
+    if (pendingFocus.current === activeTab) {
+      tabRefs.current[activeTab]?.focus();
+      pendingFocus.current = null;
+    }
+  }, [activeTab]);
+  const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentId: string) => {
+    const enabled = tabs.filter(tab => !tab.disabled);
+    if (!enabled.length) return;
+    const currentIndex = Math.max(0, enabled.findIndex(tab => tab.id === currentId));
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % enabled.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + enabled.length) % enabled.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = enabled.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    selectAndFocus(enabled[nextIndex].id);
+  };
+  const register = (tabId: string) => (element: HTMLButtonElement | null) => { tabRefs.current[tabId] = element; };
+  return { onKeyDown, register };
+}
+
+export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'md', ariaLabel = 'Sections' }: TabsProps) {
+  const keyboard = useTabKeyboard(tabs, activeTab, onChange);
   const sizeStyles = {
     sm: 'text-xs',
     md: 'text-sm',
@@ -26,11 +58,15 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
 
   if (variant === 'pills') {
     return (
-      <div role="group" aria-label="Sections" className="flex flex-wrap gap-1.5">
+      <div role="tablist" aria-label={ariaLabel} className="flex flex-wrap gap-1.5">
         {tabs.map(tab => (
           <button
             type="button"
-            aria-pressed={activeTab === tab.id}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            tabIndex={activeTab === tab.id ? 0 : -1}
+            ref={keyboard.register(tab.id)}
+            onKeyDown={event => keyboard.onKeyDown(event, tab.id)}
             key={tab.id}
             onClick={() => !tab.disabled && onChange(tab.id)}
             disabled={tab.disabled}
@@ -62,11 +98,15 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
   if (variant === 'underline') {
     return (
       <div className="max-w-full overflow-x-auto border-b border-secondary-200 dark:border-secondary-700">
-        <div role="group" aria-label="Sections" className="flex min-w-max gap-0.5">
+        <div role="tablist" aria-label={ariaLabel} className="flex min-w-max gap-0.5">
           {tabs.map(tab => (
             <button
               type="button"
-              aria-pressed={activeTab === tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              tabIndex={activeTab === tab.id ? 0 : -1}
+              ref={keyboard.register(tab.id)}
+              onKeyDown={event => keyboard.onKeyDown(event, tab.id)}
               key={tab.id}
               onClick={() => !tab.disabled && onChange(tab.id)}
               disabled={tab.disabled}
@@ -100,16 +140,20 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
   }
 
   if (variant === 'compact') {
-    return <CompactScrollableTabs tabs={tabs} activeTab={activeTab} onChange={onChange} />;
+    return <CompactScrollableTabs tabs={tabs} activeTab={activeTab} onChange={onChange} ariaLabel={ariaLabel} />;
   }
 
   // Default variant
   return (
-    <div role="group" aria-label="Sections" className="bg-secondary-100 dark:bg-secondary-800 p-0.5 rounded-md inline-flex">
+    <div role="tablist" aria-label={ariaLabel} className="bg-secondary-100 dark:bg-secondary-800 p-0.5 rounded-md inline-flex">
       {tabs.map(tab => (
         <button
           type="button"
-          aria-pressed={activeTab === tab.id}
+          role="tab"
+          aria-selected={activeTab === tab.id}
+          tabIndex={activeTab === tab.id ? 0 : -1}
+          ref={keyboard.register(tab.id)}
+          onKeyDown={event => keyboard.onKeyDown(event, tab.id)}
           key={tab.id}
           onClick={() => !tab.disabled && onChange(tab.id)}
           disabled={tab.disabled}
@@ -139,8 +183,9 @@ export function Tabs({ tabs, activeTab, onChange, variant = 'default', size = 'm
 }
 
 // Compact scrollable tabs with navigation arrows
-function CompactScrollableTabs({ tabs, activeTab, onChange }: { tabs: Tab[]; activeTab: string; onChange: (id: string) => void }) {
+function CompactScrollableTabs({ tabs, activeTab, onChange, ariaLabel }: { tabs: Tab[]; activeTab: string; onChange: (id: string) => void; ariaLabel: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const keyboard = useTabKeyboard(tabs, activeTab, onChange);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -205,8 +250,8 @@ function CompactScrollableTabs({ tabs, activeTab, onChange }: { tabs: Tab[]; act
       {/* Tabs container - no scrollbar */}
       <div
         ref={containerRef}
-        role="group"
-        aria-label="Sections"
+        role="tablist"
+        aria-label={ariaLabel}
         className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide"
         style={{
           scrollbarWidth: 'none',
@@ -217,7 +262,11 @@ function CompactScrollableTabs({ tabs, activeTab, onChange }: { tabs: Tab[]; act
         {tabs.map(tab => (
           <button
             type="button"
-            aria-pressed={activeTab === tab.id}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            tabIndex={activeTab === tab.id ? 0 : -1}
+            ref={keyboard.register(tab.id)}
+            onKeyDown={event => keyboard.onKeyDown(event, tab.id)}
             key={tab.id}
             data-tab-id={tab.id}
             onClick={() => !tab.disabled && onChange(tab.id)}

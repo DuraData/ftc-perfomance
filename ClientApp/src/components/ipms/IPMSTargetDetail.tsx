@@ -572,7 +572,7 @@ export function IPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
         {/* Tabs */}
         <Card padding="none">
           <div className="border-b border-secondary-200 dark:border-secondary-700 px-3 py-2 sticky top-0 bg-white dark:bg-secondary-900 z-10">
-            <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} variant="compact" />
+            <Tabs ariaLabel="IPMS target detail" tabs={tabs} activeTab={activeTab} onChange={setActiveTab} variant="compact" />
           </div>
           <div className="p-4">
             {renderTabContent()}

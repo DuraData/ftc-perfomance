@@ -69,8 +69,8 @@ describe('Security session settings', () => {
     render(<Settings routeTab="notifications" />);
 
     await waitFor(() => expect(api.getMyNotificationPreferences).toHaveBeenCalledOnce());
-    expect(screen.getByRole('button', { name: 'Notifications' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Appearance' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('tab', { name: 'Notifications' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Appearance' })).toHaveAttribute('aria-selected', 'false');
   });
 
   it('opens the profile route on Profile regardless of the stored settings tab', () => {
@@ -78,7 +78,7 @@ describe('Security session settings', () => {
     app.userProfile = { publicId: 'user-1', userName: 'user@example.test', firstName: 'Test', lastName: 'User', fullName: 'Test User', email: 'user@example.test', isActive: true, mustChangePassword: false };
     render(<Settings routeTab="profile" />);
 
-    expect(screen.getByRole('button', { name: 'Profile' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('tab', { name: 'Profile' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByLabelText('Email')).toHaveValue('user@example.test');
     expect(api.getMfaStatus).not.toHaveBeenCalled();
   });
@@ -130,10 +130,10 @@ describe('Security session settings', () => {
     expect(screen.getByText(/You will then be guided through required multi-factor authentication/i)).toBeInTheDocument();
     expect(api.getMfaStatus).not.toHaveBeenCalled();
     expect(api.getAuthSessionsPage).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Security' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Profile' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Notifications' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Appearance' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Security' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Profile' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Notifications' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Appearance' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Current Password'), { target: { value: 'OldPassword1!' } });
     fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'NewPassword2@' } });
     fireEvent.change(screen.getByLabelText('Confirm'), { target: { value: 'NewPassword2@' } });

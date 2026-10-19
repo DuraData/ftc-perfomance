@@ -989,7 +989,7 @@ export function SubmissionWorkspace({
         <Button variant="ghost" size="sm" icon={<ChevronLeft className="h-4 w-4" />} onClick={onBack}>
           Previous
         </Button>
-        <Tabs tabs={tabs} activeTab={activeTab} onChange={tab => setActiveTab(tab as typeof activeTab)} variant="compact" />
+        <Tabs ariaLabel="Submission workspace" tabs={tabs} activeTab={activeTab} onChange={tab => setActiveTab(tab as typeof activeTab)} variant="compact" />
         <Button variant="ghost" size="sm" icon={<ChevronRight className="h-4 w-4" />} iconPosition="right">
           Next
         </Button>
