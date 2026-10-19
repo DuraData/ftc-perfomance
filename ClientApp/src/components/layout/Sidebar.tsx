@@ -45,6 +45,12 @@ const iconMap: Record<string, React.ReactNode> = {
   'activity': <Activity className="w-5 h-5" />,
 };
 
+function navigationId(item: MenuItem, depth: number) {
+  const source = item.code || item.path || item.label;
+  const segment = source.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'group';
+  return `sidebar-nav-${depth}-${segment}-children`;
+}
+
 export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: SidebarProps) {
   const {
     sidebarCollapsed,
@@ -105,6 +111,7 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: S
     const isGroup = !!hasChildren;
     const isLeaf = !hasChildren;
     const showSubtleActive = isGroup && (isExpanded || hasActiveChild);
+    const childrenId = isGroup ? navigationId(item, depth) : undefined;
 
     if (item.isDivider) {
       return <div key={item.label} className="border-t border-secondary-200 dark:border-secondary-700 my-2" />;
@@ -130,6 +137,10 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: S
         <button type="button"
           onClick={() => handleNavClick(item)}
           className={buttonClassName}
+          aria-label={compact ? item.label : undefined}
+          aria-current={isLeaf && isActive ? 'page' : undefined}
+          aria-expanded={isGroup && !compact ? isExpanded : undefined}
+          aria-controls={isGroup && !compact ? childrenId : undefined}
         >
           <span className={depth > 0 ? 'text-secondary-500 dark:text-secondary-400' : ''}>
             {getIcon(item.label, item.icon, depth)}
@@ -149,8 +160,14 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: S
             </>
           )}
         </button>
-        {!compact && hasChildren && isExpanded && (
-          <div className="mt-1 space-y-1">
+        {!compact && hasChildren && (
+          <div
+            id={childrenId}
+            role="group"
+            aria-label={`${item.label} submenu`}
+            hidden={!isExpanded}
+            className="mt-1 space-y-1"
+          >
             {item.children!.map(child => renderNavItem(child, depth + 1))}
           </div>
         )}
@@ -176,13 +193,13 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: S
         <button type="button" aria-label="Close navigation" onClick={onMobileClose} className="rounded-lg p-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 md:hidden">
           <Menu className="w-5 h-5 text-secondary-500" />
         </button>
-        <button type="button" aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'} onClick={toggleSidebar} className="hidden rounded-lg p-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 md:block">
+        <button type="button" aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'} aria-expanded={!sidebarCollapsed} aria-controls="primary-navigation-menu" onClick={toggleSidebar} className="hidden rounded-lg p-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 md:block">
           <Menu className="w-5 h-5 text-secondary-500" />
         </button>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+      <nav id="primary-navigation-menu" aria-label="Application sections" className="flex-1 overflow-y-auto p-3 space-y-1">
         {menuItems.map(item => renderNavItem(item))}
       </nav>
 

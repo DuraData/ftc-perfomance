@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { TabPanel, Tabs } from './Tabs';
+import { Accordion, TabPanel, Tabs } from './Tabs';
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
@@ -66,5 +66,32 @@ describe('Tabs', () => {
     expect(screen.getByRole('tab', { name: 'History' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'History' })).toHaveAttribute('tabindex', '0');
     expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('tabindex', '-1');
+  });
+});
+
+describe('Accordion', () => {
+  it('associates each trigger with a labelled region and exposes expanded state', async () => {
+    const user = userEvent.setup();
+    render(<Accordion items={[
+      { id: 'summary', title: 'Summary', content: <p>Summary content</p>, defaultOpen: true },
+      { id: 'history', title: 'History', content: <p>History content</p> },
+    ]} />);
+
+    const summary = screen.getByRole('button', { name: 'Summary' });
+    const history = screen.getByRole('button', { name: 'History' });
+    const summaryPanel = screen.getByRole('region', { name: 'Summary' });
+    const historyPanel = document.getElementById(history.getAttribute('aria-controls')!);
+
+    expect(summary).toHaveAttribute('aria-expanded', 'true');
+    expect(summary).toHaveAttribute('aria-controls', summaryPanel.id);
+    expect(summaryPanel).toHaveAttribute('aria-labelledby', summary.id);
+    expect(history).toHaveAttribute('aria-expanded', 'false');
+    expect(historyPanel).not.toBeVisible();
+
+    await user.click(history);
+
+    expect(history).toHaveAttribute('aria-expanded', 'true');
+    expect(historyPanel).toBeVisible();
+    expect(screen.getByRole('region', { name: 'History' })).toBe(historyPanel);
   });
 });

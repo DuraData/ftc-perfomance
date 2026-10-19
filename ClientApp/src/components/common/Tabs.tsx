@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface Tab {
@@ -375,6 +375,7 @@ interface AccordionProps {
 }
 
 export function Accordion({ items, className = '' }: AccordionProps) {
+  const generatedId = useId().replace(/:/g, '');
   const [openItems, setOpenItems] = useState<string[]>(() =>
     items.filter(item => item.defaultOpen).map(item => item.id)
   );
@@ -387,35 +388,47 @@ export function Accordion({ items, className = '' }: AccordionProps) {
 
   return (
     <div className={`space-y-1 ${className}`}>
-      {items.map(item => (
-        <div
-          key={item.id}
-          className="border border-secondary-200 dark:border-secondary-700 rounded-lg overflow-hidden"
-        >
-          <button type="button"
-            onClick={() => toggleItem(item.id)}
-            className="w-full flex items-center justify-between px-3 py-2 bg-white dark:bg-secondary-900 hover:bg-secondary-50 dark:hover:bg-secondary-800 transition-colors"
+      {items.map(item => {
+        const isOpen = openItems.includes(item.id);
+        const triggerId = `accordion-${generatedId}-${item.id}-trigger`;
+        const panelId = `accordion-${generatedId}-${item.id}-panel`;
+        return (
+          <div
+            key={item.id}
+            className="border border-secondary-200 dark:border-secondary-700 rounded-lg overflow-hidden"
           >
-            <div className="flex items-center gap-2">
-              {item.icon && (
-                <span className="text-secondary-400 w-4 h-4">{item.icon}</span>
-              )}
-              <span className="text-sm font-medium text-secondary-900 dark:text-white">{item.title}</span>
-              {item.badge}
-            </div>
-            <ChevronDown
-              className={`w-4 h-4 text-secondary-400 transition-transform ${
-                openItems.includes(item.id) ? 'rotate-180' : ''
-              }`}
-            />
-          </button>
-          {openItems.includes(item.id) && (
-            <div className="px-3 py-2 bg-secondary-50 dark:bg-secondary-800 border-t border-secondary-200 dark:border-secondary-700">
+            <button
+              type="button"
+              id={triggerId}
+              aria-expanded={isOpen}
+              aria-controls={panelId}
+              onClick={() => toggleItem(item.id)}
+              className="w-full flex items-center justify-between px-3 py-2 bg-white dark:bg-secondary-900 hover:bg-secondary-50 dark:hover:bg-secondary-800 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                {item.icon && (
+                  <span className="text-secondary-400 w-4 h-4">{item.icon}</span>
+                )}
+                <span className="text-sm font-medium text-secondary-900 dark:text-white">{item.title}</span>
+                {item.badge}
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className={`w-4 h-4 text-secondary-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+            <div
+              id={panelId}
+              role="region"
+              aria-labelledby={triggerId}
+              hidden={!isOpen}
+              className="px-3 py-2 bg-secondary-50 dark:bg-secondary-800 border-t border-secondary-200 dark:border-secondary-700"
+            >
               {item.content}
             </div>
-          )}
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppShell } from '../layout/AppShell';
 import { NotFoundPage } from '../security/AccessControl';
 import { Checkbox, Input, Select, Textarea } from './Form';
-import { TabPanel, Tabs } from './Tabs';
+import { Accordion, TabPanel, Tabs } from './Tabs';
 
 vi.mock('../layout/Sidebar', () => ({ Sidebar: () => <nav aria-label="Primary navigation" /> }));
 vi.mock('../layout/TopBar', () => ({ TopBar: ({ title }: { title?: string }) => <header><h1 id="page-title">{title}</h1></header> }));
@@ -74,6 +74,18 @@ describe('shared accessibility baseline', () => {
 
     expect(getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-controls', 'accessibility-sections-summary-panel');
     expect(getByRole('tabpanel', { name: 'Summary' })).toHaveAttribute('aria-labelledby', 'accessibility-sections-summary-tab');
+    await expectNoAutomatedViolations(container);
+  });
+
+  it('announces disclosure state and associates accordion triggers with their panels', async () => {
+    const { container, getByRole } = render(<Accordion items={[
+      { id: 'definition', title: 'Definition', content: <p>Governed definition</p>, defaultOpen: true },
+      { id: 'history', title: 'History', content: <p>Governed history</p> },
+    ]} />);
+
+    expect(getByRole('button', { name: 'Definition' })).toHaveAttribute('aria-expanded', 'true');
+    expect(getByRole('region', { name: 'Definition' })).toBeInTheDocument();
+    expect(getByRole('button', { name: 'History' })).toHaveAttribute('aria-expanded', 'false');
     await expectNoAutomatedViolations(container);
   });
 });
