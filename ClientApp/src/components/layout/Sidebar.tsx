@@ -127,7 +127,7 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: S
 
     return (
       <div key={item.label}>
-        <button
+        <button type="button"
           onClick={() => handleNavClick(item)}
           className={buttonClassName}
         >
@@ -206,7 +206,7 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: S
                   </p>
                 </div>
               </div>
-              <button
+              <button type="button"
                 onClick={() => logout()}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-900/20 rounded-lg transition-colors"
               >

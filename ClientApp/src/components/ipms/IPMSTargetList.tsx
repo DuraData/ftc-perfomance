@@ -208,7 +208,7 @@ export function IPMSTargetList() {
 
   const actions = (row: IPMSTarget) => (
     <div className="flex items-center justify-end gap-1">
-      <button
+      <button type="button"
         onClick={(e) => {
           e.stopPropagation();
           handleRowClick(row);
@@ -220,7 +220,7 @@ export function IPMSTargetList() {
       </button>
       {canManageTargets ? (
         <>
-          <button
+          <button type="button"
             onClick={(e) => {
               e.stopPropagation();
               setCurrentPath(`/ipms/targets/${row.id}/edit`);
@@ -230,7 +230,7 @@ export function IPMSTargetList() {
           >
             <Edit2 className="w-4 h-4 text-secondary-400" />
           </button>
-          <button
+          <button type="button"
             onClick={(e) => {
               e.stopPropagation();
               void (async () => {
@@ -257,7 +257,7 @@ export function IPMSTargetList() {
           >
             <Link2 className="w-4 h-4 text-secondary-400" />
           </button>
-          {canWithdrawTarget && <button
+          {canWithdrawTarget && <button type="button"
             onClick={(e) => {
               e.stopPropagation();
               setWithdrawalTarget(row);
@@ -270,7 +270,7 @@ export function IPMSTargetList() {
           </button>}
         </>
       ) : (
-        <button
+        <button type="button"
           onClick={(e) => {
             e.stopPropagation();
             setCurrentPath('/ipms/submissions');

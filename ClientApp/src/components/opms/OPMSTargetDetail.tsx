@@ -742,7 +742,7 @@ export function OPMSTargetDetail({ targetId = '1' }: TargetDetailProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button onClick={() => setCurrentPath('/opms/targets')} className="p-1.5 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800">
+            <button type="button" onClick={() => setCurrentPath('/opms/targets')} className="p-1.5 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800">
               <ArrowLeft className="w-4 h-4 text-secondary-500" />
             </button>
             <div>

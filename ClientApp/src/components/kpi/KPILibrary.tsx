@@ -14,10 +14,10 @@ export function KPILibrary() {
         description="Use the OPMS Target Library for reusable OPMS templates and the IPMS Target Library for reusable IPMS templates."
         action={
           <div className="flex gap-2">
-            <button className="rounded bg-primary-600 px-3 py-1.5 text-xs font-medium text-white" onClick={() => setCurrentPath('/opms/library')}>
+            <button type="button" className="rounded bg-primary-600 px-3 py-1.5 text-xs font-medium text-white" onClick={() => setCurrentPath('/opms/library')}>
               Open OPMS Target Library
             </button>
-            <button className="rounded border border-secondary-300 px-3 py-1.5 text-xs font-medium text-secondary-700" onClick={() => setCurrentPath('/ipms/library')}>
+            <button type="button" className="rounded border border-secondary-300 px-3 py-1.5 text-xs font-medium text-secondary-700" onClick={() => setCurrentPath('/ipms/library')}>
               Open IPMS Target Library
             </button>
           </div>

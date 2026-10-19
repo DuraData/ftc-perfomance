@@ -491,7 +491,7 @@ export function IdpPlanManagementPage() {
             </div>
             <div className="mt-3 space-y-2">
               {plans.map(plan => (
-                <button
+                <button type="button"
                   key={plan.publicId}
                   onClick={() => selectPlan(plan.publicId)}
                   className={`w-full rounded border px-3 py-2 text-left ${selectedPlanPublicId === plan.publicId ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-secondary-200 dark:border-secondary-700'}`}

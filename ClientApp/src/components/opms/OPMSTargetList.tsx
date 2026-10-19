@@ -273,7 +273,7 @@ export function OPMSTargetList() {
 
   const actions = (row: OPMSTarget) => (
     <div className="flex items-center justify-end gap-1">
-      <button
+      <button type="button"
         onClick={(e) => {
           e.stopPropagation();
           handleRowClick(row);
@@ -284,7 +284,7 @@ export function OPMSTargetList() {
         <Eye className="w-4 h-4 text-secondary-400" />
       </button>
       {canUpdateTarget ? (
-          <button
+          <button type="button"
             onClick={(e) => {
               e.stopPropagation();
               setCurrentPath(`/opms/targets/${row.id}/edit`);
@@ -296,7 +296,7 @@ export function OPMSTargetList() {
           </button>
       ) : null}
       {canCreateTarget ? (
-          <button
+          <button type="button"
             onClick={(e) => {
               e.stopPropagation();
               void (async () => {
@@ -324,7 +324,7 @@ export function OPMSTargetList() {
             <Copy className="w-4 h-4 text-secondary-400" />
           </button>
       ) : null}
-      {canWithdrawTarget ? <button
+      {canWithdrawTarget ? <button type="button"
             onClick={(e) => {
               e.stopPropagation();
               setWithdrawalTarget(row);
@@ -336,7 +336,7 @@ export function OPMSTargetList() {
             <Ban className="w-4 h-4 text-error-500" />
           </button> : null}
       {!canMutateTargets && canStartSubmission ? (
-        <button
+        <button type="button"
           onClick={(e) => {
             e.stopPropagation();
             setCurrentPath('/opms/submissions');

@@ -306,19 +306,19 @@ export function AdminUsersPage() {
 
   const actions = (r: AdminUserDetail) => (
     <div className="flex items-center justify-end gap-1">
-      {canUpdateUser && <button className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700" onClick={() => openEdit(r)} aria-label="Edit user">
+      {canUpdateUser && <button type="button" className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700" onClick={() => openEdit(r)} aria-label="Edit user">
         <Edit2 className="w-4 h-4 text-secondary-400" />
       </button>}
-      {canAssignRoles && <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => void openRoles(r)}>
+      {canAssignRoles && <button type="button" className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => void openRoles(r)}>
         Roles
       </button>}
-      {canViewEffective && <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => openPermissions(r)}>
+      {canViewEffective && <button type="button" className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => openPermissions(r)}>
         Permissions
       </button>}
-      {canExecute(r.user.isActive ? 'USER.DISABLE' : 'USER.ENABLE') && <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => toggleActive(r)}>
+      {canExecute(r.user.isActive ? 'USER.DISABLE' : 'USER.ENABLE') && <button type="button" className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => toggleActive(r)}>
         {r.user.isActive ? 'Deactivate' : 'Activate'}
       </button>}
-      {canDeleteUser && <button className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20" onClick={() => requestDelete(r)} aria-label="Delete user">
+      {canDeleteUser && <button type="button" className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20" onClick={() => requestDelete(r)} aria-label="Delete user">
         <Trash2 className="w-4 h-4 text-error-500" />
       </button>}
     </div>
@@ -623,13 +623,13 @@ export function AdminRolesPage() {
 
   const actions = (r: AdminRole) => (
     <div className="flex items-center justify-end gap-1">
-      <button className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => openPermissions(r)}>
+      <button type="button" className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800" onClick={() => openPermissions(r)}>
         Permissions
       </button>
-      <button className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700" onClick={() => openEdit(r)} disabled={r.isSystemRole}>
+      <button type="button" className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700" onClick={() => openEdit(r)} disabled={r.isSystemRole}>
         <Edit2 className="w-4 h-4 text-secondary-400" />
       </button>
-      <button className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20" onClick={() => requestDelete(r)} disabled={r.isSystemRole}>
+      <button type="button" className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20" onClick={() => requestDelete(r)} disabled={r.isSystemRole}>
         <Trash2 className="w-4 h-4 text-error-500" />
       </button>
     </div>
@@ -695,7 +695,7 @@ export function AdminRolesPage() {
                   <div key={module} className="rounded-lg border border-secondary-200 dark:border-secondary-700 p-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-semibold text-secondary-900 dark:text-white">{module}</p>
-                      <button
+                      <button type="button"
                         className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800"
                         onClick={() => {
                           setSelectedPermissionIds(prev => {
@@ -881,10 +881,10 @@ export function AdminPermissionsPage() {
 
   const actions = (p: AdminPermission) => (
     <div className="flex items-center justify-end gap-1">
-      <button className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700" onClick={() => openEdit(p)}>
+      <button type="button" className="p-1.5 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-700" onClick={() => openEdit(p)}>
         <Edit2 className="w-4 h-4 text-secondary-400" />
       </button>
-      <button className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20" onClick={() => requestDelete(p)}>
+      <button type="button" className="p-1.5 rounded-lg hover:bg-error-50 dark:hover:bg-error-900/20" onClick={() => requestDelete(p)}>
         <Trash2 className="w-4 h-4 text-error-500" />
       </button>
     </div>
@@ -1110,7 +1110,7 @@ export function AdminAuditLogsPage() {
   ];
 
   const loginActions = (l: LoginAuditLog) => (
-    <button
+    <button type="button"
       className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800"
       onClick={() => setSelectedLog(l)}
     >
@@ -1119,7 +1119,7 @@ export function AdminAuditLogsPage() {
   );
 
   const trailActions = (entry: AuditTrailEntryDto) => (
-    <button
+    <button type="button"
       className="px-2 py-1 text-[11px] rounded-lg border border-secondary-200 dark:border-secondary-700 hover:bg-secondary-50 dark:hover:bg-secondary-800"
       onClick={() => setSelectedTrail(entry)}
     >
@@ -1142,13 +1142,13 @@ export function AdminAuditLogsPage() {
           <div className="flex items-center gap-3">
             {canViewLoginLogs && canViewAuditTrails && (
               <div className="inline-flex rounded-lg border border-secondary-200 p-1 dark:border-secondary-700">
-                <button
+                <button type="button"
                   className={`rounded-md px-3 py-1.5 text-xs font-medium ${activeTab === 'login' ? 'bg-primary-600 text-white' : 'text-secondary-600 dark:text-secondary-300'}`}
                   onClick={() => setActiveTab('login')}
                 >
                   Login Logs
                 </button>
-                <button
+                <button type="button"
                   className={`rounded-md px-3 py-1.5 text-xs font-medium ${activeTab === 'trail' ? 'bg-primary-600 text-white' : 'text-secondary-600 dark:text-secondary-300'}`}
                   onClick={() => setActiveTab('trail')}
                 >

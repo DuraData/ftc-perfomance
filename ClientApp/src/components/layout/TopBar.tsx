@@ -226,7 +226,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
         </div>}
 
         {/* Dark mode toggle */}
-        <button
+        <button type="button"
           onClick={toggleDarkMode}
           className="p-2 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors"
           title={darkMode ? 'Light mode' : 'Dark mode'}
@@ -240,7 +240,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
 
         {/* Notifications */}
         {authenticationGate === null && canViewNotifications && <div className="relative">
-          <button
+          <button type="button"
             className="p-2 rounded-lg hover:bg-secondary-100 dark:hover:bg-secondary-800 transition-colors relative"
             onClick={toggleNotifications}
             aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
@@ -272,7 +272,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
                   ) : recentNotifications.length === 0 ? (
                     <div className="px-4 py-6 text-sm text-secondary-500 dark:text-secondary-400">No notifications yet.</div>
                   ) : recentNotifications.map(notification => (
-                    <button
+                    <button type="button"
                       key={notification.publicId}
                       className="w-full border-b border-secondary-100 px-4 py-3 text-left hover:bg-secondary-50 dark:border-secondary-700 dark:hover:bg-secondary-700/50"
                       onClick={() => {
@@ -309,7 +309,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
                   ))}
                 </div>
                 <div className="border-t border-secondary-200 px-4 py-2 dark:border-secondary-700">
-                  <button
+                  <button type="button"
                     className="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
                     onClick={() => openSettings('notifications')}
                   >
@@ -324,7 +324,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
         {/* User menu */}
         {userProfile && (
           <div className="relative">
-            <button
+            <button type="button"
               onClick={toggleUserMenu}
               className="flex items-center gap-2 rounded-lg px-1 py-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 sm:gap-3 sm:px-3"
             >
@@ -346,14 +346,14 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
                     <p className="text-sm font-medium text-secondary-900 dark:text-white">{userProfile.fullName}</p>
                     <p className="text-xs text-secondary-500 dark:text-secondary-400">{userProfile.email}</p>
                   </div>
-                  <button
+                  <button type="button"
                     onClick={() => openSettings('profile')}
                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-secondary-700 dark:text-secondary-300 hover:bg-secondary-50 dark:hover:bg-secondary-700 transition-colors"
                   >
                     <User className="w-4 h-4" />
                     Profile
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => openSettings('security')}
                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-secondary-700 dark:text-secondary-300 hover:bg-secondary-50 dark:hover:bg-secondary-700 transition-colors"
                   >
@@ -361,7 +361,7 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
                     Settings
                   </button>
                   <div className="border-t border-secondary-200 dark:border-secondary-700 mt-1 pt-1">
-                    <button
+                    <button type="button"
                       onClick={() => {
                         logout();
                         setShowUserMenu(false);

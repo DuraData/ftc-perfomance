@@ -392,7 +392,7 @@ export function Accordion({ items, className = '' }: AccordionProps) {
           key={item.id}
           className="border border-secondary-200 dark:border-secondary-700 rounded-lg overflow-hidden"
         >
-          <button
+          <button type="button"
             onClick={() => toggleItem(item.id)}
             className="w-full flex items-center justify-between px-3 py-2 bg-white dark:bg-secondary-900 hover:bg-secondary-50 dark:hover:bg-secondary-800 transition-colors"
           >

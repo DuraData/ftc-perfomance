@@ -7,11 +7,11 @@ const app = vi.hoisted(() => ({ sidebarCollapsed: false, toasts: [] }));
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
 vi.mock('./Sidebar', () => ({
   Sidebar: ({ mobileOpen, onMobileClose }: { mobileOpen: boolean; onMobileClose: () => void }) => (
-    <aside data-testid="sidebar" data-mobile-open={mobileOpen}><button onClick={onMobileClose}>Close from sidebar</button></aside>
+    <aside data-testid="sidebar" data-mobile-open={mobileOpen}><button type="button" onClick={onMobileClose}>Close from sidebar</button></aside>
   ),
 }));
 vi.mock('./TopBar', () => ({
-  TopBar: ({ title, onOpenNavigation }: { title?: string; onOpenNavigation: () => void }) => <header><button onClick={onOpenNavigation}>Open from top bar</button>{title && <h1 id="page-title">{title}</h1>}</header>,
+  TopBar: ({ title, onOpenNavigation }: { title?: string; onOpenNavigation: () => void }) => <header><button type="button" onClick={onOpenNavigation}>Open from top bar</button>{title && <h1 id="page-title">{title}</h1>}</header>,
 }));
 
 describe('AppShell responsive navigation', () => {

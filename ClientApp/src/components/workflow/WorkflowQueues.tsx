@@ -22,7 +22,7 @@ type SubmissionDetail = OPMSSubmission | IPMSSubmission;
 
 function QueueCard({ title, count, icon, color, onClick }: { title: string; count: number; icon: React.ReactNode; color: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex items-center gap-3 rounded-lg border border-secondary-200 bg-white p-3 text-left transition-all hover:border-secondary-300 hover:shadow dark:border-secondary-700 dark:bg-secondary-900">
+    <button type="button" onClick={onClick} className="flex items-center gap-3 rounded-lg border border-secondary-200 bg-white p-3 text-left transition-all hover:border-secondary-300 hover:shadow dark:border-secondary-700 dark:bg-secondary-900">
       <div className={`rounded-lg p-2 ${color}`}>{icon}</div>
       <div className="flex-1"><p className="text-xl font-bold text-secondary-900 dark:text-white">{count}</p><p className="text-xs text-secondary-500">{title}</p></div>
     </button>

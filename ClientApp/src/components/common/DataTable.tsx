@@ -151,7 +151,7 @@ export function DataTable<T>({
                 {columns.map(column => (
                   <th key={column.id} className={`px-3 py-2 text-left text-[10px] font-semibold text-secondary-600 dark:text-secondary-400 uppercase tracking-wide ${column.headerClassName || ''}`}>
                     {column.sortable !== false && (!serverState || column.sortKey) ? (
-                      <button onClick={() => handleSort(column.id)} className="flex items-center gap-1 hover:text-secondary-900 dark:hover:text-white transition-colors">
+                      <button type="button" onClick={() => handleSort(column.id)} className="flex items-center gap-1 hover:text-secondary-900 dark:hover:text-white transition-colors">
                         {column.header}
                         {getSortIcon(column.id)}
                       </button>
@@ -192,18 +192,18 @@ export function DataTable<T>({
           <div className="flex items-center justify-between px-3 py-2 border-t border-secondary-200 dark:border-secondary-700">
             <p className="text-[10px] text-secondary-600">{startIndex + 1}-{Math.min(startIndex + paginatedData.length, effectiveTotalCount)} of {effectiveTotalCount}</p>
             <div className="flex items-center gap-0.5">
-              <button aria-label="Previous page" onClick={() => serverState ? serverState.onPageChange(Math.max(1, effectivePage - 1)) : setCurrentPage(p => Math.max(1, p - 1))} disabled={effectivePage === 1} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800 disabled:opacity-50">
+              <button type="button" aria-label="Previous page" onClick={() => serverState ? serverState.onPageChange(Math.max(1, effectivePage - 1)) : setCurrentPage(p => Math.max(1, p - 1))} disabled={effectivePage === 1} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800 disabled:opacity-50">
                 <ChevronLeft className="w-3.5 h-3.5 text-secondary-600" />
               </button>
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 const pageNum = totalPages <= 5 ? i + 1 : effectivePage <= 3 ? i + 1 : effectivePage >= totalPages - 2 ? totalPages - 4 + i : effectivePage - 2 + i;
                 return (
-                  <button key={pageNum} aria-label={`Page ${pageNum}`} aria-current={effectivePage === pageNum ? 'page' : undefined} onClick={() => serverState ? serverState.onPageChange(pageNum) : setCurrentPage(pageNum)} className={`w-6 h-6 rounded text-xs font-medium ${effectivePage === pageNum ? 'bg-primary-600 text-white' : 'text-secondary-600 hover:bg-secondary-100'}`}>
+                  <button type="button" key={pageNum} aria-label={`Page ${pageNum}`} aria-current={effectivePage === pageNum ? 'page' : undefined} onClick={() => serverState ? serverState.onPageChange(pageNum) : setCurrentPage(pageNum)} className={`w-6 h-6 rounded text-xs font-medium ${effectivePage === pageNum ? 'bg-primary-600 text-white' : 'text-secondary-600 hover:bg-secondary-100'}`}>
                     {pageNum}
                   </button>
                 );
               })}
-              <button aria-label="Next page" onClick={() => serverState ? serverState.onPageChange(Math.min(totalPages, effectivePage + 1)) : setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={effectivePage === totalPages} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800 disabled:opacity-50">
+              <button type="button" aria-label="Next page" onClick={() => serverState ? serverState.onPageChange(Math.min(totalPages, effectivePage + 1)) : setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={effectivePage === totalPages} className="p-1 rounded hover:bg-secondary-100 dark:hover:bg-secondary-800 disabled:opacity-50">
                 <ChevronRight className="w-3.5 h-3.5 text-secondary-600" />
               </button>
             </div>

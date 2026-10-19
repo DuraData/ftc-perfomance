@@ -233,7 +233,7 @@ export function TidWorkspace() {
               </div>
               <div className="mt-3 max-h-[42rem] space-y-2 overflow-auto">
                 {items.map(item => (
-                  <button key={item.targetPublicId} className={`w-full rounded border p-3 text-left ${selected?.targetPublicId === item.targetPublicId ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/20' : 'border-secondary-200 dark:border-secondary-700'}`} onClick={() => void selectItem(item)}>
+                  <button type="button" key={item.targetPublicId} className={`w-full rounded border p-3 text-left ${selected?.targetPublicId === item.targetPublicId ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/20' : 'border-secondary-200 dark:border-secondary-700'}`} onClick={() => void selectItem(item)}>
                     <div className="flex items-start justify-between gap-2"><span className="font-medium">{item.indicatorNumber}</span><Badge variant={item.currentVersion ? 'success' : item.tidRequired ? 'warning' : 'default'}>{item.currentVersion ? `v${item.currentVersion.versionNumber}` : 'No TID'}</Badge></div>
                     <p className="mt-1 text-sm text-secondary-700 dark:text-secondary-300">{item.targetName}</p>
                     <p className="text-xs text-secondary-500">{item.departmentName ?? 'No department'}{item.unitName ? ` / ${item.unitName}` : ''}</p>

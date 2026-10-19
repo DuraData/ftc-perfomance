@@ -248,7 +248,7 @@ export function OPMSSubmissionsList() {
 
   const actions = (row: OPMSSubmission) => (
     <div className="flex items-center justify-end gap-0.5">
-      <button aria-label="View submission" title="View submission" onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
+      <button type="button" aria-label="View submission" title="View submission" onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
     </div>
   );
 
@@ -622,7 +622,7 @@ export function IPMSSubmissionsList() {
 
   const actions = (row: IPMSSubmission) => (
     <div className="flex items-center justify-end gap-0.5">
-      <button aria-label="View submission" title="View submission" onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
+      <button type="button" aria-label="View submission" title="View submission" onClick={(e) => { e.stopPropagation(); void openSubmission(row); }} className="p-1 rounded hover:bg-secondary-100"><Eye className="w-3.5 h-3.5 text-secondary-400" /></button>
     </div>
   );
 
