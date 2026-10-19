@@ -25,6 +25,7 @@ interface SidebarProps {
   className?: string;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+  mobileNavigationRef?: React.Ref<HTMLDivElement>;
 }
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -51,7 +52,7 @@ function navigationId(item: MenuItem, depth: number) {
   return `sidebar-nav-${depth}-${segment}-children`;
 }
 
-export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: SidebarProps) {
+export function Sidebar({ className = '', mobileOpen = false, onMobileClose, mobileNavigationRef }: SidebarProps) {
   const {
     sidebarCollapsed,
     toggleSidebar,
@@ -176,7 +177,11 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: S
   };
 
   return (
-    <aside
+    <div
+      ref={mobileNavigationRef}
+      id="mobile-navigation-dialog"
+      role={mobileOpen ? 'dialog' : 'complementary'}
+      aria-modal={mobileOpen ? 'true' : undefined}
       aria-label="Primary navigation"
       className={`fixed left-0 top-0 z-30 flex h-full w-64 flex-col overflow-hidden border-r border-secondary-200 bg-white transition-[width,transform] duration-300 dark:border-secondary-700 dark:bg-secondary-900 ${mobileOpen ? 'visible translate-x-0' : 'invisible -translate-x-full'} ${sidebarCollapsed ? 'md:w-16' : 'md:w-64'} md:visible md:translate-x-0 ${className}`}
     >
@@ -190,10 +195,10 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: S
             <span className="font-bold text-lg text-secondary-900 dark:text-white">PMS</span>
           </div>
         )}
-        <button type="button" aria-label="Close navigation" onClick={onMobileClose} className="rounded-lg p-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 md:hidden">
+        <button type="button" aria-label="Close navigation" tabIndex={mobileOpen ? undefined : -1} onClick={onMobileClose} className="rounded-lg p-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 md:hidden">
           <Menu className="w-5 h-5 text-secondary-500" />
         </button>
-        <button type="button" aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'} aria-expanded={!sidebarCollapsed} aria-controls="primary-navigation-menu" onClick={toggleSidebar} className="hidden rounded-lg p-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 md:block">
+        <button type="button" aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'} aria-expanded={!sidebarCollapsed} aria-controls="primary-navigation-menu" aria-hidden={mobileOpen ? 'true' : undefined} tabIndex={mobileOpen ? -1 : undefined} onClick={toggleSidebar} className="hidden rounded-lg p-1.5 transition-colors hover:bg-secondary-100 dark:hover:bg-secondary-800 md:block">
           <Menu className="w-5 h-5 text-secondary-500" />
         </button>
       </div>
@@ -242,6 +247,6 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose }: S
           )}
         </div>
       )}
-    </aside>
+    </div>
   );
 }

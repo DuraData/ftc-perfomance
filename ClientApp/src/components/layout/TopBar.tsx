@@ -20,6 +20,8 @@ interface TopBarProps {
   title?: string;
   subtitle?: string;
   onOpenNavigation?: () => void;
+  navigationOpen?: boolean;
+  navigationTriggerRef?: React.Ref<HTMLButtonElement>;
 }
 
 type SettingsTabId = 'profile' | 'notifications' | 'appearance' | 'security';
@@ -90,7 +92,7 @@ function useFlyoutBoundary(isOpen: boolean, onDismiss: () => void) {
   return { panelRef, triggerRef };
 }
 
-export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
+export function TopBar({ title, subtitle, onOpenNavigation, navigationOpen = false, navigationTriggerRef }: TopBarProps) {
   const {
     userProfile,
     permissions,
@@ -208,7 +210,16 @@ export function TopBar({ title, subtitle, onOpenNavigation }: TopBarProps) {
       {/* Left section - Title */}
       <div className="min-w-0 flex items-center gap-4">
         {onOpenNavigation && (
-          <button type="button" aria-label="Open navigation" onClick={onOpenNavigation} className="shrink-0 rounded-lg p-2 text-secondary-500 transition-colors hover:bg-secondary-100 dark:text-secondary-400 dark:hover:bg-secondary-800 md:hidden">
+          <button
+            ref={navigationTriggerRef}
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded={navigationOpen}
+            aria-controls="mobile-navigation-dialog"
+            aria-haspopup="dialog"
+            onClick={onOpenNavigation}
+            className="shrink-0 rounded-lg p-2 text-secondary-500 transition-colors hover:bg-secondary-100 dark:text-secondary-400 dark:hover:bg-secondary-800 md:hidden"
+          >
             <Menu className="h-5 w-5" />
           </button>
         )}
