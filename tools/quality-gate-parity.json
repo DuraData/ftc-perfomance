@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "workflow": ".github/workflows/quality.yml",
+  "localGate": "tools/Invoke-LocalQualityGate.ps1",
+  "localHook": ".githooks/pre-push",
+  "localSteps": [
+    "Validate hosted/local workflow parity",
+    "Restore backend, tests, and local tools",
+    "Build backend",
+    "Test backend",
+    "Validate migrations",
+    "Validate version-controlled OpenAPI contract",
+    "Validate recovery and performance safety contracts",
+    "Audit backend dependencies",
+    "Install frontend dependencies",
+    "Type-check frontend",
+    "Lint frontend",
+    "Test frontend",
+    "Test accessibility baseline",
+    "Build frontend and enforce bundle budget",
+    "Audit frontend dependencies",
+    "Self-test and scan pushable content for credential-shaped values"
+  ],
+  "mappings": [
+    {
+      "hostedStep": "Restore backend and tests",
+      "localStep": "Restore backend, tests, and local tools"
+    },
+    {
+      "hostedStep": "Restore OpenAPI exporter",
+      "localStep": "Restore backend, tests, and local tools"
+    },
+    {
+      "hostedStep": "Build backend",
+      "localStep": "Build backend"
+    },
+    {
+      "hostedStep": "Test backend",
+      "localStep": "Test backend"
+    },
+    {
+      "hostedStep": "Validate migrations",
+      "localStep": "Validate migrations"
+    },
+    {
+      "hostedStep": "Validate version-controlled OpenAPI contract",
+      "localStep": "Validate version-controlled OpenAPI contract"
+    },
+    {
+      "hostedStep": "Validate recovery drill safety contract",
+      "localStep": "Validate recovery and performance safety contracts"
+    },
+    {
+      "hostedStep": "Audit backend dependencies",
+      "localStep": "Audit backend dependencies"
+    },
+    {
+      "hostedStep": "Install frontend",
+      "localStep": "Install frontend dependencies"
+    },
+    {
+      "hostedStep": "Type-check frontend",
+      "localStep": "Type-check frontend"
+    },
+    {
+      "hostedStep": "Lint frontend",
+      "localStep": "Lint frontend"
+    },
+    {
+      "hostedStep": "Test frontend",
+      "localStep": "Test frontend"
+    },
+    {
+      "hostedStep": "Test accessibility baseline",
+      "localStep": "Test accessibility baseline"
+    },
+    {
+      "hostedStep": "Build frontend and enforce bundle budget",
+      "localStep": "Build frontend and enforce bundle budget"
+    },
+    {
+      "hostedStep": "Audit frontend dependencies",
+      "localStep": "Audit frontend dependencies"
+    },
+    {
+      "hostedStep": "Secret scan",
+      "localStep": "Self-test and scan pushable content for credential-shaped values"
+    }
+  ]
+}

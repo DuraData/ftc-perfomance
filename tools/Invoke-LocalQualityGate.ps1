@@ -16,11 +16,6 @@ $migrationPath = Join-Path $evidenceRoot "$runId-migrations.sql"
 $results = [Collections.Generic.List[object]]::new()
 $startedAt = [DateTime]::UtcNow
 
-if ($env:OPMS_LOCAL_QUALITY_GATE_ACTIVE -eq '1') {
-    throw 'A nested OPMS local quality-gate invocation was blocked.'
-}
-$env:OPMS_LOCAL_QUALITY_GATE_ACTIVE = '1'
-
 function Invoke-NativeCommand {
     param(
         [Parameter(Mandatory)] [string]$FilePath,
@@ -118,6 +113,7 @@ function Invoke-BackendDependencyAudit {
 }
 
 $stepNames = @(
+    'Validate hosted/local workflow parity'
     if (-not $SkipRestore) { 'Restore backend, tests, and local tools' }
     'Build backend'
     'Test backend'
@@ -140,6 +136,11 @@ if ($ListSteps) {
     exit 0
 }
 
+if ($env:OPMS_LOCAL_QUALITY_GATE_ACTIVE -eq '1') {
+    throw 'A nested OPMS local quality-gate invocation was blocked.'
+}
+$env:OPMS_LOCAL_QUALITY_GATE_ACTIVE = '1'
+
 [IO.Directory]::CreateDirectory($evidenceRoot) | Out-Null
 $succeeded = $false
 $failure = $null
@@ -150,6 +151,10 @@ try {
         if (-not (Get-Command $requiredCommand -ErrorAction SilentlyContinue)) {
             throw "Required local command '$requiredCommand' is not installed or is not on PATH."
         }
+    }
+
+    Invoke-QualityStep 'Validate hosted/local workflow parity' {
+        & (Join-Path $PSScriptRoot 'Test-LocalQualityGateParity.ps1') -RepositoryRoot $repositoryRoot
     }
 
     if (-not $SkipRestore) {
