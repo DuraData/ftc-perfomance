@@ -8,7 +8,9 @@ const api = vi.hoisted(() => ({
   createSecurityRole: vi.fn(), saveRoleSecurityConfiguration: vi.fn(), updateSecurityRole: vi.fn(),
 }));
 vi.mock('../../api/api', () => api);
-vi.mock('../../context/AppContext', () => ({ useApp: () => ({ currentMunicipalityPublicId: 'municipality-public' }) }));
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ currentMunicipalityPublicId: 'municipality-public', sidebarCollapsed: false, toasts: [] }) }));
+vi.mock('../layout/Sidebar', () => ({ Sidebar: () => <nav aria-label="Primary navigation">Navigation</nav> }));
+vi.mock('../layout/TopBar', () => ({ TopBar: ({ title }: { title?: string }) => <header>{title && <h1 id="page-title">{title}</h1>}</header> }));
 vi.mock('./NavigationRegistryEditor', () => ({ NavigationRegistryEditor: () => <div>Navigation editor</div> }));
 vi.mock('./SecurityRegistryEditor', () => ({ SecurityRegistryEditor: () => <div>Security registry editor</div> }));
 
@@ -28,6 +30,14 @@ describe('SecurityAdministrationPage role assignments', () => {
     api.saveRoleSecurityConfiguration.mockResolvedValue({ success: true, data: true });
     api.updateSecurityRole.mockResolvedValue({ success: true, data: { publicId: 'role-public', roleCode: 'DEPARTMENT_REVIEWER', name: 'Department Reviewer', municipalityPublicId: 'municipality-public', isSystemRole: false, isActive: true, effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'Ag==' } });
     api.createSecurityRole.mockResolvedValue({ success: true, data: { publicId: 'new-role-public', roleCode: 'DATA_STEWARD', name: 'Data Steward', municipalityPublicId: 'municipality-public', isSystemRole: false, isActive: true, effectiveFrom: '2026-01-01T00:00:00Z', rowVersion: 'AQ==' } });
+  });
+
+  it('uses the authenticated application shell with a route-specific document title', async () => {
+    render(<SecurityAdministrationPage />);
+
+    expect(await screen.findByRole('main', { name: 'Security Administration' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
+    expect(document.title).toBe('Security Administration | OPMS');
   });
 
   it('authors department, unit, and effective dates instead of role ids alone', async () => {

@@ -24,6 +24,7 @@ import { NavigationRegistryEditor } from './NavigationRegistryEditor';
 import { SecurityRegistryEditor } from './SecurityRegistryEditor';
 import { OrganizationMasterPicker } from '../common/OrganizationMasterPicker';
 import { useApp } from '../../context/AppContext';
+import { AppShell } from '../layout/AppShell';
 
 type EditableRule = Pick<RoleSecurityPermission, 'permissionCode' | 'state' | 'scopeType'>;
 type AssignmentDraft = { rolePublicId: string; municipalityPublicId?: string; departmentPublicId?: string; departmentName?: string; unitPublicId?: string; unitName?: string; effectiveFrom: string; effectiveTo?: string };
@@ -219,12 +220,11 @@ export function SecurityAdministrationPage() {
   };
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Security Administration</h1>
-        <p className="mt-1 text-sm text-gray-600">Configure deny-by-default navigation, CRUD, field, action and scope rules. Explicit deny overrides allow.</p>
-      </div>
-
+    <AppShell
+      title="Security Administration"
+      subtitle="Configure deny-by-default navigation, CRUD, field, action and scope rules. Explicit deny overrides allow."
+    >
+      <div className="space-y-6">
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <div className="grid gap-5 lg:grid-cols-2">
           <div>
@@ -329,7 +329,8 @@ export function SecurityAdministrationPage() {
         </div>}
         {preview && <div className="mt-4 grid gap-4 md:grid-cols-3"><PreviewList title="Roles" values={preview.roles}/><PreviewList title="Scopes" values={preview.scopes}/><PreviewList title="Effective permissions" values={preview.permissions}/></div>}
       </section>
-    </div>
+      </div>
+    </AppShell>
   );
 }
 
