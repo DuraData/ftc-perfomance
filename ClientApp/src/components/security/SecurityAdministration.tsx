@@ -287,9 +287,9 @@ export function SecurityAdministrationPage() {
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between border-t border-gray-200 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 p-4">
           <span className="text-sm text-gray-600">{message}</span>
-          <div className="flex items-center gap-2"><input aria-label="Role permission governance reason" placeholder="Reason for permission replacement" className="min-w-72 rounded border border-gray-300 p-2 text-sm" value={permissionReason} onChange={event => setPermissionReason(event.target.value)} /><button type="button" disabled={busy || !roleId || permissionReason.trim().length < 5} onClick={() => void save()} className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? 'Working…' : 'Save role security'}</button></div>
+          <div className="flex min-w-0 w-full flex-wrap items-center gap-2 sm:w-auto"><input aria-label="Role permission governance reason" placeholder="Reason for permission replacement" className="min-w-0 flex-1 rounded border border-gray-300 p-2 text-sm sm:min-w-72" value={permissionReason} onChange={event => setPermissionReason(event.target.value)} /><button type="button" disabled={busy || !roleId || permissionReason.trim().length < 5} onClick={() => void save()} className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? 'Working…' : 'Save role security'}</button></div>
         </div>
       </section>
 
@@ -300,8 +300,8 @@ export function SecurityAdministrationPage() {
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <h2 className="text-lg font-semibold">Effective permission preview</h2>
         <div className="mt-3 flex flex-wrap gap-2">
-          <input aria-label="Search security users" placeholder="Search users" className="min-w-64 rounded border border-gray-300 p-2" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
-          <select className="min-w-80 rounded border border-gray-300 p-2" value={previewUserId} onChange={event => void loadUserRoles(event.target.value)}><option value="">Select a user</option>{users.map(item => <option key={item.publicId} value={item.publicId}>{item.email ? `${item.fullName} (${item.email})` : item.fullName}</option>)}</select>
+          <input aria-label="Search security users" placeholder="Search users" className="min-w-0 w-full rounded border border-gray-300 p-2 sm:w-auto sm:min-w-64" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
+          <select aria-label="Select user for effective permission preview" className="min-w-0 w-full rounded border border-gray-300 p-2 sm:w-auto sm:min-w-80" value={previewUserId} onChange={event => void loadUserRoles(event.target.value)}><option value="">Select a user</option>{users.map(item => <option key={item.publicId} value={item.publicId}>{item.email ? `${item.fullName} (${item.email})` : item.fullName}</option>)}</select>
           <button type="button" onClick={() => void loadPreview()} disabled={!previewUserId} className="rounded border border-blue-700 px-4 py-2 text-blue-700 disabled:opacity-50">Calculate</button>
         </div>
         {userTotalPages > 1 && <div className="mt-2 flex items-center gap-2 text-sm text-gray-600"><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={userPage <= 1} onClick={() => setUserPage(value => Math.max(1, value - 1))}>Previous users</button><span>Page {userPage} of {userTotalPages}</span><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={userPage >= userTotalPages} onClick={() => setUserPage(value => value + 1)}>Next users</button></div>}

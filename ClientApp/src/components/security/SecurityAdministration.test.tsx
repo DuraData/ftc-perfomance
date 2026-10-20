@@ -34,7 +34,7 @@ describe('SecurityAdministrationPage role assignments', () => {
     render(<SecurityAdministrationPage />);
     await waitFor(() => expect(api.getSecurityRolesPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'name', sortDirection: 'asc' }, true));
     await waitFor(() => expect(api.getSecurityPermissionDefinitionsPage).toHaveBeenCalledWith({ page: 1, pageSize: 25, search: '', sortBy: 'code', sortDirection: 'asc' }, ['Resource']));
-    const userSelect = (await screen.findAllByRole('combobox'))[1];
+    const userSelect = await screen.findByRole('combobox', { name: 'Select user for effective permission preview' });
     fireEvent.change(userSelect, { target: { value: 'user-public' } });
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Department Reviewer' }));
     fireEvent.change(await screen.findByLabelText('Department Reviewer department'), { target: { value: 'dep-1' } });
@@ -130,7 +130,7 @@ describe('SecurityAdministrationPage role assignments', () => {
     } });
 
     render(<SecurityAdministrationPage />);
-    const userSelect = (await screen.findAllByRole('combobox'))[1];
+    const userSelect = await screen.findByRole('combobox', { name: 'Select user for effective permission preview' });
     fireEvent.change(userSelect, { target: { value: 'user-public' } });
 
     expect(await screen.findByText('Existing Performance Role')).toBeInTheDocument();

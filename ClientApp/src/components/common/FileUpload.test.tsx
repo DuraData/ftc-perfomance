@@ -1,7 +1,16 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import axe from 'axe-core';
 import { FileUpload } from './FileUpload';
 
 describe('FileUpload evidence scan state', () => {
+  it('provides a durable accessible name for its transparent file selector', async () => {
+    const result = render(<FileUpload onUpload={vi.fn()} existingFiles={[]} />);
+
+    expect(screen.getByLabelText('Choose files for evidence upload')).toHaveAttribute('type', 'file');
+    const accessibility = await axe.run(result.container, { rules: { 'color-contrast': { enabled: false } } });
+    expect(accessibility.violations).toEqual([]);
+  });
+
   it('waits for the real upload and never fabricates a persisted file or progress result', async () => {
     let completeUpload!: () => void;
     const onUpload = vi.fn(() => new Promise<void>(resolve => { completeUpload = resolve; }));

@@ -193,6 +193,7 @@ export function FileUpload({
         } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <input
+          aria-label="Choose files for evidence upload"
           ref={fileInputRef}
           type="file"
           multiple
