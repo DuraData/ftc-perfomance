@@ -155,11 +155,15 @@ function AppContent() {
       case '/strategic-documents':
         return <StrategicDocumentsWorkspace />;
       case '/c88/planning':
+        return <C88Workspace view="planning" />;
       case '/c88/reporting':
+        return <C88Workspace view="reporting" />;
       case '/c88/compliance':
+        return <C88Workspace view="compliance" />;
       case '/c88/mapping':
+        return <C88Workspace view="mapping" />;
       case '/c88/reports':
-        return <C88Workspace />;
+        return <C88Workspace view="reports" />;
       case '/ipms/dashboard':
         return <IPMSDashboardPage />;
       case '/ipms/library':

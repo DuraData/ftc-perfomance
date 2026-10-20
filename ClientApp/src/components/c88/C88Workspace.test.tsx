@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import axe from 'axe-core';
-import { C88Workspace } from './C88Workspace';
+import { C88Workspace, type C88WorkspaceView } from './C88Workspace';
 import type { C88CatalogueItem, C88IndicatorReport } from '../../types';
 
 const app = vi.hoisted(() => ({ pushToast: vi.fn(), sidebarCollapsed: false, toasts: [] }));
@@ -64,6 +64,21 @@ describe('Circular 88 workspace', () => {
     expect(await screen.findByRole('main', { name: 'Circular 88' })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
     expect(document.title).toBe('Circular 88 | OPMS');
+  });
+
+  it.each([
+    ['planning', 'C88 Planning', 'Versioned Treasury catalogue', 'Reporting calendar and capture'],
+    ['reporting', 'C88 Reporting', 'Reporting calendar and capture', 'Versioned Treasury catalogue'],
+    ['compliance', 'C88 Compliance', 'Compliance question administration', 'Governed report register'],
+    ['mapping', 'C88 Mapping', 'Indicator and OPMS KPI mappings', 'Planning, assignments and workflow'],
+    ['reports', 'C88 Reports', 'Governed report register', 'Reporting calendar and capture'],
+  ] as const)('renders the %s route as a distinct governed workspace', async (view, title, visibleSection, hiddenSection) => {
+    render(<C88Workspace view={view as C88WorkspaceView} />);
+
+    expect(await screen.findByRole('main', { name: title })).toBeInTheDocument();
+    expect(screen.getByText(visibleSection)).toBeInTheDocument();
+    expect(screen.queryByText(hiddenSection)).not.toBeInTheDocument();
+    expect(document.title).toBe(`${title} | OPMS`);
   });
 
   it('keeps operational reporting visible while hiding catalogue administration', async () => {
