@@ -20,13 +20,12 @@ interface Column<T> {
   headerClassName?: string;
 }
 
-interface DataTableProps<T> {
+interface DataTableBaseProps<T> {
   data: T[];
   columns: Column<T>[];
   pageSize?: number;
   searchable?: boolean;
   searchPlaceholder?: string;
-  onRowClick?: (row: T) => void;
   actions?: (row: T) => React.ReactNode;
   emptyMessage?: string;
   getRowId?: (row: T) => string;
@@ -43,6 +42,14 @@ interface DataTableProps<T> {
   };
 }
 
+type DataTableProps<T> = DataTableBaseProps<T> & ({
+  onRowClick: (row: T) => void;
+  getRowActionLabel: (row: T) => string;
+} | {
+  onRowClick?: undefined;
+  getRowActionLabel?: never;
+});
+
 type SortDirection = 'asc' | 'desc' | null;
 
 export function DataTable<T>({
@@ -52,6 +59,7 @@ export function DataTable<T>({
   searchable = false,
   searchPlaceholder = 'Search...',
   onRowClick,
+  getRowActionLabel,
   actions,
   emptyMessage = 'No data available',
   getRowId,
@@ -158,12 +166,12 @@ export function DataTable<T>({
                     ) : column.header}
                   </th>
                 ))}
-                {actions && <th className="px-3 py-2 text-right text-[10px] font-semibold text-secondary-600 dark:text-secondary-400 uppercase">Actions</th>}
+                {(actions || onRowClick) && <th className="px-3 py-2 text-right text-[10px] font-semibold text-secondary-600 dark:text-secondary-400 uppercase">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">
               {paginatedData.length === 0 ? (
-                <tr><td colSpan={columns.length + (actions ? 1 : 0)} className="px-3 py-8 text-center text-xs text-secondary-500">{emptyMessage}</td></tr>
+                <tr><td colSpan={columns.length + (actions || onRowClick ? 1 : 0)} className="px-3 py-8 text-center text-xs text-secondary-500">{emptyMessage}</td></tr>
               ) : (
                 paginatedData.map((row, index) => (
                   <tr
@@ -176,9 +184,12 @@ export function DataTable<T>({
                         {typeof column.accessor === 'function' ? column.accessor(row) : String(row[column.accessor as keyof T] ?? '')}
                       </td>
                     ))}
-                    {actions && (
+                    {(actions || onRowClick) && (
                       <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1">{actions(row)}</div>
+                        <div className="flex items-center justify-end gap-1">
+                          {actions?.(row)}
+                          {onRowClick && <button type="button" aria-label={getRowActionLabel(row)} onClick={() => onRowClick(row)} className="rounded border border-primary-200 px-2 py-1 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-primary-800 dark:text-primary-300 dark:hover:bg-primary-900/30">Open</button>}
+                        </div>
                       </td>
                     )}
                   </tr>

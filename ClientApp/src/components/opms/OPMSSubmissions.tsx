@@ -461,6 +461,7 @@ export function OPMSSubmissionsList() {
               data={allSubmissions}
               columns={columns}
               onRowClick={(row) => { void openSubmission(row); }}
+              getRowActionLabel={(row) => `Open OPMS ${row.quarter} submission for ${row.target.targetName}`}
               actions={actions}
               getRowId={(row) => row.id}
               searchable
@@ -835,6 +836,7 @@ export function IPMSSubmissionsList() {
               data={allSubmissions}
               columns={columns}
               onRowClick={(row) => { void openSubmission(row); }}
+              getRowActionLabel={(row) => `Open IPMS ${row.quarter} submission for ${row.target.targetName}`}
               actions={actions}
               getRowId={(row) => row.id}
               searchable

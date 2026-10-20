@@ -402,6 +402,7 @@ function SubmissionsTab({
       emptyMessage="No submissions yet" 
       getRowId={(row) => row.id}
       onRowClick={(row) => { void openSubmission(row); }}
+      getRowActionLabel={(row) => `Open OPMS ${row.quarter} submission for ${row.target.targetName}`}
       />
       <DetailCollectionPaging label="submissions" page={page} totalPages={totalPages} totalCount={totalCount} onPageChange={onPageChange} />
     </div>

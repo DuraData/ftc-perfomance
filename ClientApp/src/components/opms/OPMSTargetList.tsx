@@ -386,6 +386,7 @@ export function OPMSTargetList() {
           data={opmsTargets}
           columns={columns}
           onRowClick={handleRowClick}
+          getRowActionLabel={(row) => `Open OPMS target ${row.indicatorNumber}: ${row.targetName}`}
           actions={actions}
           searchPlaceholder="Search targets..."
           searchable

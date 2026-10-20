@@ -34,7 +34,7 @@ describe('LegacySubmissionPeriodReconciliationAdministration', () => {
   it('requires an explicit eligible period and governance reason before reconciliation', async () => {
     render(<LegacySubmissionPeriodReconciliationAdministration />);
     await waitFor(() => expect(api.getLegacySubmissionPeriodPreview).toHaveBeenCalledWith(1, 1, 25));
-    expect(screen.getByText('Every matching period already has another logical submission for this target.')).toBeInTheDocument();
+    expect(await screen.findByText('Every matching period already has another logical submission for this target.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Canonical period for KPI-2')).not.toBeInTheDocument();
     const execute = screen.getByRole('button', { name: 'Reconcile KPI-1' });
     expect(execute).toBeDisabled();

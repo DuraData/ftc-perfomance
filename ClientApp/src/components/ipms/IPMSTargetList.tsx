@@ -317,6 +317,7 @@ export function IPMSTargetList() {
             data={ipmsTargets}
             columns={columns}
             onRowClick={handleRowClick}
+            getRowActionLabel={(row) => `Open IPMS target ${row.indicatorNumber}: ${row.targetName}`}
             actions={actions}
             searchPlaceholder="Search IPMS targets..."
             searchable
