@@ -341,9 +341,10 @@ function SubmissionsTab({
   return (
     <div>
       <DataTable
-      data={submissions} 
-      columns={columns} 
-      emptyMessage="No submissions yet" 
+        tableLabel="IPMS target submissions"
+        data={submissions}
+        columns={columns}
+        emptyMessage="No submissions yet"
       getRowId={(row) => row.id}
       onRowClick={(row) => { void openSubmission(row); }}
       getRowActionLabel={(row) => `Open IPMS ${row.quarter} submission for ${row.target.targetName}`}

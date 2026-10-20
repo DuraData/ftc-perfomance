@@ -344,6 +344,7 @@ export function AdminUsersPage() {
 
         <Card>
           <DataTable
+            tableLabel="System users"
             data={rows}
             columns={columns}
             actions={actions}
@@ -650,7 +651,7 @@ export function AdminRolesPage() {
         )}
 
         <Card>
-          <DataTable data={roles} columns={columns} actions={actions} searchable getRowId={(r) => r.publicId} emptyMessage={loading ? 'Loading...' : 'No roles'} />
+          <DataTable tableLabel="Security roles" data={roles} columns={columns} actions={actions} searchable getRowId={(r) => r.publicId} emptyMessage={loading ? 'Loading...' : 'No roles'} />
         </Card>
 
         <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Role' : 'New Role'} size="md">
@@ -923,7 +924,7 @@ export function AdminPermissionsPage() {
 
         {viewMode === 'table' ? (
           <Card>
-            <DataTable data={rows} columns={columns} actions={actions} searchable getRowId={(p) => String(p.id)} emptyMessage={loading ? 'Loading...' : 'No permissions'} />
+            <DataTable tableLabel="Permission definitions" data={rows} columns={columns} actions={actions} searchable getRowId={(p) => String(p.id)} emptyMessage={loading ? 'Loading...' : 'No permissions'} />
           </Card>
         ) : (
           <Card className="p-4">
@@ -1174,9 +1175,9 @@ export function AdminAuditLogsPage() {
 
         <Card>
           {activeTab === 'login' ? (
-            <DataTable data={rows} columns={loginColumns} actions={loginActions} searchable searchPlaceholder="Search login audit logs" getRowId={(l) => l.publicId} emptyMessage={loading ? 'Loading...' : 'No logs'} serverState={{ page: loginPage, pageSize, totalCount: loginTotal, search: loginSearch, sortBy: effectiveLoginSort.key, sortDirection: effectiveLoginSort.direction, onPageChange: setLoginPage, onSearchChange: value => { setLoginSearch(value); setLoginPage(1); }, onSortChange: (key, direction) => { setLoginSort({ key, direction }); setLoginPage(1); } }} />
+            <DataTable tableLabel="Login audit logs" data={rows} columns={loginColumns} actions={loginActions} searchable searchPlaceholder="Search login audit logs" getRowId={(l) => l.publicId} emptyMessage={loading ? 'Loading...' : 'No logs'} serverState={{ page: loginPage, pageSize, totalCount: loginTotal, search: loginSearch, sortBy: effectiveLoginSort.key, sortDirection: effectiveLoginSort.direction, onPageChange: setLoginPage, onSearchChange: value => { setLoginSearch(value); setLoginPage(1); }, onSortChange: (key, direction) => { setLoginSort({ key, direction }); setLoginPage(1); } }} />
           ) : (
-            <DataTable data={trailRows} columns={trailColumns} actions={trailActions} searchable searchPlaceholder="Search audit trails" getRowId={(entry) => entry.publicId} emptyMessage={loading ? 'Loading...' : 'No audit trail entries'} serverState={{ page: trailPage, pageSize, totalCount: trailTotal, search: trailSearch, sortBy: effectiveTrailSort.key, sortDirection: effectiveTrailSort.direction, onPageChange: setTrailPage, onSearchChange: value => { setTrailSearch(value); setTrailPage(1); }, onSortChange: (key, direction) => { setTrailSort({ key, direction }); setTrailPage(1); } }} />
+            <DataTable tableLabel="Business audit trails" data={trailRows} columns={trailColumns} actions={trailActions} searchable searchPlaceholder="Search audit trails" getRowId={(entry) => entry.publicId} emptyMessage={loading ? 'Loading...' : 'No audit trail entries'} serverState={{ page: trailPage, pageSize, totalCount: trailTotal, search: trailSearch, sortBy: effectiveTrailSort.key, sortDirection: effectiveTrailSort.direction, onPageChange: setTrailPage, onSearchChange: value => { setTrailSearch(value); setTrailPage(1); }, onSortChange: (key, direction) => { setTrailSort({ key, direction }); setTrailPage(1); } }} />
           )}
         </Card>
 

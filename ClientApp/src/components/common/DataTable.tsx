@@ -6,9 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
-  Filter,
 } from 'lucide-react';
-import { Button } from '../ui';
 
 interface Column<T> {
   id: string;
@@ -23,6 +21,7 @@ interface Column<T> {
 interface DataTableBaseProps<T> {
   data: T[];
   columns: Column<T>[];
+  tableLabel: string;
   pageSize?: number;
   searchable?: boolean;
   searchPlaceholder?: string;
@@ -55,6 +54,7 @@ type SortDirection = 'asc' | 'desc' | null;
 export function DataTable<T>({
   data,
   columns,
+  tableLabel,
   pageSize = 10,
   searchable = false,
   searchPlaceholder = 'Search...',
@@ -129,6 +129,13 @@ export function DataTable<T>({
     return <ChevronDown className="w-3 h-3 text-primary-600" />;
   };
 
+  const isSortable = (column: Column<T>) => column.sortable !== false && (!serverState || !!column.sortKey);
+  const ariaSort = (column: Column<T>): React.AriaAttributes['aria-sort'] => {
+    if (!isSortable(column)) return undefined;
+    if (serverState) return serverState.sortBy === column.sortKey ? serverState.sortDirection === 'asc' ? 'ascending' : 'descending' : 'none';
+    return sortColumn === column.id ? sortDirection === 'asc' ? 'ascending' : sortDirection === 'desc' ? 'descending' : 'none' : 'none';
+  };
+
   return (
     <div className="space-y-2">
       {searchable && (
@@ -147,18 +154,18 @@ export function DataTable<T>({
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-secondary-800 border border-secondary-200 dark:border-secondary-700 rounded focus:outline-none focus:ring-1.5 focus:ring-primary-500"
             />
           </div>
-          <Button variant="outline" size="sm" icon={<Filter className="w-3.5 h-3.5" />}>Filters</Button>
         </div>
       )}
 
       <div className="bg-white dark:bg-secondary-900 rounded-lg border border-secondary-200 dark:border-secondary-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
+            <caption className="sr-only">{tableLabel}</caption>
             <thead>
               <tr className="bg-secondary-50 dark:bg-secondary-800 border-b border-secondary-200 dark:border-secondary-700">
                 {columns.map(column => (
-                  <th key={column.id} className={`px-3 py-2 text-left text-[10px] font-semibold text-secondary-600 dark:text-secondary-400 uppercase tracking-wide ${column.headerClassName || ''}`}>
-                    {column.sortable !== false && (!serverState || column.sortKey) ? (
+                  <th key={column.id} scope="col" aria-sort={ariaSort(column)} className={`px-3 py-2 text-left text-[10px] font-semibold text-secondary-600 dark:text-secondary-400 uppercase tracking-wide ${column.headerClassName || ''}`}>
+                    {isSortable(column) ? (
                       <button type="button" onClick={() => handleSort(column.id)} className="flex items-center gap-1 hover:text-secondary-900 dark:hover:text-white transition-colors">
                         {column.header}
                         {getSortIcon(column.id)}
@@ -166,7 +173,7 @@ export function DataTable<T>({
                     ) : column.header}
                   </th>
                 ))}
-                {(actions || onRowClick) && <th className="px-3 py-2 text-right text-[10px] font-semibold text-secondary-600 dark:text-secondary-400 uppercase">Actions</th>}
+                {(actions || onRowClick) && <th scope="col" className="px-3 py-2 text-right text-[10px] font-semibold text-secondary-600 dark:text-secondary-400 uppercase">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">

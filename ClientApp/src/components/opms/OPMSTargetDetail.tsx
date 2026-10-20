@@ -397,9 +397,10 @@ function SubmissionsTab({
   return (
     <div>
       <DataTable
-      data={submissions} 
-      columns={columns} 
-      emptyMessage="No submissions yet" 
+        tableLabel="OPMS target submissions"
+        data={submissions}
+        columns={columns}
+        emptyMessage="No submissions yet"
       getRowId={(row) => row.id}
       onRowClick={(row) => { void openSubmission(row); }}
       getRowActionLabel={(row) => `Open OPMS ${row.quarter} submission for ${row.target.targetName}`}
@@ -423,7 +424,7 @@ export function VoteNumbersTab({ target }: { target: OPMSTarget }) {
       <div>
         <p className="text-xs text-secondary-600">Vote numbers for {target.department.name}</p>
       </div>
-      <DataTable data={voteNumbers} columns={columns} emptyMessage="No vote numbers" getRowId={(row) => row.id} />
+      <DataTable tableLabel="Target vote numbers" data={voteNumbers} columns={columns} emptyMessage="No vote numbers" getRowId={(row) => row.id} />
     </div>
   );
 }
@@ -441,7 +442,7 @@ function RelatedIPMSTab({ ipmsTargets, page, totalPages, totalCount, onPageChang
       <div>
         <p className="text-xs text-secondary-600">Linked IPMS targets</p>
       </div>
-      <DataTable data={ipmsTargets} columns={columns} emptyMessage="No linked IPMS" getRowId={(row) => row.id} />
+      <DataTable tableLabel="Linked IPMS targets" data={ipmsTargets} columns={columns} emptyMessage="No linked IPMS" getRowId={(row) => row.id} />
       <DetailCollectionPaging label="linked targets" page={page} totalPages={totalPages} totalCount={totalCount} onPageChange={onPageChange} />
     </div>
   );
@@ -473,7 +474,7 @@ export function AssigneesTab({ target }: { target: OPMSTarget }) {
       <div>
         <p className="text-xs text-secondary-600">Additional assignees</p>
       </div>
-      <DataTable data={assignees} columns={columns} emptyMessage="No assignees" getRowId={(row) => row.id} />
+      <DataTable tableLabel="Additional target assignees" data={assignees} columns={columns} emptyMessage="No assignees" getRowId={(row) => row.id} />
     </div>
   );
 }

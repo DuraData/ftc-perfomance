@@ -314,6 +314,7 @@ export function IPMSTargetList() {
 
         <Card>
           <DataTable
+            tableLabel="IPMS targets"
             data={ipmsTargets}
             columns={columns}
             onRowClick={handleRowClick}

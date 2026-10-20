@@ -383,6 +383,7 @@ export function OPMSTargetList() {
 
         {/* Data Table */}
         <DataTable
+          tableLabel="OPMS targets"
           data={opmsTargets}
           columns={columns}
           onRowClick={handleRowClick}

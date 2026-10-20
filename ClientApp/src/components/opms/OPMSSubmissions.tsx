@@ -458,6 +458,7 @@ export function OPMSSubmissionsList() {
           </div>
           <Card>
             <DataTable
+              tableLabel="OPMS submissions"
               data={allSubmissions}
               columns={columns}
               onRowClick={(row) => { void openSubmission(row); }}
@@ -833,6 +834,7 @@ export function IPMSSubmissionsList() {
           </div>
           <Card>
             <DataTable
+              tableLabel="IPMS submissions"
               data={allSubmissions}
               columns={columns}
               onRowClick={(row) => { void openSubmission(row); }}
