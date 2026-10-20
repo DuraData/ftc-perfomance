@@ -144,8 +144,8 @@ export function IdpDocumentsPage() {
 
         <Card padding="none">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-secondary-200 text-sm dark:divide-secondary-700">
-              <thead><tr className="text-left text-xs uppercase text-secondary-500"><th className="p-3">Document</th><th className="p-3">Category / version</th><th className="p-3">Upload</th><th className="p-3">Integrity</th><th className="p-3">Actions</th></tr></thead>
+            <table aria-label="IDP document register" className="min-w-full divide-y divide-secondary-200 text-sm dark:divide-secondary-700">
+              <thead><tr className="text-left text-xs uppercase text-secondary-500"><th scope="col" className="p-3">Document</th><th scope="col" className="p-3">Category / version</th><th scope="col" className="p-3">Upload</th><th scope="col" className="p-3">Integrity</th><th scope="col" className="p-3">Actions</th></tr></thead>
               <tbody className="divide-y divide-secondary-100 dark:divide-secondary-800">{documents.map(document => <tr key={document.publicId}>
                 <td className="p-3"><p className="font-medium text-secondary-900 dark:text-white">{document.title}</p><p className="text-xs text-secondary-500">{document.fileName} · {formatBytes(document.sizeInBytes)}</p></td>
                 <td className="p-3"><p>{document.category}</p><p className="text-xs text-secondary-500">Document v{document.versionNumber}{document.planVersionNumber ? ` · Plan v${document.planVersionNumber}` : ''}</p></td>

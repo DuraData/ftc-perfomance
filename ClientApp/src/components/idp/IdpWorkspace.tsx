@@ -611,8 +611,8 @@ export function IdpPlanManagementPage() {
                   {canReadImportActor && importBatch.committedByName ? <span> · Committed by {importBatch.committedByName}{importBatch.committedByUserPublicId ? ` (${importBatch.committedByUserPublicId})` : ''}</span> : null}
                 </div> : null}
                 <div className="max-h-80 overflow-auto rounded border border-secondary-200 dark:border-secondary-700">
-                  <table className="min-w-full text-left text-xs">
-                    <thead className="bg-secondary-50 dark:bg-secondary-800"><tr><th className="px-3 py-2">Row</th><th className="px-3 py-2">Reference</th><th className="px-3 py-2">Result</th>{canReadImportError ? <th className="px-3 py-2">Error</th> : null}</tr></thead>
+                  <table aria-label="IDP import reconciliation rows" className="min-w-full text-left text-xs">
+                    <thead className="bg-secondary-50 dark:bg-secondary-800"><tr><th scope="col" className="px-3 py-2">Row</th><th scope="col" className="px-3 py-2">Reference</th><th scope="col" className="px-3 py-2">Result</th>{canReadImportError ? <th scope="col" className="px-3 py-2">Error</th> : null}</tr></thead>
                     <tbody>{importBatch.rows.map(row => <tr key={row.publicId} className="border-t border-secondary-200 dark:border-secondary-700"><td className="px-3 py-2">{row.sourceRowNumber}</td><td className="px-3 py-2">{row.reference}</td><td className="px-3 py-2"><Badge variant={row.status === 'Invalid' ? 'error' : row.status === 'Changed' ? 'warning' : row.status === 'New' ? 'success' : 'info'}>{row.status}</Badge></td>{canReadImportError ? <td className="px-3 py-2 text-error-700">{row.errorCode ? `${row.errorCode}: ${row.errorMessage}` : '—'}</td> : null}</tr>)}</tbody>
                   </table>
                 </div>
@@ -752,16 +752,16 @@ export function IdpHierarchyPage() {
             <select aria-label="IDP hierarchy sort direction" className="rounded-md border border-secondary-300 bg-white px-3 py-2 text-sm dark:border-secondary-700 dark:bg-secondary-900" value={sortDirection} onChange={event => { setSortDirection(event.target.value as 'asc' | 'desc'); setPage(1); }}><option value="asc">Ascending</option><option value="desc">Descending</option></select>
           </div>
           <div className="mt-3 overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <table aria-label="IDP hierarchy register" className="min-w-full text-sm">
               <thead className="border-b border-secondary-200 text-left text-xs uppercase text-secondary-500 dark:border-secondary-700">
                 <tr>
-                  <th className="px-2 py-2">Outcome</th>
-                  <th className="px-2 py-2">Objective</th>
-                  <th className="px-2 py-2">Priority</th>
-                  <th className="px-2 py-2">Programme</th>
-                  <th className="px-2 py-2">Project</th>
-                  <th className="px-2 py-2">KPI</th>
-                  {canReadGovernedDetails ? <th className="px-2 py-2">Governed Details</th> : null}
+                  <th scope="col" className="px-2 py-2">Outcome</th>
+                  <th scope="col" className="px-2 py-2">Objective</th>
+                  <th scope="col" className="px-2 py-2">Priority</th>
+                  <th scope="col" className="px-2 py-2">Programme</th>
+                  <th scope="col" className="px-2 py-2">Project</th>
+                  <th scope="col" className="px-2 py-2">KPI</th>
+                  {canReadGovernedDetails ? <th scope="col" className="px-2 py-2">Governed Details</th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -944,8 +944,8 @@ export function IdpCommunityParticipationPage() {
             ]} onChange={event => { setStakeholderSort(event.target.value); setStakeholderPage(1); }} />
           </div>
           <div className="mt-3 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-secondary-200 text-left text-xs uppercase text-secondary-500 dark:border-secondary-700"><tr><th className="px-2 py-2">Session</th><th className="px-2 py-2">Stakeholder</th><th className="px-2 py-2">Type</th>{canReadContactPerson ? <th className="px-2 py-2">Contact person</th> : null}{canReadContactEmail ? <th className="px-2 py-2">Contact email</th> : null}{canReadKeyInput ? <th className="px-2 py-2">Key input</th> : null}</tr></thead>
+            <table aria-label="IDP stakeholder engagements" className="min-w-full text-sm">
+              <thead className="border-b border-secondary-200 text-left text-xs uppercase text-secondary-500 dark:border-secondary-700"><tr><th scope="col" className="px-2 py-2">Session</th><th scope="col" className="px-2 py-2">Stakeholder</th><th scope="col" className="px-2 py-2">Type</th>{canReadContactPerson ? <th scope="col" className="px-2 py-2">Contact person</th> : null}{canReadContactEmail ? <th scope="col" className="px-2 py-2">Contact email</th> : null}{canReadKeyInput ? <th scope="col" className="px-2 py-2">Key input</th> : null}</tr></thead>
               <tbody>{stakeholders.map(item => <tr key={item.publicId} className="border-b border-secondary-100 dark:border-secondary-800"><td className="px-2 py-2">{new Date(item.sessionDate).toLocaleDateString()} · {item.venue}</td><td className="px-2 py-2">{item.stakeholderName}</td><td className="px-2 py-2">{item.stakeholderType}</td>{canReadContactPerson ? <td className="px-2 py-2">{item.contactPerson ?? '-'}</td> : null}{canReadContactEmail ? <td className="px-2 py-2">{item.contactEmail ?? '-'}</td> : null}{canReadKeyInput ? <td className="px-2 py-2">{item.keyInput ?? '-'}</td> : null}</tr>)}</tbody>
             </table>
             {!stakeholders.length ? <p className="p-3 text-sm text-secondary-500">No stakeholder engagements match the current filters.</p> : null}
@@ -1083,13 +1083,13 @@ export function IdpAlignmentMatrixPage() {
 
         <Card>
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <table aria-label="IDP strategic alignment matrix" className="min-w-full text-sm">
               <thead className="border-b border-secondary-200 text-left text-xs uppercase text-secondary-500 dark:border-secondary-700">
                 <tr>
-                  <th className="px-2 py-2">Strategic Outcome</th>
-                  <th className="px-2 py-2">Objective</th>
-                  <th className="px-2 py-2">Framework</th>
-                  <th className="px-2 py-2">Reference</th>
+                  <th scope="col" className="px-2 py-2">Strategic Outcome</th>
+                  <th scope="col" className="px-2 py-2">Objective</th>
+                  <th scope="col" className="px-2 py-2">Framework</th>
+                  <th scope="col" className="px-2 py-2">Reference</th>
                 </tr>
               </thead>
               <tbody>

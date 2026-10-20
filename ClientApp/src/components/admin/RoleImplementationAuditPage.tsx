@@ -130,16 +130,16 @@ export function RoleImplementationAuditPage() {
             <div className="px-6 py-8 text-sm text-error-600 dark:text-error-400">{error}</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
+              <table aria-label="Role implementation audit" className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
                 <thead className="bg-secondary-50 dark:bg-secondary-800/60">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">Role</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">Role</th>
                     {Object.entries(columnLabels).map(([key, label]) => (
-                      <th key={key} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">
+                      <th scope="col" key={key} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">
                         {label}
                       </th>
                     ))}
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">Complete</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">Complete</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-secondary-200 bg-white dark:divide-secondary-700 dark:bg-secondary-900">

@@ -301,6 +301,7 @@ function SelectionToggle({
 }
 
 function TemplateListTable<T>({
+  ariaLabel,
   items,
   columns,
   getRowId,
@@ -310,6 +311,7 @@ function TemplateListTable<T>({
   actions,
   emptyMessage,
 }: {
+  ariaLabel: string;
   items: T[];
   columns: Array<{
     id: string;
@@ -329,18 +331,18 @@ function TemplateListTable<T>({
   return (
     <Card padding="none">
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table aria-label={ariaLabel} className="w-full">
           <thead>
             <tr className="border-b border-secondary-200 bg-secondary-50 dark:border-secondary-700 dark:bg-secondary-800">
-              <th className="px-3 py-2 text-left">
+              <th scope="col" className="px-3 py-2 text-left">
                 <SelectionToggle checked={allSelected} onToggle={onToggleAll} />
               </th>
               {columns.map(column => (
-                <th key={column.id} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-secondary-600 dark:text-secondary-400">
+                <th scope="col" key={column.id} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-secondary-600 dark:text-secondary-400">
                   {column.header}
                 </th>
               ))}
-              <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-secondary-600 dark:text-secondary-400">
+              <th scope="col" className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wide text-secondary-600 dark:text-secondary-400">
                 Actions
               </th>
             </tr>
@@ -470,6 +472,7 @@ function OpmsTemplateSelectionModal({
           </Button>
         </div>
         <TemplateListTable
+          ariaLabel="OPMS target library selection"
           items={templates}
           getRowId={(template) => template.id}
           selectedIds={selectedIds}
@@ -621,6 +624,7 @@ function IpmsTemplateSelectionModal({
           </Button>
         </div>
         <TemplateListTable
+          ariaLabel="IPMS target library selection"
           items={templates}
           getRowId={(template) => template.id}
           selectedIds={selectedIds}
@@ -1107,6 +1111,7 @@ export function OPMSTargetLibraryList() {
         />
 
         <TemplateListTable
+          ariaLabel="OPMS target library"
           items={opmsTargetTemplates}
           getRowId={(template) => template.id}
           selectedIds={selectedIds}
@@ -1734,6 +1739,7 @@ export function IPMSTargetLibraryList() {
         />
 
         <TemplateListTable
+          ariaLabel="IPMS target library"
           items={ipmsTargetTemplates}
           getRowId={(template) => template.id}
           selectedIds={selectedIds}

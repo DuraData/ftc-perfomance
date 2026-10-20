@@ -66,8 +66,8 @@ export function SystemOperationsPage() {
                 <Badge variant={statusVariant(overview.status)}>{overview.status}</Badge>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
-                  <thead className="bg-secondary-50 dark:bg-secondary-800/60"><tr>{['Check', 'Status', 'Duration'].map(label => <th key={label} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">{label}</th>)}</tr></thead>
+                <table aria-label="System readiness checks" className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
+                  <thead className="bg-secondary-50 dark:bg-secondary-800/60"><tr>{['Check', 'Status', 'Duration'].map(label => <th scope="col" key={label} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">{label}</th>)}</tr></thead>
                   <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">
                     {overview.checks.map(check => <tr key={check.name}>
                       <td className="px-4 py-3 text-sm font-medium text-secondary-900 dark:text-white">{check.name}</td>
@@ -121,8 +121,8 @@ export function SystemOperationsPage() {
               <div className="px-4 py-6 text-sm text-secondary-500">No operational alert transitions have been recorded.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
-                  <thead className="bg-secondary-50 dark:bg-secondary-800/60"><tr>{['When', 'Lifecycle', 'Status', 'Affected checks', 'Delivery'].map(label => <th key={label} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">{label}</th>)}</tr></thead>
+                <table aria-label="Operational alert history" className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
+                  <thead className="bg-secondary-50 dark:bg-secondary-800/60"><tr>{['When', 'Lifecycle', 'Status', 'Affected checks', 'Delivery'].map(label => <th scope="col" key={label} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">{label}</th>)}</tr></thead>
                   <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">
                     {overview.operationalAlerts.items.map(alert => <tr key={alert.publicId}>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-secondary-600 dark:text-secondary-300">{new Date(alert.occurredAt).toLocaleString()}</td>

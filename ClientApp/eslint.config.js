@@ -81,6 +81,57 @@ const localAccessibility = {
         };
       },
     },
+    'table-semantics': {
+      meta: {
+        type: 'problem',
+        docs: { description: 'Require an accessible name for tables and an explicit scope for table headers.' },
+        schema: [],
+        messages: {
+          unnamedTable: 'Tables must have a non-empty caption, aria-label, or aria-labelledby.',
+          unscopedHeader: 'Table headers must declare scope="col" or scope="row".',
+        },
+      },
+      create(context) {
+        const sourceCode = context.sourceCode ?? context.getSourceCode();
+
+        return {
+          JSXOpeningElement(node) {
+            const element = jsxElementName(node.name);
+            const attributes = node.attributes.filter(attribute => attribute.type === 'JSXAttribute');
+
+            if (element === 'table') {
+              const namedByAttribute = ['aria-label', 'aria-labelledby'].some(name => {
+                const attribute = attributes.find(candidate => jsxElementName(candidate.name) === name);
+                if (!attribute) return false;
+                const value = staticJsxAttributeValue(attribute);
+                return value === undefined || (typeof value === 'string' && value.trim().length > 0);
+              });
+              const hasCaption = node.parent?.type === 'JSXElement' && node.parent.children.some(child => {
+                if (child.type !== 'JSXElement' || jsxElementName(child.openingElement?.name) !== 'caption') return false;
+                return child.children.some(content => {
+                  if (content.type === 'JSXText') return content.value.trim().length > 0;
+                  return content.type === 'JSXExpressionContainer' && content.expression?.type !== 'JSXEmptyExpression';
+                });
+              });
+              if (!namedByAttribute && !hasCaption) {
+                context.report({ node, messageId: 'unnamedTable' });
+              }
+              return;
+            }
+
+            if (element !== 'th') return;
+            const scopeAttribute = attributes.find(attribute => jsxElementName(attribute.name) === 'scope');
+            const scopeValue = staticJsxAttributeValue(scopeAttribute);
+            const hasScope = scopeValue === undefined
+              ? Boolean(scopeAttribute?.value?.type === 'JSXExpressionContainer')
+              : scopeValue === 'col' || scopeValue === 'row';
+            if (!hasScope) {
+              context.report({ node, messageId: 'unscopedHeader' });
+            }
+          },
+        };
+      },
+    },
   },
 };
 
@@ -106,6 +157,7 @@ export default tseslint.config(
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/purity': 'off',
       'local/raw-control-has-accessible-name': 'error',
+      'local/table-semantics': 'error',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

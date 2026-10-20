@@ -271,8 +271,8 @@ export function SecurityAdministrationPage() {
           <div className="flex gap-2"><button type="button" className="rounded border px-2 py-1 text-sm disabled:opacity-50" disabled={definitionPage <= 1} onClick={() => setDefinitionPage(value => Math.max(1, value - 1))}>Previous permissions</button><button type="button" className="rounded border px-2 py-1 text-sm disabled:opacity-50" disabled={definitionPage >= definitionTotalPages} onClick={() => setDefinitionPage(value => value + 1)}>Next permissions</button></div>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left">Permission</th><th className="px-4 py-3 text-left">Resource / Member</th><th className="px-4 py-3 text-left">Decision</th><th className="px-4 py-3 text-left">Record scope</th></tr></thead>
+          <table aria-label="Role permission definitions" className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50"><tr><th scope="col" className="px-4 py-3 text-left">Permission</th><th scope="col" className="px-4 py-3 text-left">Resource / Member</th><th scope="col" className="px-4 py-3 text-left">Decision</th><th scope="col" className="px-4 py-3 text-left">Record scope</th></tr></thead>
             <tbody className="divide-y divide-gray-100">
               {visibleDefinitions.map(definition => {
                 const rule = rules[definition.code];

@@ -87,8 +87,8 @@ export function RoleAccessMatrixPage() {
           <div className="px-6 py-8 text-sm text-error-600">{error}</div>
         ) : (
           <div><div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
-              <thead className="bg-secondary-50 dark:bg-secondary-800/60"><tr>{['Role', 'Permissions', 'Scope', 'Menus', 'Allowed Actions', 'Reports', 'Test User'].map(header => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">{header}</th>)}</tr></thead>
+            <table aria-label="Role access matrix" className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
+              <thead className="bg-secondary-50 dark:bg-secondary-800/60"><tr>{['Role', 'Permissions', 'Scope', 'Menus', 'Allowed Actions', 'Reports', 'Test User'].map(header => <th scope="col" key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">{header}</th>)}</tr></thead>
               <tbody className="divide-y divide-secondary-200 dark:divide-secondary-700">{rows.map(row => <tr key={row.rolePublicId}><td className="px-4 py-4 text-sm font-semibold text-secondary-900 dark:text-white">{row.role}<span className="block text-xs font-normal text-secondary-500">{row.roleCode}</span></td><td className="px-4 py-4 text-xs"><CollapsibleStringList items={row.permissions} singularLabel="permission" /></td><td className="px-4 py-4 text-xs"><CollapsibleStringList items={row.scope} singularLabel="scope" /></td><td className="px-4 py-4 text-xs"><CollapsibleStringList items={row.menus} singularLabel="menu" /></td><td className="px-4 py-4 text-xs"><CollapsibleStringList items={row.allowedActions} singularLabel="action" /></td><td className="px-4 py-4 text-xs"><CollapsibleStringList items={row.reports} singularLabel="report" /></td><td className="px-4 py-4 text-xs text-secondary-600 dark:text-secondary-300">{row.testUser ?? '-'}</td></tr>)}</tbody>
             </table>
           </div><div className="flex items-center justify-between gap-3 border-t border-secondary-200 p-4 text-xs text-secondary-500 dark:border-secondary-700"><span>{totalCount} roles · Page {page} of {Math.max(totalPages, 1)}</span><span className="flex gap-2"><Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => Math.max(1, value - 1))}>Previous roles</Button><Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(value => value + 1)}>Next roles</Button></span></div></div>
@@ -354,11 +354,11 @@ export function SystemCoverageAuditPage() {
             <div className="px-6 py-8 text-sm text-error-600 dark:text-error-400">{error}</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
+              <table aria-label="Role implementation matrix" className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
                 <thead className="bg-secondary-50 dark:bg-secondary-800/60">
                   <tr>
                     {['Role', 'Assigned User', 'Dashboard', 'Menu', 'Permissions', 'Scope Filtering', 'CRUD', 'Workflow', 'Reports', 'Audit Trail', 'Notifications'].map(header => (
-                      <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">
+                      <th scope="col" key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">
                         {header}
                       </th>
                     ))}
@@ -485,7 +485,7 @@ export function RolePermissionCrudAuditPage() {
             <div className="px-6 py-8 text-sm text-error-600 dark:text-error-400">{error}</div>
           ) : (
             <div><div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
+              <table aria-label="Role report access matrix" className="min-w-full divide-y divide-secondary-200 dark:divide-secondary-700">
                 <thead className="bg-secondary-50 dark:bg-secondary-800/60">
                   <tr>
                     {[
@@ -505,7 +505,7 @@ export function RolePermissionCrudAuditPage() {
                       'Report',
                       'Status',
                     ].map(header => (
-                      <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">
+                      <th scope="col" key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-secondary-500">
                         {header}
                       </th>
                     ))}
