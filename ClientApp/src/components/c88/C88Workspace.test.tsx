@@ -3,7 +3,7 @@ import axe from 'axe-core';
 import { C88Workspace } from './C88Workspace';
 import type { C88CatalogueItem, C88IndicatorReport } from '../../types';
 
-const app = vi.hoisted(() => ({ pushToast: vi.fn() }));
+const app = vi.hoisted(() => ({ pushToast: vi.fn(), sidebarCollapsed: false, toasts: [] }));
 const capabilities = vi.hoisted(() => ({
   canRead: vi.fn(() => true), canCreate: vi.fn(() => true), canUpdate: vi.fn(() => true),
   canDelete: vi.fn(() => false), canExport: vi.fn(() => false), canImport: vi.fn(() => false),
@@ -19,7 +19,8 @@ const api = vi.hoisted(() => ({
 
 vi.mock('../../context/AppContext', () => ({ useApp: () => app }));
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => capabilities }));
-vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+vi.mock('../layout/Sidebar', () => ({ Sidebar: () => <nav aria-label="Primary navigation">Navigation</nav> }));
+vi.mock('../layout/TopBar', () => ({ TopBar: ({ title }: { title?: string }) => <header>{title && <h1 id="page-title">{title}</h1>}</header> }));
 vi.mock('../../api/api', () => api);
 
 const workspace: { catalogueItems: C88CatalogueItem[]; reports: C88IndicatorReport[] } = {
@@ -55,6 +56,14 @@ describe('Circular 88 workspace', () => {
     api.getOpmsTargetOptions.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
     api.submitC88Report.mockResolvedValue({ success: true, data: 'report-1' });
     api.createC88Calendar.mockResolvedValue({ success: true, data: 'calendar-2' });
+  });
+
+  it('uses the authenticated application shell with a route-specific document title', async () => {
+    render(<C88Workspace />);
+
+    expect(await screen.findByRole('main', { name: 'Circular 88' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
+    expect(document.title).toBe('Circular 88 | OPMS');
   });
 
   it('keeps operational reporting visible while hiding catalogue administration', async () => {

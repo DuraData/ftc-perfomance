@@ -38,9 +38,12 @@ for (const [modulePath, componentNames] of routedModules) {
 
   const source = fs.readFileSync(modulePath, 'utf8');
   const importsAppShell = /import\s*\{[^}]*\bAppShell\b[^}]*\}\s*from\s*['"][^'"]*layout\/AppShell['"]/.test(source);
-  const rendersAppShell = /<AppShell(?:\s|>)/.test(source);
-  if (!importsAppShell || !rendersAppShell) {
+  const appShellTags = [...source.matchAll(/<AppShell\b(?:(?!>).)*>/gs)].map(match => match[0]);
+  const untitledShells = appShellTags.filter(tag => !/\btitle\s*=/.test(tag));
+  if (!importsAppShell || appShellTags.length === 0) {
     failures.push(`${componentNames.join(', ')}: ${path.relative(clientRoot, modulePath)} must import and render AppShell`);
+  } else if (untitledShells.length > 0) {
+    failures.push(`${componentNames.join(', ')}: ${path.relative(clientRoot, modulePath)} renders ${untitledShells.length} AppShell instance(s) without a title`);
   }
 }
 
@@ -50,4 +53,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`Routed workspace shell governance passed: ${routedModules.size} lazy route modules import and render AppShell.`);
+console.log(`Routed workspace shell governance passed: ${routedModules.size} lazy route modules render only titled AppShell instances.`);

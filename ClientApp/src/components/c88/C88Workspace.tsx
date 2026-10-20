@@ -334,15 +334,19 @@ export function C88Workspace() {
     else { pushToast('success', success); setReason(''); await load(); }
   };
 
-  if (!canReadModule) return <AppShell><EmptyState title="Circular 88 unavailable" description="Your effective role does not grant C88 indicator or report access." /></AppShell>;
+  if (!canReadModule) return <AppShell
+    title="Circular 88"
+    subtitle="Independent Treasury catalogue, planning, reporting, compliance and workflow."
+  ><EmptyState title="Circular 88 unavailable" description="Your effective role does not grant C88 indicator or report access." /></AppShell>;
 
   const publishedVersions = versionOptions.filter(item => item.isPublished && item.isActive);
   const currentReports = reportRows.filter(item => item.isCurrent !== false && item.configurationPublicId === effectiveConfigurationId);
 
-  return <AppShell>
+  return <AppShell
+    title="Circular 88"
+    subtitle="Independent Treasury catalogue, planning, reporting, compliance and workflow."
+  >
     <div className="space-y-4">
-      <div><h1 className="text-2xl font-semibold">Circular 88</h1><p className="text-sm text-secondary-500">Independent Treasury catalogue, planning, reporting, compliance and workflow.</p></div>
-
       <Section title="Municipality and financial-year configuration">
         <div className="mb-3 grid gap-2 md:grid-cols-2"><label className="text-sm">Search configurations<input aria-label="Search C88 configurations" className={field} value={configurationSearch} onChange={event => { setConfigurationSearch(event.target.value); setConfigurationPage(1); }} /></label><label className="text-sm">Search catalogue editions<input aria-label="Search C88 catalogue versions" className={field} value={versionSearch} onChange={event => { setVersionSearch(event.target.value); setVersionPage(1); }} /></label></div>
         <div className="grid gap-3 md:grid-cols-4">
