@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ShieldCheck } from 'lucide-react';
 import { Button } from '../ui';
 import { Checkbox, Input, Select } from '../common/Form';
 import {
@@ -8,6 +7,7 @@ import {
 } from '../../api/api';
 import type { AuthenticationConfiguration, AuthenticationEvent, EnterpriseProviderOption, SecurityUserSummary, UserAuthenticator } from '../../types';
 import { useSecurity } from '../../context/SecurityContext';
+import { AppShell } from '../layout/AppShell';
 
 const nowLocal = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 const successorLocal = (previous: string) => {
@@ -192,8 +192,11 @@ export function AuthenticationAdministrationPage() {
     setBusy(false);
   };
 
-  return <div className="p-6 space-y-6">
-    <header className="flex items-center gap-3"><ShieldCheck className="w-7 h-7 text-primary-600" /><div><h1 className="text-2xl font-semibold">Authentication governance</h1><p className="text-sm text-secondary-500">Configure municipality sign-in modes and pre-provision external identities. Provider secrets remain deployment-managed.</p></div></header>
+  return <AppShell
+    title="Authentication Governance"
+    subtitle="Configure municipality sign-in modes and pre-provision external identities. Provider secrets remain deployment-managed."
+  >
+    <div className="space-y-6">
     {message ? <p role="status" className="rounded border border-secondary-200 p-3 text-sm">{message}</p> : null}
     <section className="rounded-xl border border-secondary-200 dark:border-secondary-700 p-5 space-y-4">
       <div className="flex items-center justify-between gap-3"><h2 className="font-semibold">Municipality authentication mode</h2>{configuration ? <span className="text-xs text-secondary-500">Current version {configuration.versionNumber}</span> : null}</div>
@@ -258,5 +261,6 @@ export function AuthenticationAdministrationPage() {
       <div className="overflow-x-auto"><table aria-label="Authentication events" className="w-full text-sm"><thead><tr className="text-left"><th scope="col" className="p-2">Time</th><th scope="col" className="p-2">Provider</th><th scope="col" className="p-2">Event</th><th scope="col" className="p-2">Result</th>{canReadEventUser ? <th scope="col" className="p-2">User</th> : null}{canReadEventIp ? <th scope="col" className="p-2">IP address</th> : null}<th scope="col" className="p-2">Correlation</th></tr></thead><tbody>{events.map(item => <tr key={item.publicId} className="border-t"><td className="p-2">{new Date(item.occurredAt).toLocaleString()}</td><td className="p-2">{item.providerCode}</td><td className="p-2">{item.eventType}</td><td className="p-2">{item.success ? 'Success' : item.failureCode ?? 'Failed'}</td>{canReadEventUser ? <td className="p-2">{item.userPublicId ?? '-'}</td> : null}{canReadEventIp ? <td className="p-2">{item.ipAddress ?? '-'}</td> : null}<td className="p-2 font-mono text-xs">{item.correlationId}</td></tr>)}</tbody></table></div>
       {eventTotalPages > 1 && <div className="flex items-center justify-between gap-2 text-xs text-secondary-500"><span>Page {eventPage} of {eventTotalPages}</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={eventPage <= 1} onClick={() => setEventPage(value => Math.max(1, value - 1))}>Previous events</Button><Button variant="outline" size="sm" disabled={eventPage >= eventTotalPages} onClick={() => setEventPage(value => value + 1)}>Next events</Button></div></div>}
     </section>
-  </div>;
+    </div>
+  </AppShell>;
 }

@@ -9,6 +9,9 @@ const api = vi.hoisted(() => ({
 const security = vi.hoisted(() => ({ canReadField: vi.fn(() => true), canEditField: vi.fn(() => true) }));
 vi.mock('../../api/api', () => api);
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => security }));
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ sidebarCollapsed: false, toasts: [] }) }));
+vi.mock('../layout/Sidebar', () => ({ Sidebar: () => <nav aria-label="Primary navigation">Navigation</nav> }));
+vi.mock('../layout/TopBar', () => ({ TopBar: ({ title }: { title?: string }) => <header>{title && <h1 id="page-title">{title}</h1>}</header> }));
 
 describe('AuthenticationAdministrationPage', () => {
   beforeEach(() => {
@@ -37,6 +40,14 @@ describe('AuthenticationAdministrationPage', () => {
     api.getUserAuthenticatorsPage.mockResolvedValue({ success: true, data: { items: [{ publicId: 'authenticator-1', userPublicId: 'user-public-1', userEmail: 'person@example.test', providerRegistrationCode: 'ENTRA', expectedEmail: 'person@example.test', isActive: true, rowVersion: 'AQ==' }], page: 1, pageSize: 25, totalCount: 31, totalPages: 2 } });
     api.saveAuthenticationConfiguration.mockResolvedValue({ success: true, data: {} });
     api.setUserAuthenticatorStatus.mockResolvedValue({ success: true, data: {} });
+  });
+
+  it('uses the authenticated application shell with a route-specific document title', async () => {
+    render(<AuthenticationAdministrationPage />);
+
+    expect(await screen.findByRole('main', { name: 'Authentication Governance' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
+    expect(document.title).toBe('Authentication Governance | OPMS');
   });
 
   it('loads and saves editable municipality policy values', async () => {
