@@ -18,6 +18,7 @@ describe('App routing patterns', () => {
     { path: '/workflow/approval', name: 'Approval Queue' },
     { path: '/workflow/pms-review', name: 'PMS Review Queue' },
     { path: '/workflow/auditor-review', name: 'Auditor Review Queue' },
+    { path: '/workflow/rfis', name: 'RFI Queue' },
     { path: '/workflow/my-drafts', name: 'My Drafts' },
     { path: '/workflow/pending-submission', name: 'Pending Submission' },
     { path: '/workflow/returned-submissions', name: 'Returned Submissions' },

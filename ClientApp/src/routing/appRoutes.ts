@@ -31,6 +31,7 @@ const exactApplicationPaths = [
   '/workflow/approval',
   '/workflow/pms-review',
   '/workflow/auditor-review',
+  '/workflow/rfis',
   '/hr/employees',
   '/hr/departments',
   '/hr/units',

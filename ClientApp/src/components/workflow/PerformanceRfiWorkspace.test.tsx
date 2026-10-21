@@ -34,7 +34,8 @@ describe('PerformanceRfiWorkspace', () => {
   });
 
   it('loads governed RFIs and submits a concurrent response', async () => {
-    render(<PerformanceRfiWorkspace kind={1} submissionId="submission-7" />);
+    const onChanged = vi.fn();
+    render(<PerformanceRfiWorkspace kind={1} submissionId="submission-7" onChanged={onChanged} />);
 
     expect(await screen.findByText('Clarify the variance')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Response'), { target: { value: 'Supporting calculation attached.' } });
@@ -42,6 +43,7 @@ describe('PerformanceRfiWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Respond' }));
 
     await waitFor(() => expect(api.respondPerformanceRfi).toHaveBeenCalledWith('rfi-1', { response: 'Supporting calculation attached.', rowVersion: 'AQ==', evidencePublicIds: ['evidence-1'] }));
+    expect(onChanged).toHaveBeenCalledTimes(1);
     expect(api.getPerformanceRfisPage).toHaveBeenCalledWith(1, 'submission-7', expect.objectContaining({ page: 1, pageSize: 25, sortBy: 'raisedAt', sortDirection: 'desc' }));
   });
 

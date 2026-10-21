@@ -183,6 +183,8 @@ import type {
   WorkflowQueueDto,
   WorkflowQueueFilters,
   WorkflowQueueName,
+  RfiQueueDto,
+  RfiQueueFilters,
   IdpImportBatch,
   IdpImportBatchSummary,
 } from '../types';
@@ -2440,6 +2442,18 @@ export async function getWorkflowQueue(queue: WorkflowQueueName, page = 1, pageS
   if (filters.sortBy) parameters.set('sortBy', filters.sortBy);
   if (filters.sortDirection) parameters.set('sortDirection', filters.sortDirection);
   return get<WorkflowQueueDto>(`/v1/workflow-queues?${parameters.toString()}`);
+}
+
+export async function getRfiQueue(page = 1, pageSize = 25, filters: RfiQueueFilters = {}): Promise<ApiResponse<RfiQueueDto>> {
+  const parameters = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (filters.search?.trim()) parameters.set('search', filters.search.trim());
+  if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
+  if (filters.kind && filters.kind !== 'all') parameters.set('kind', filters.kind);
+  if (filters.period) parameters.set('period', filters.period);
+  if (filters.status && filters.status !== 'all') parameters.set('status', filters.status);
+  if (filters.sortBy) parameters.set('sortBy', filters.sortBy);
+  if (filters.sortDirection) parameters.set('sortDirection', filters.sortDirection);
+  return get<RfiQueueDto>(`/v1/rfi-queues?${parameters.toString()}`);
 }
 
 export type RegisterPageQuery = {

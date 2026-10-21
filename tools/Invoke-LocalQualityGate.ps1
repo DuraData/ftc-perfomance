@@ -76,8 +76,44 @@ function Invoke-NativeCommandWithTimeout {
     $startInfo.UseShellExecute = $false
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
-    foreach ($argument in $ArgumentList) {
-        $startInfo.ArgumentList.Add($argument)
+    if ($null -ne $startInfo.PSObject.Properties['ArgumentList']) {
+        foreach ($argument in $ArgumentList) {
+            $startInfo.ArgumentList.Add($argument)
+        }
+    }
+    else {
+        # Windows PowerShell 5 runs on .NET Framework, whose ProcessStartInfo has no
+        # ArgumentList collection. Preserve exact argument boundaries with the
+        # CommandLineToArgvW-compatible escaping rules used by native applications.
+        $escapedArguments = foreach ($argument in $ArgumentList) {
+            if ($argument.Length -gt 0 -and $argument -notmatch '[\s"]') {
+                $argument
+                continue
+            }
+
+            $builder = [Text.StringBuilder]::new()
+            [void]$builder.Append('"')
+            $backslashes = 0
+            foreach ($character in $argument.ToCharArray()) {
+                if ($character -eq [char]92) {
+                    $backslashes++
+                    continue
+                }
+                if ($character -eq [char]34) {
+                    [void]$builder.Append(('\' * (($backslashes * 2) + 1)))
+                    [void]$builder.Append($character)
+                }
+                else {
+                    [void]$builder.Append(('\' * $backslashes))
+                    [void]$builder.Append($character)
+                }
+                $backslashes = 0
+            }
+            [void]$builder.Append(('\' * ($backslashes * 2)))
+            [void]$builder.Append('"')
+            $builder.ToString()
+        }
+        $startInfo.Arguments = $escapedArguments -join ' '
     }
 
     $process = [Diagnostics.Process]::new()

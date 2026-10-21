@@ -16,6 +16,7 @@ const IPMSTargetList = lazy(() => import('./components/ipms/IPMSTargetList').the
 const IPMSTargetDetail = lazy(() => import('./components/ipms/IPMSTargetDetail').then(module => ({ default: module.IPMSTargetDetail })));
 const WorkflowQueues = lazy(() => import('./components/workflow/WorkflowQueues').then(module => ({ default: module.WorkflowQueues })));
 const MyWorkQueue = lazy(() => import('./components/workflow/WorkflowQueues').then(module => ({ default: module.MyWorkQueue })));
+const RfiQueue = lazy(() => import('./components/workflow/RfiQueue').then(module => ({ default: module.RfiQueue })));
 const TenantOrganizationAdministration = lazy(() => import('./components/admin/TenantOrganizationAdministration').then(module => ({ default: module.TenantOrganizationAdministration })));
 const TenantReferenceAdministration = lazy(() => import('./components/admin/TenantReferenceAdministration').then(module => ({ default: module.TenantReferenceAdministration })));
 const GlobalStrategicReferenceAdministration = lazy(() => import('./components/admin/GlobalStrategicReferenceAdministration').then(module => ({ default: module.GlobalStrategicReferenceAdministration })));
@@ -198,6 +199,8 @@ function AppContent() {
         return <WorkflowQueues />;
       case '/workflow/auditor-review':
         return <WorkflowQueues />;
+      case '/workflow/rfis':
+        return <RfiQueue />;
       case '/hr/employees':
         return <TenantEmployeeAdministration />;
       case '/hr/departments':

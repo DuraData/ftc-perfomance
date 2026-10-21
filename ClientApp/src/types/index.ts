@@ -1333,6 +1333,45 @@ export interface WorkflowQueueDto {
   page: PagedResult<WorkflowQueueItemDto>;
 }
 
+export type RfiQueueFilters = {
+  search?: string;
+  municipalityFinancialYearPublicId?: string;
+  kind?: 'all' | 'opms' | 'ipms';
+  period?: '' | Quarter;
+  status?: 'all' | 'open' | 'responded' | 'overdue' | 'closed';
+  sortBy?: 'raisedAt' | 'dueAt' | 'targetName' | 'indicatorNumber' | 'period' | 'status';
+  sortDirection?: 'asc' | 'desc';
+};
+
+export interface RfiQueueCountsDto {
+  open: number;
+  responded: number;
+  overdue: number;
+  closed: number;
+}
+
+export interface RfiQueueItemDto {
+  publicId: string;
+  submissionPublicId: string;
+  kind: 'opms' | 'ipms';
+  targetPublicId: string;
+  targetName: string;
+  indicatorNumber: string;
+  period: Quarter;
+  municipalityFinancialYearPublicId?: string;
+  question?: string;
+  raisedAt: string;
+  responseDueAt: string;
+  status: 'open' | 'responded' | 'overdue' | 'closed';
+  canRespond: boolean;
+  canClose: boolean;
+}
+
+export interface RfiQueueDto {
+  counts: RfiQueueCountsDto;
+  page: PagedResult<RfiQueueItemDto>;
+}
+
 export interface UserProfile {
   publicId: string;
   userName: string;

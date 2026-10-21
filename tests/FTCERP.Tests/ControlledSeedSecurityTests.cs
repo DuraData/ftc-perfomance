@@ -649,6 +649,42 @@ public sealed class ControlledSeedSecurityTests
         operationsPermission.Operation.Should().Be(SecurityOperation.Read);
     }
 
+    [Fact]
+    public async Task Security_catalogue_seed_registers_rfi_queue_and_additively_migrates_submission_view_grants()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+        await DbInitializer.SeedPermissionsAsync(context);
+
+        var role = new ApplicationRole
+        {
+            Id = "rfi-queue-reviewer", Name = "RFI Queue Reviewer", NormalizedName = "RFI QUEUE REVIEWER",
+            RoleCode = "RFI_QUEUE_REVIEWER"
+        };
+        var opmsView = await context.Permissions.SingleAsync(item => item.Code == "OPMS.Submissions.View");
+        var ipmsView = await context.Permissions.SingleAsync(item => item.Code == "IPMS.Submissions.View");
+        context.Roles.Add(role);
+        context.RolePermissions.AddRange(
+            new RolePermission { RoleId = role.Id, PermissionId = opmsView.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) },
+            new RolePermission { RoleId = role.Id, PermissionId = ipmsView.Id, IsAllowed = true, IsActive = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+        await context.SaveChangesAsync();
+
+        await SecurityRegistrySeeder.SeedAsync(context);
+        await SecurityRegistrySeeder.SeedAsync(context);
+        context.ChangeTracker.Clear();
+
+        var navigation = await context.SecurityNavigationItems.SingleAsync(item => item.Code == "NAV.WORKFLOW.RFI");
+        navigation.Route.Should().Be("/workflow/rfis");
+        navigation.RequiredPermissionCode.Should().Be("NAV.WORKFLOW.RFI");
+        navigation.DisplayOrder.Should().Be(60);
+        (await context.SecurityNavigationItems.SingleAsync(item => item.Id == navigation.ParentId)).Code.Should().Be("NAV.WORKFLOW");
+        var permission = await context.Permissions.SingleAsync(item => item.Code == "NAV.WORKFLOW.RFI");
+        (await context.RolePermissions.CountAsync(item => item.RoleId == role.Id && item.PermissionId == permission.Id)).Should().Be(1);
+    }
+
     private sealed class SystemTenantContext : ITenantContext
     {
         public long? MunicipalityId => null;

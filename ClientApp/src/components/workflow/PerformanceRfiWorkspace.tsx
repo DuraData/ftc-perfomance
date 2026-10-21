@@ -9,7 +9,7 @@ import { Badge, Button } from '../ui';
 
 const localDate = (date = new Date(Date.now() + 2 * 86400000)) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 
-export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; submissionId: string }) {
+export function PerformanceRfiWorkspace({ kind, submissionId, onChanged }: { kind: 1 | 2; submissionId: string; onChanged?: () => void }) {
   const { pushToast } = useApp();
   const security = useSecurity();
   const prefix = kind === 1 ? 'OPMS' : 'IPMS';
@@ -92,7 +92,7 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
     setBusy(true); setError('');
     const result = await raisePerformanceRfi(kind, submissionId, { question: question.trim(), responseDueAt: new Date(responseDueAt).toISOString(), evidencePublicIds: questionEvidence });
     if (!result.success) setError(result.message ?? 'RFI could not be raised.');
-    else { setQuestion(''); setQuestionEvidence([]); if (page === 1) await loadRfis(); else setPage(1); pushToast('success', 'RFI raised'); }
+    else { setQuestion(''); setQuestionEvidence([]); if (page === 1) await loadRfis(); else setPage(1); onChanged?.(); pushToast('success', 'RFI raised'); }
     setBusy(false);
   };
 
@@ -102,7 +102,7 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
     setBusy(true); setError('');
     const result = await respondPerformanceRfi(row.publicId, { response, rowVersion: row.rowVersion, evidencePublicIds: responseEvidence[row.publicId] ?? [] });
     if (!result.success) setError(result.message ?? 'RFI response could not be saved.');
-    else { setResponses(current => ({ ...current, [row.publicId]: '' })); setResponseEvidence(current => ({ ...current, [row.publicId]: [] })); await loadRfis(); pushToast('success', 'RFI response recorded'); }
+    else { setResponses(current => ({ ...current, [row.publicId]: '' })); setResponseEvidence(current => ({ ...current, [row.publicId]: [] })); await loadRfis(); onChanged?.(); pushToast('success', 'RFI response recorded'); }
     setBusy(false);
   };
 
@@ -118,7 +118,7 @@ export function PerformanceRfiWorkspace({ kind, submissionId }: { kind: 1 | 2; s
     setBusy(true); setError('');
     const result = await closePerformanceRfi(row.publicId, { rowVersion: row.rowVersion });
     if (!result.success) setError(result.message ?? 'RFI could not be closed.');
-    else { await loadRfis(); pushToast('success', 'RFI closed'); }
+    else { await loadRfis(); onChanged?.(); pushToast('success', 'RFI closed'); }
     setBusy(false);
   };
 

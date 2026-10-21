@@ -12,6 +12,7 @@ import { getMyMenu } from './api';
 import { activateUser, createUser, deactivateUser, deleteUser, getUser, getUsersPage, setUserRoles, updateUser } from './api';
 import { logout, updateMyProfile } from './api';
 import { createIdpComment } from './api';
+import { getRfiQueue } from './api';
 
 describe('versioned API routes', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -990,5 +991,22 @@ describe('versioned API routes', () => {
     await requestOpmsEvidenceDisposal('submission-1', '88888888-8888-8888-8888-888888888888', { approvalReference: 'COUNCIL-2026-42', reason: 'Retention period completed', rowVersion: 'AAAAAAAAAAE=' });
 
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/opms-submissions/submission-1/attachments/88888888-8888-8888-8888-888888888888/disposals'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ approvalReference: 'COUNCIL-2026-42', reason: 'Retention period completed', rowVersion: 'AAAAAAAAAAE=' }) }));
+  });
+
+  it('transports the complete bounded RFI queue query through the versioned contract', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { counts: { open: 0, responded: 0, overdue: 0, closed: 0 }, page: { items: [], page: 2, pageSize: 25, totalCount: 0, totalPages: 0 } } }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getRfiQueue(2, 25, {
+      search: ' water loss ',
+      municipalityFinancialYearPublicId: '11111111-1111-4111-8111-111111111111',
+      kind: 'opms',
+      period: 'Q2',
+      status: 'overdue',
+      sortBy: 'indicatorNumber',
+      sortDirection: 'desc',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/v1/rfi-queues?page=2&pageSize=25&search=water+loss&municipalityFinancialYearPublicId=11111111-1111-4111-8111-111111111111&kind=opms&period=Q2&status=overdue&sortBy=indicatorNumber&sortDirection=desc'), expect.objectContaining({ credentials: 'include' }));
   });
 });
