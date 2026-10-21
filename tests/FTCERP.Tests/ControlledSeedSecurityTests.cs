@@ -588,6 +588,42 @@ public sealed class ControlledSeedSecurityTests
     }
 
     [Fact]
+    public async Task Dashboard_access_additively_grants_the_active_financial_year_directory()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options, new SystemTenantContext());
+        await context.Database.EnsureCreatedAsync();
+        await DbInitializer.SeedPermissionsAsync(context);
+
+        var role = new ApplicationRole
+        {
+            Id = "financial-year-context-user", Name = "Financial Year Context User",
+            NormalizedName = "FINANCIAL YEAR CONTEXT USER", RoleCode = "FINANCIAL_YEAR_CONTEXT_USER"
+        };
+        var dashboard = await context.Permissions.SingleAsync(item => item.Code == "Dashboard.View");
+        context.Roles.Add(role);
+        context.RolePermissions.Add(new RolePermission
+        {
+            RoleId = role.Id, PermissionId = dashboard.Id, IsAllowed = true, IsActive = true,
+            EffectiveFrom = DateTime.UtcNow.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+
+        await SecurityRegistrySeeder.SeedAsync(context);
+        await SecurityRegistrySeeder.SeedAsync(context);
+        context.ChangeTracker.Clear();
+
+        var financialYearRead = await context.Permissions.SingleAsync(item => item.Code == "FINANCIAL_YEAR.READ");
+        var grants = await context.RolePermissions
+            .Where(item => item.RoleId == role.Id && item.PermissionId == financialYearRead.Id)
+            .ToListAsync();
+        grants.Should().ContainSingle();
+        grants[0].IsAllowed.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Security_catalogue_seed_registers_and_grants_governance_audit_navigation()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

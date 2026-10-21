@@ -85,12 +85,12 @@ export function ReportsLanding() {
 }
 
 export function Reports({ initialKind = 1, initialReportType, title = 'Performance Reports', subtitle = 'Tenant-scoped server analytics' }: ReportsProps = {}) {
-  const { permissions, pushToast } = useApp();
+  const { permissions, pushToast, currentFinancialYearPublicId, switchFinancialYear } = useApp();
   const routeParameters = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search);
   const routeKind = routeParameters.get('kind') === '2' ? 2 : routeParameters.get('kind') === '1' ? 1 : initialKind;
   const [kind, setKind] = useState<1 | 2>(routeKind);
   const [periodId, setPeriodId] = useState('');
-  const [yearId, setYearId] = useState(routeParameters.get('municipalityFinancialYearPublicId') ?? '');
+  const [yearId, setYearId] = useState(routeParameters.get('municipalityFinancialYearPublicId') ?? currentFinancialYearPublicId ?? '');
   const [templates, setTemplates] = useState<OfficialReportTemplateDto[]>([]);
   const [templateOptions, setTemplateOptions] = useState<OfficialReportTemplateDto[]>([]);
   const [templatePage, setTemplatePage] = useState(1);
@@ -372,7 +372,7 @@ export function Reports({ initialKind = 1, initialReportType, title = 'Performan
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="grid min-w-[20rem] flex-1 gap-3 sm:grid-cols-3">
               <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPeriodId(''); setTemplatePage(1); setGenerationPage(1); setJobPage(1); setSchedulePage(1); }} />
-              <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" value={yearId} onChange={value => { setYearId(value); setPeriodId(''); }} />
+            <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" value={yearId} onChange={value => { setYearId(value); if (value) switchFinancialYear(value); setPeriodId(''); }} />
               <CalendarMasterPicker kind="reporting-period" label="Reporting period" value={periodId} municipalityFinancialYearId={yearId || undefined} emptyLabel="All periods" onChange={value => { setPeriodId(value); setGenerationPage(1); }} />
             </div>
             <div className="flex gap-2">

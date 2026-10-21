@@ -80,9 +80,9 @@ function oversightTile(label: string, value: number, description: string, onClic
 }
 
 export function IPMSDashboardPage() {
-  const { setCurrentPath } = useApp();
+  const { setCurrentPath, currentFinancialYearPublicId, switchFinancialYear } = useApp();
   const [stats, setStats] = useState<PerformanceDashboardDto>(emptyDashboard);
-  const [financialYearId, setFinancialYearId] = useState('');
+  const [financialYearId, setFinancialYearId] = useState(currentFinancialYearPublicId ?? '');
   const [reportingPeriodId, setReportingPeriodId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -156,6 +156,7 @@ export function IPMSDashboardPage() {
               selectedLabel={stats.financialYearCode && stats.financialYearName ? `${stats.financialYearCode} · ${stats.financialYearName}` : undefined}
               onChange={value => {
                 setFinancialYearId(value);
+                if (value) switchFinancialYear(value);
                 setReportingPeriodId('');
               }}
               emptyLabel="Use current financial year"

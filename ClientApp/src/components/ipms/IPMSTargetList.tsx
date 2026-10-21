@@ -19,14 +19,14 @@ import { relatedOpmsDisplayLabel } from './ipmsRelationship';
 
 type DashboardTargetFilter = 'assigned' | 'achieved' | 'at-risk' | 'outstanding';
 
-function readDashboardScope(): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
+function readDashboardScope(activeFinancialYearPublicId?: string | null): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
   const parameters = new URLSearchParams(window.location.search);
   const filter = parameters.get('dashboardFilter');
   const dashboardFilter = filter === 'assigned' || filter === 'achieved' || filter === 'at-risk' || filter === 'outstanding'
     ? filter as DashboardTargetFilter
     : undefined;
   return {
-    municipalityFinancialYearPublicId: parameters.get('municipalityFinancialYearPublicId') || undefined,
+    municipalityFinancialYearPublicId: parameters.get('municipalityFinancialYearPublicId') || activeFinancialYearPublicId || undefined,
     reportingPeriodPublicId: parameters.get('reportingPeriodPublicId') || undefined,
     dashboardFilter,
   };
@@ -78,6 +78,7 @@ export function IPMSTargetList() {
   const {
     setCurrentPath,
     pushToast,
+    currentFinancialYearPublicId,
   } = useApp();
   const canManageTargets = useHasAnyPermission(['IPMS_KPI.CREATE', 'IPMS_KPI.UPDATE', 'IPMS_KPI.WITHDRAW']);
   const canExecuteWithdrawal = useHasAnyPermission(['IPMS_KPI.WITHDRAW']);
@@ -94,7 +95,7 @@ export function IPMSTargetList() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [withdrawalTarget, setWithdrawalTarget] = useState<IPMSTarget | null>(null);
   const [withdrawalBusy, setWithdrawalBusy] = useState(false);
-  const [dashboardScope, setDashboardScope] = useState(readDashboardScope);
+  const [dashboardScope, setDashboardScope] = useState(() => readDashboardScope(currentFinancialYearPublicId));
 
   const loadTargets = useCallback(async () => {
     setIsLoading(true);

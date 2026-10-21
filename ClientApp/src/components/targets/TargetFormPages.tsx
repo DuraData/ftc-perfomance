@@ -325,9 +325,9 @@ function removeCsvId(value: string, id: string) {
     .join(',');
 }
 
-function createDefaultOpmsFormState(): OpmsFormState {
+function createDefaultOpmsFormState(activeFinancialYearPublicId = ''): OpmsFormState {
   return {
-    municipalityFinancialYearPublicId: '',
+    municipalityFinancialYearPublicId: activeFinancialYearPublicId,
     sdbipLayerPublicId: '',
     sourceTemplateId: '',
     sourceTemplateVersion: '',
@@ -417,9 +417,9 @@ function createDefaultOpmsFormState(): OpmsFormState {
   };
 }
 
-function createDefaultIpmsFormState(): IpmsFormState {
+function createDefaultIpmsFormState(activeFinancialYearPublicId = ''): IpmsFormState {
   return {
-    municipalityFinancialYearPublicId: '',
+    municipalityFinancialYearPublicId: activeFinancialYearPublicId,
     sourceTemplateId: '',
     sourceTemplateVersion: '',
     relatedOPMSTargetId: '',
@@ -1167,10 +1167,10 @@ export function resolvePerformanceTemplateHints<T extends {
 }
 
 export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
-  const { pushToast, setCurrentPath } = useApp();
+  const { pushToast, setCurrentPath, currentFinancialYearPublicId } = useApp();
   const security = useSecurity();
   const referenceData = usePerformanceReferenceData(true);
-  const [form, setForm] = useState<OpmsFormState>(createDefaultOpmsFormState());
+  const [form, setForm] = useState<OpmsFormState>(() => createDefaultOpmsFormState(currentFinancialYearPublicId ?? ''));
   const [existingTarget, setExistingTarget] = useState<OPMSTarget | null>(null);
   const [isLoading, setIsLoading] = useState(!!targetId);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -1784,10 +1784,10 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
 }
 
 export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
-  const { pushToast, setCurrentPath } = useApp();
+  const { pushToast, setCurrentPath, currentFinancialYearPublicId } = useApp();
   const security = useSecurity();
   const referenceData = usePerformanceReferenceData(true);
-  const [form, setForm] = useState<IpmsFormState>(createDefaultIpmsFormState());
+  const [form, setForm] = useState<IpmsFormState>(() => createDefaultIpmsFormState(currentFinancialYearPublicId ?? ''));
   const { catalogue, catalogueError } = useStrategicTemplateLookup('ipms', form.municipalityFinancialYearPublicId, form);
   const { configuration, configurationError, configurationLoading } = usePerformanceConfiguration();
   const performanceUnitOptions = configuredUnitOptions(configuration);

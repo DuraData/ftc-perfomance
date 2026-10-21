@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProvider, RESTRICTED_ACCOUNT_MENU, useApp } from './AppContext';
 import { canAccessPath } from '../components/security/AccessControl';
-import { AUTH_SESSION_EXPIRED_EVENT, login as apiLogin, getMyMenu, getMyPermissions, getMyTenantContextsPage } from '../api/api';
+import { AUTH_SESSION_EXPIRED_EVENT, login as apiLogin, getMunicipalityFinancialYearMastersPage, getMyMenu, getMyPermissions, getMyTenantContextsPage } from '../api/api';
 
 vi.mock('../api/api', () => ({
   AUTH_SESSION_EXPIRED_EVENT: 'opms:auth-session-expired',
@@ -10,6 +10,7 @@ vi.mock('../api/api', () => ({
   getMyMenu: vi.fn(),
   getMyPermissions: vi.fn(),
   getMyTenantContextsPage: vi.fn(),
+  getMunicipalityFinancialYearMastersPage: vi.fn(),
   login: vi.fn(),
   completeEnterpriseLogin: vi.fn(),
   isAuthenticated: vi.fn(() => true),
@@ -36,6 +37,9 @@ function Harness() {
     <output aria-label="menu">{app.menuItems.map(item => item.code).join(',')}</output>
     <output aria-label="access-ready">{String(app.accessReady)}</output>
     <output aria-label="authenticated">{String(app.isAuthenticated)}</output>
+    <output aria-label="active-financial-year">{app.currentFinancialYearLabel ?? 'none'}</output>
+    <button type="button" onClick={() => app.switchFinancialYear('22222222-2222-4222-8222-222222222222')}>Switch financial year</button>
+    <button type="button" onClick={() => app.setCurrentPath('/workflow/verification?municipalityFinancialYearPublicId=11111111-1111-4111-8111-111111111112')}>Open scoped route</button>
   </>;
 }
 
@@ -46,6 +50,7 @@ describe('mandatory account-security bootstrap', () => {
     vi.clearAllMocks();
     vi.mocked(getMyPermissions).mockResolvedValue({ success: true, data: [] });
     vi.mocked(getMyMenu).mockResolvedValue({ success: true, data: [] });
+    vi.mocked(getMunicipalityFinancialYearMastersPage).mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 100, totalCount: 0, totalPages: 0 } });
   });
 
   it('routes first login to the only permitted security-settings page', async () => {
@@ -135,6 +140,44 @@ describe('mandatory account-security bootstrap', () => {
     expect(localStorage.getItem('permissions')).toContain('SECURITY.SYSTEM_SCOPE');
     expect(localStorage.getItem('menu_items')).toContain('NAV.DASHBOARD');
     expect(screen.getByLabelText('access-ready')).toHaveTextContent('true');
+  });
+
+  it('selects, persists, and dynamically switches the active municipality financial year', async () => {
+    vi.mocked(apiLogin).mockResolvedValue({
+      success: true,
+      data: {
+        expiresAt: '2026-10-08T00:00:00Z',
+        user: { ...requiredUser, mustChangePassword: false },
+        roles: ['Performance Manager'], permissions: ['Dashboard.View'], menu: [], mfaEnrollmentRequired: false,
+      },
+    });
+    vi.mocked(getMyTenantContextsPage).mockResolvedValue({
+      success: true,
+      data: { items: [{ publicId: '11111111-1111-4111-8111-111111111111', code: 'MUN', name: 'Municipality', isCurrent: true }], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+    vi.mocked(getMyPermissions).mockResolvedValue({ success: true, data: ['Dashboard.View', 'FINANCIAL_YEAR.READ'] });
+    vi.mocked(getMyMenu).mockResolvedValue({ success: true, data: [] });
+    vi.mocked(getMunicipalityFinancialYearMastersPage).mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          { publicId: '11111111-1111-4111-8111-111111111112', financialYearPublicId: 'fy-1', code: '2025/26', name: '2025/26', isCurrent: true, isActive: true, effectiveFrom: '2025-07-01', rowVersion: 'AQ==' },
+          { publicId: '22222222-2222-4222-8222-222222222222', financialYearPublicId: 'fy-2', code: '2026/27', name: '2026/27', isCurrent: false, isActive: true, effectiveFrom: '2026-07-01', rowVersion: 'Ag==' },
+        ], page: 1, pageSize: 100, totalCount: 2, totalPages: 1,
+      },
+    });
+
+    render(<AppProvider><Harness /></AppProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(screen.getByLabelText('active-financial-year')).toHaveTextContent('2025/26'));
+    expect(localStorage.getItem('active_financial_year:11111111-1111-4111-8111-111111111111')).toBe('11111111-1111-4111-8111-111111111112');
+    fireEvent.click(screen.getByRole('button', { name: 'Switch financial year' }));
+    expect(screen.getByLabelText('active-financial-year')).toHaveTextContent('2026/27');
+    expect(localStorage.getItem('active_financial_year:11111111-1111-4111-8111-111111111111')).toBe('22222222-2222-4222-8222-222222222222');
+    fireEvent.click(screen.getByRole('button', { name: 'Open scoped route' }));
+    expect(screen.getByLabelText('active-financial-year')).toHaveTextContent('2025/26');
+    expect(window.location.search).toContain('municipalityFinancialYearPublicId=11111111-1111-4111-8111-111111111112');
   });
 
   it('clears stale authenticated state when the API reports an expired session', async () => {

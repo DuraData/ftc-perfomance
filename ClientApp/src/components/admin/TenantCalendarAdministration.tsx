@@ -47,7 +47,7 @@ function CalendarRegisterControls({ state, label, sorts, onChange }: { state: Re
 }
 
 export function TenantCalendarAdministration() {
-  const { pushToast } = useApp();
+  const { pushToast, currentFinancialYearPublicId } = useApp();
   const security = useSecurity();
   const [globalYears, setGlobalYears] = useState<FinancialYearMasterDto[]>([]);
   const [municipalYears, setMunicipalYears] = useState<MunicipalityFinancialYearMasterDto[]>([]);
@@ -66,9 +66,9 @@ export function TenantCalendarAdministration() {
   const [municipalYear, setMunicipalYear] = useState({ financialYearPublicId: '', isCurrent: true, isActive: true, effectiveFrom: today(), effectiveTo: '', reason: '' });
   const [currentYearReason, setCurrentYearReason] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState<ReportingPeriodMasterDto | null>(null);
-  const [period, setPeriod] = useState({ municipalityFinancialYearPublicId: '', code: 'Q1', name: 'Quarter 1', periodType: 1, sequence: 1, startDate: today(), endDate: today(), isActive: true, reason: '' });
+  const [period, setPeriod] = useState({ municipalityFinancialYearPublicId: currentFinancialYearPublicId ?? '', code: 'Q1', name: 'Quarter 1', periodType: 1, sequence: 1, startDate: today(), endDate: today(), isActive: true, reason: '' });
   const [selectedLayer, setSelectedLayer] = useState<SdbipLayerMasterDto | null>(null);
-  const [layer, setLayer] = useState({ municipalityFinancialYearPublicId: '', code: '', name: '', description: '', displayOrder: 1, isActive: true, reason: '' });
+  const [layer, setLayer] = useState({ municipalityFinancialYearPublicId: currentFinancialYearPublicId ?? '', code: '', name: '', description: '', displayOrder: 1, isActive: true, reason: '' });
   const { page: globalPage, search: globalSearch, sort: globalSort, status: globalStatus } = globalRegister;
   const { page: municipalPage, search: municipalSearch, sort: municipalSort, status: municipalStatus } = municipalRegister;
   const { page: periodPage, search: periodSearch, sort: periodSort, status: periodStatus } = periodRegister;
@@ -162,14 +162,14 @@ export function TenantCalendarAdministration() {
 
   const clearPeriod = (sequence = 1) => {
     setSelectedPeriod(null);
-    setPeriod({ municipalityFinancialYearPublicId: '', code: sequence === 1 ? 'Q1' : '', name: sequence === 1 ? 'Quarter 1' : '', periodType: 1, sequence, startDate: today(), endDate: today(), isActive: true, reason: '' });
+    setPeriod({ municipalityFinancialYearPublicId: currentFinancialYearPublicId ?? '', code: sequence === 1 ? 'Q1' : '', name: sequence === 1 ? 'Quarter 1' : '', periodType: 1, sequence, startDate: today(), endDate: today(), isActive: true, reason: '' });
   };
   const editPeriod = (item: ReportingPeriodMasterDto) => {
     setSelectedPeriod(item);
     setPeriod({ municipalityFinancialYearPublicId: item.municipalityFinancialYearPublicId, code: item.code, name: item.name, periodType: item.periodType, sequence: item.sequence, startDate: dateInput(item.startDate), endDate: dateInput(item.endDate), isActive: item.isActive, reason: '' });
   };
 
-  const clearLayer = () => { setSelectedLayer(null); setLayer({ municipalityFinancialYearPublicId: '', code: '', name: '', description: '', displayOrder: 1, isActive: true, reason: '' }); };
+  const clearLayer = () => { setSelectedLayer(null); setLayer({ municipalityFinancialYearPublicId: currentFinancialYearPublicId ?? '', code: '', name: '', description: '', displayOrder: 1, isActive: true, reason: '' }); };
   const editLayer = (item: SdbipLayerMasterDto) => {
     setSelectedLayer(item);
     setLayer({ municipalityFinancialYearPublicId: item.municipalityFinancialYearPublicId, code: item.code, name: item.name, description: item.description ?? '', displayOrder: item.displayOrder, isActive: item.isActive, reason: '' });

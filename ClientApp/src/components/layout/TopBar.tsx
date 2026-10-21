@@ -7,6 +7,7 @@ import {
   Sun,
   ChevronDown,
   Building2,
+  CalendarRange,
   User,
   Settings,
   LogOut,
@@ -111,6 +112,11 @@ export function TopBar({ title, subtitle, onOpenNavigation, navigationOpen = fal
     setTenantContextSearch,
     currentMunicipalityPublicId,
     switchMunicipality,
+    financialYearContexts,
+    currentFinancialYearPublicId,
+    currentFinancialYearLabel,
+    financialYearContextLoading,
+    switchFinancialYear,
   } = useApp();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -203,6 +209,16 @@ export function TopBar({ title, subtitle, onOpenNavigation, navigationOpen = fal
     }
   };
 
+  const changeFinancialYear = (municipalityFinancialYearPublicId: string, closeMenu = false) => {
+    if (!municipalityFinancialYearPublicId) return;
+    if (switchFinancialYear(municipalityFinancialYearPublicId)) {
+      pushToast('success', 'Financial year context changed');
+      if (closeMenu) setShowTenantMenu(false);
+    } else {
+      pushToast('error', 'Unable to change financial year context');
+    }
+  };
+
   const hasTenantContexts = tenantContexts.length > 0 || tenantContextTotalCount > 0 || tenantContextSearch.length > 0;
 
   return (
@@ -235,6 +251,22 @@ export function TopBar({ title, subtitle, onOpenNavigation, navigationOpen = fal
 
       {/* Right section */}
       <div className="flex shrink-0 items-center gap-1 sm:gap-3 lg:gap-4">
+        {currentMunicipalityPublicId && financialYearContexts.length > 0 && (
+          <div className="hidden items-center gap-2 lg:flex">
+            <CalendarRange aria-hidden="true" className="h-4 w-4 text-secondary-500" />
+            <label className="sr-only" htmlFor="financial-year-context">Active financial year</label>
+            <select
+              id="financial-year-context"
+              aria-label="Active financial year"
+              value={currentFinancialYearPublicId ?? ''}
+              disabled={financialYearContextLoading}
+              onChange={event => changeFinancialYear(event.target.value)}
+              className="max-w-48 rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-100"
+            >
+              {financialYearContexts.map(context => <option key={context.publicId} value={context.publicId}>{context.code}{context.isCurrent ? ' · Current' : ''}</option>)}
+            </select>
+          </div>
+        )}
         {hasTenantContexts && (
           <div className="hidden lg:flex items-center gap-1 text-xs text-secondary-500 dark:text-secondary-400">
             <label className="sr-only" htmlFor="municipality-context-search">Search municipality contexts</label>
@@ -288,6 +320,15 @@ export function TopBar({ title, subtitle, onOpenNavigation, navigationOpen = fal
                       {tenantContexts.map(context => <option key={context.publicId} value={context.publicId}>{context.code} — {context.name}</option>)}
                     </select>
                   </div>
+                  {currentMunicipalityPublicId && financialYearContexts.length > 0 && (
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-secondary-600 dark:text-secondary-300" htmlFor="mobile-financial-year-context">Active financial year</label>
+                      <select id="mobile-financial-year-context" aria-label="Active financial year on narrow screens" value={currentFinancialYearPublicId ?? ''} disabled={financialYearContextLoading} onChange={event => changeFinancialYear(event.target.value, true)} className="w-full rounded-lg border border-secondary-200 bg-white px-3 py-2 text-sm text-secondary-800 dark:border-secondary-700 dark:bg-secondary-900 dark:text-secondary-100">
+                        {financialYearContexts.map(context => <option key={context.publicId} value={context.publicId}>{context.code}{context.isCurrent ? ' · Current' : ''}</option>)}
+                      </select>
+                      <p className="mt-1 text-xs text-secondary-500">The selected year scopes dashboards, queues, KPIs, periods and reports.</p>
+                    </div>
+                  )}
                   {tenantContextTotalPages > 1 && (
                     <div className="flex items-center justify-between text-xs text-secondary-500 dark:text-secondary-400">
                       <button type="button" aria-label="Previous municipality contexts on narrow screens" disabled={tenantContextPage <= 1} onClick={() => setTenantContextPage(Math.max(1, tenantContextPage - 1))} className="rounded border px-3 py-1 disabled:opacity-40">Previous</button>
@@ -299,6 +340,9 @@ export function TopBar({ title, subtitle, onOpenNavigation, navigationOpen = fal
               </>
             )}
           </div>
+        )}
+        {currentMunicipalityPublicId && currentFinancialYearLabel && (
+          <span className="sr-only" aria-live="polite">Active financial year {currentFinancialYearLabel}</span>
         )}
         {/* Search */}
         {authenticationGate === null && <div className="relative hidden md:block">

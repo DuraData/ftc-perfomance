@@ -1,14 +1,16 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import type {
   UserRole,
   UserProfile,
   LoginResponse,
   MenuItem,
+  MunicipalityFinancialYearMasterDto,
   TenantContextDto,
 } from '../types';
 import {
   getCurrentMunicipalityPublicId,
+  getMunicipalityFinancialYearMastersPage,
   getMyMenu,
   getMyPermissions,
   getMyTenantContextsPage,
@@ -47,6 +49,11 @@ interface AppContextType {
   setTenantContextSearch: (search: string) => void;
   currentMunicipalityPublicId: string | null;
   switchMunicipality: (municipalityPublicId: string) => Promise<boolean>;
+  financialYearContexts: MunicipalityFinancialYearMasterDto[];
+  currentFinancialYearPublicId: string | null;
+  currentFinancialYearLabel: string | null;
+  financialYearContextLoading: boolean;
+  switchFinancialYear: (municipalityFinancialYearPublicId: string) => boolean;
   login: (email: string, password: string, twoFactorCode?: string, recoveryCode?: string) => Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'password_change_required' | 'failed'>;
   resumeEnterpriseLogin: () => Promise<'success' | 'failed'>;
   logout: (notifyServer?: boolean) => void;
@@ -70,6 +77,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 type AuthenticationGate = 'password_change' | 'mfa_enrollment';
 const AUTHENTICATION_GATE_STORAGE_KEY = 'authentication_gate';
 const THEME_PREFERENCE_STORAGE_KEY = 'theme_preference';
+const ACTIVE_FINANCIAL_YEAR_STORAGE_PREFIX = 'active_financial_year';
 export const RESTRICTED_ACCOUNT_MENU: MenuItem[] = [{
   label: 'Account Security',
   path: '/settings',
@@ -84,6 +92,18 @@ function safeSetItem(key: string, value: string) {
 
 function safeRemoveItem(key: string) {
   try { localStorage.removeItem(key); } catch { /* ignore */ }
+}
+
+function activeFinancialYearStorageKey(municipalityPublicId: string) {
+  return `${ACTIVE_FINANCIAL_YEAR_STORAGE_PREFIX}:${municipalityPublicId}`;
+}
+
+function readActiveFinancialYear(municipalityPublicId: string) {
+  try { return localStorage.getItem(activeFinancialYearStorageKey(municipalityPublicId)); } catch { return null; }
+}
+
+function persistActiveFinancialYear(municipalityPublicId: string, municipalityFinancialYearPublicId: string) {
+  safeSetItem(activeFinancialYearStorageKey(municipalityPublicId), municipalityFinancialYearPublicId);
 }
 
 function readAuthenticationGate(): AuthenticationGate | null {
@@ -142,6 +162,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tenantContextTotalCount, setTenantContextTotalCount] = useState(0);
   const [tenantContextSearch, setTenantContextSearchState] = useState('');
   const [currentMunicipalityPublicIdState, setCurrentMunicipalityPublicIdState] = useState<string | null>(getCurrentMunicipalityPublicId());
+  const [financialYearContexts, setFinancialYearContexts] = useState<MunicipalityFinancialYearMasterDto[]>([]);
+  const [currentFinancialYearPublicId, setCurrentFinancialYearPublicId] = useState<string | null>(null);
+  const [financialYearContextLoading, setFinancialYearContextLoading] = useState(false);
+  const financialYearContextRequest = useRef(0);
   const [authenticationGate, setAuthenticationGate] = useState<AuthenticationGate | null>(() => readAuthenticationGate());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [expandedSidebarGroups, setExpandedSidebarGroups] = useState<string[]>([]);
@@ -152,6 +176,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   const [currentPath, setCurrentPathState] = useState(isAuthenticated() ? normalizeAppPath(window.location.pathname || '/dashboard') : '/login');
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const loadFinancialYearContexts = useCallback(async (municipalityPublicId: string | null) => {
+    const request = ++financialYearContextRequest.current;
+    setFinancialYearContexts([]);
+    setCurrentFinancialYearPublicId(null);
+    if (!municipalityPublicId) { setFinancialYearContextLoading(false); return; }
+    setFinancialYearContextLoading(true);
+    try {
+      const result = await getMunicipalityFinancialYearMastersPage({
+        page: 1,
+        pageSize: 100,
+        sortBy: 'startDate',
+        sortDirection: 'desc',
+        active: true,
+      });
+      if (request !== financialYearContextRequest.current) return;
+      if (!result.success || !result.data) return;
+      const contexts = result.data.items.filter(item => item.isActive);
+      setFinancialYearContexts(contexts);
+      const stored = readActiveFinancialYear(municipalityPublicId);
+      const linked = new URLSearchParams(window.location.search).get('municipalityFinancialYearPublicId');
+      const selected = contexts.find(item => item.publicId === linked)
+        ?? contexts.find(item => item.publicId === stored)
+        ?? contexts.find(item => item.isCurrent)
+        ?? contexts[0];
+      if (selected) {
+        setCurrentFinancialYearPublicId(selected.publicId);
+        persistActiveFinancialYear(municipalityPublicId, selected.publicId);
+      }
+    } finally {
+      if (request === financialYearContextRequest.current) setFinancialYearContextLoading(false);
+    }
+  }, []);
+
   const refreshTenantAccess = useCallback(async (municipalityPublicId: string | null) => {
     setCurrentMunicipalityPublicId(municipalityPublicId);
     setCurrentMunicipalityPublicIdState(municipalityPublicId);
@@ -161,14 +218,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setMenuItems([]);
       safeRemoveItem('permissions');
       safeRemoveItem('menu_items');
+      await loadFinancialYearContexts(null);
       return false;
     }
     setPermissions(permissionsResult.data);
     setMenuItems(menuResult.data);
     safeSetItem('permissions', JSON.stringify(permissionsResult.data));
     safeSetItem('menu_items', JSON.stringify(menuResult.data));
+    await loadFinancialYearContexts(municipalityPublicId);
     return true;
-  }, []);
+  }, [loadFinancialYearContexts]);
 
   const loadTenantContexts = useCallback(async (page = 1, search = '') => {
     const result = await getMyTenantContextsPage({ page, pageSize: 25, search, sortBy: 'name', sortDirection: 'asc' });
@@ -214,6 +273,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!tenantContexts.some(item => item.publicId === municipalityPublicId)) return false;
     return refreshTenantAccess(municipalityPublicId);
   }, [refreshTenantAccess, tenantContexts]);
+
+  const switchFinancialYear = useCallback((municipalityFinancialYearPublicId: string) => {
+    if (!currentMunicipalityPublicIdState) return false;
+    const selected = financialYearContexts.find(item => item.publicId === municipalityFinancialYearPublicId && item.isActive);
+    if (!selected) return false;
+    setCurrentFinancialYearPublicId(selected.publicId);
+    persistActiveFinancialYear(currentMunicipalityPublicIdState, selected.publicId);
+    return true;
+  }, [currentMunicipalityPublicIdState, financialYearContexts]);
 
   useEffect(() => {
     let storedUser: string | null = null;
@@ -292,6 +360,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setCurrentPath = (path: string) => {
     const next = resolveAppNavigation(path);
+    const requestedFinancialYear = new URLSearchParams(next.location.split('?', 2)[1] ?? '').get('municipalityFinancialYearPublicId');
+    if (requestedFinancialYear) switchFinancialYear(requestedFinancialYear);
     if (next.routePath === currentPath && `${window.location.pathname}${window.location.search}${window.location.hash}` === next.location) return;
     window.history.pushState({}, '', next.location);
     setCurrentPathState(next.routePath);
@@ -306,6 +376,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRoles(data.roles ?? []);
       setCurrentMunicipalityPublicId(null);
       setCurrentMunicipalityPublicIdState(null);
+      setFinancialYearContexts([]);
+      setCurrentFinancialYearPublicId(null);
       setPermissions([]);
       setMenuItems([]);
       safeSetItem('user_profile', JSON.stringify(data.user));
@@ -351,6 +423,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRoles(data.roles ?? []);
     setCurrentMunicipalityPublicId(null);
     setCurrentMunicipalityPublicIdState(null);
+    setFinancialYearContexts([]);
+    setCurrentFinancialYearPublicId(null);
     setPermissions([]);
     setMenuItems([]);
     safeSetItem('user_profile', JSON.stringify(data.user));
@@ -393,6 +467,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuthenticationGate(null);
     setCurrentMunicipalityPublicIdState(null);
     setCurrentMunicipalityPublicId(null);
+    setFinancialYearContexts([]);
+    setCurrentFinancialYearPublicId(null);
     safeRemoveItem('user_profile');
     safeRemoveItem('roles');
     safeRemoveItem('permissions');
@@ -466,6 +542,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setTenantContextSearch,
         currentMunicipalityPublicId: currentMunicipalityPublicIdState,
         switchMunicipality,
+        financialYearContexts,
+        currentFinancialYearPublicId,
+        currentFinancialYearLabel: financialYearContexts.find(item => item.publicId === currentFinancialYearPublicId)?.code ?? null,
+        financialYearContextLoading,
+        switchFinancialYear,
         login,
         resumeEnterpriseLogin,
         logout,

@@ -39,7 +39,7 @@ function validPublicId(value: unknown): string {
   return typeof value === 'string' && publicIdPattern.test(value) ? value : '';
 }
 
-function readQueueFilters(queue: WorkflowQueueName): QueueFilterState {
+function readQueueFilters(queue: WorkflowQueueName, activeFinancialYearPublicId?: string | null): QueueFilterState {
   try {
     const raw = JSON.parse(sessionStorage.getItem(`workflow-queue-filters:${queue}`) ?? '{}') as Partial<QueueFilterState>;
     const stored: QueueFilterState = {
@@ -57,7 +57,7 @@ function readQueueFilters(queue: WorkflowQueueName): QueueFilterState {
     const linkedStatus = parameters.get('status');
     return {
       ...stored,
-      municipalityFinancialYearPublicId: validPublicId(parameters.get('municipalityFinancialYearPublicId')) || stored.municipalityFinancialYearPublicId,
+      municipalityFinancialYearPublicId: validPublicId(parameters.get('municipalityFinancialYearPublicId')) || validPublicId(activeFinancialYearPublicId) || stored.municipalityFinancialYearPublicId,
       kind: queueKinds.includes(linkedKind as QueueFilterState['kind']) ? linkedKind as QueueFilterState['kind'] : stored.kind,
       period: queuePeriods.includes(linkedPeriod as typeof queuePeriods[number]) ? linkedPeriod as QueueFilterState['period'] : stored.period,
       status: queueStatuses.includes(linkedStatus as QueueFilterState['status']) ? linkedStatus as QueueFilterState['status'] : stored.status,
@@ -67,9 +67,9 @@ function readQueueFilters(queue: WorkflowQueueName): QueueFilterState {
   }
 }
 
-function useSessionQueueFilters(queue: WorkflowQueueName) {
-  const [state, setState] = useState(() => ({ queue, filters: readQueueFilters(queue) }));
-  const filters = state.queue === queue ? state.filters : readQueueFilters(queue);
+function useSessionQueueFilters(queue: WorkflowQueueName, activeFinancialYearPublicId?: string | null) {
+  const [state, setState] = useState(() => ({ queue, filters: readQueueFilters(queue, activeFinancialYearPublicId) }));
+  const filters = state.queue === queue ? state.filters : readQueueFilters(queue, activeFinancialYearPublicId);
 
   useEffect(() => {
     if (state.queue !== queue) setState({ queue, filters });
@@ -79,7 +79,7 @@ function useSessionQueueFilters(queue: WorkflowQueueName) {
   }, [filters, queue]);
 
   const updateFilters = (changes: Partial<QueueFilterState>) => setState({ queue, filters: { ...filters, ...changes } });
-  const resetFilters = () => setState({ queue, filters: { ...defaultQueueFilters } });
+  const resetFilters = () => setState({ queue, filters: { ...defaultQueueFilters, municipalityFinancialYearPublicId: validPublicId(activeFinancialYearPublicId) } });
   return { filters, updateFilters, resetFilters };
 }
 
@@ -217,11 +217,11 @@ async function loadSubmissionDetail(item: WorkflowQueueItemDto): Promise<Submiss
 }
 
 export function WorkflowQueues() {
-  const { currentPath, pushToast } = useApp();
+  const { currentPath, pushToast, currentFinancialYearPublicId } = useApp();
   const security = useSecurity();
   const route = governedQueueRoutes[currentPath] ?? governedQueueRoutes['/workflow/verification'];
   const queue = route.queue;
-  const { filters, updateFilters, resetFilters } = useSessionQueueFilters(queue);
+  const { filters, updateFilters, resetFilters } = useSessionQueueFilters(queue, currentFinancialYearPublicId);
   const [selectedItem, setSelectedItem] = useState<WorkflowQueueItemDto | null>(null);
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
   const [items, setItems] = useState<WorkflowQueueItemDto[]>([]);
@@ -279,11 +279,11 @@ export function WorkflowQueues() {
 }
 
 export function MyWorkQueue() {
-  const { currentPath, pushToast } = useApp();
+  const { currentPath, pushToast, currentFinancialYearPublicId } = useApp();
   const security = useSecurity();
   const route = personalQueueRoutes[currentPath] ?? personalQueueRoutes['/workflow/my-queue'];
   const queue = route.queue;
-  const { filters, updateFilters, resetFilters } = useSessionQueueFilters(queue);
+  const { filters, updateFilters, resetFilters } = useSessionQueueFilters(queue, currentFinancialYearPublicId);
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
   const [selectedKind, setSelectedKind] = useState<'opms' | 'ipms' | null>(null);
   const [items, setItems] = useState<WorkflowQueueItemDto[]>([]);

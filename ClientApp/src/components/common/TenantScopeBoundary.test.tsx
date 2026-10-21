@@ -48,4 +48,21 @@ describe('TenantScopeBoundary', () => {
 
     expect(onMount).toHaveBeenCalledTimes(1);
   });
+
+  it('remounts the workspace when the active financial year changes inside one municipality', () => {
+    const onMount = vi.fn();
+    const { rerender } = render(
+      <TenantScopeBoundary municipalityPublicId="municipality-a" municipalityFinancialYearPublicId="year-a">
+        <TenantWorkspace onMount={onMount} />
+      </TenantScopeBoundary>,
+    );
+
+    rerender(
+      <TenantScopeBoundary municipalityPublicId="municipality-a" municipalityFinancialYearPublicId="year-b">
+        <TenantWorkspace onMount={onMount} />
+      </TenantScopeBoundary>,
+    );
+
+    expect(onMount).toHaveBeenCalledTimes(2);
+  });
 });

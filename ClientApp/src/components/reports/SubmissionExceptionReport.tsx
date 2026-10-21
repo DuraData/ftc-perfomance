@@ -6,6 +6,7 @@ import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { Select } from '../common/Form';
 import { AppShell } from '../layout/AppShell';
 import { Badge, Button, Card } from '../ui';
+import { useApp } from '../../context/AppContext';
 
 type SubmissionExceptionReportProps = { mode: 'returned' | 'overdue' };
 type SubmissionRow = OPMSSubmission | IPMSSubmission;
@@ -19,8 +20,9 @@ const formatDate = (value?: string) => {
 const statusLabel = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (character: string) => character.toUpperCase());
 
 export function SubmissionExceptionReport({ mode }: SubmissionExceptionReportProps) {
+  const { currentFinancialYearPublicId, switchFinancialYear } = useApp();
   const [kind, setKind] = useState<1 | 2>(1);
-  const [yearId, setYearId] = useState('');
+  const [yearId, setYearId] = useState(currentFinancialYearPublicId ?? '');
   const [periodId, setPeriodId] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -69,7 +71,7 @@ export function SubmissionExceptionReport({ mode }: SubmissionExceptionReportPro
       <Card className="p-4">
         <div className="grid items-end gap-3 md:grid-cols-4">
           <Select label="Performance framework" value={kind} options={[{ value: 1, label: 'OPMS' }, { value: 2, label: 'IPMS' }]} onChange={event => { setKind(Number(event.target.value) as 1 | 2); setPage(1); }} />
-          <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" value={yearId} onChange={value => { setYearId(value); setPeriodId(''); setPage(1); }} />
+          <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" value={yearId} onChange={value => { setYearId(value); if (value) switchFinancialYear(value); setPeriodId(''); setPage(1); }} />
           <CalendarMasterPicker kind="reporting-period" label="Reporting period" value={periodId} municipalityFinancialYearId={yearId || undefined} emptyLabel="Select reporting period" required onChange={value => { setPeriodId(value); setPage(1); }} />
           <Button variant="outline" icon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()} disabled={loading || !periodId}>Refresh</Button>
         </div>

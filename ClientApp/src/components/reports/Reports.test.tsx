@@ -38,7 +38,7 @@ vi.mock('recharts', () => ({
   Bar: () => null,
 }));
 vi.mock('../../context/AppContext', () => ({
-  useApp: () => ({ permissions: app.permissions, pushToast: vi.fn(), setCurrentPath: app.setCurrentPath }),
+  useApp: () => ({ permissions: app.permissions, pushToast: vi.fn(), setCurrentPath: app.setCurrentPath, currentFinancialYearPublicId: null, switchFinancialYear: vi.fn() }),
 }));
 
 describe('Reports', () => {

@@ -4,6 +4,7 @@ import { SubmissionExceptionReport } from './SubmissionExceptionReport';
 
 const api = vi.hoisted(() => ({ getOpmsSubmissionsPage: vi.fn(), getIpmsSubmissionsPage: vi.fn() }));
 vi.mock('../../api/api', () => api);
+vi.mock('../../context/AppContext', () => ({ useApp: () => ({ currentFinancialYearPublicId: null, switchFinancialYear: vi.fn() }) }));
 vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('../common/CalendarMasterPicker', () => ({
   CalendarMasterPicker: ({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) => <select aria-label={label} value={value} onChange={event => onChange(event.target.value)}><option value="">Select</option><option value={label === 'Financial year' ? 'year-1' : 'period-1'}>{label} option</option></select>,

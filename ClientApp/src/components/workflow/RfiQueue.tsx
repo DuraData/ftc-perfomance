@@ -25,7 +25,7 @@ const publicIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f
 const storageKeyPrefix = 'workflow-rfi-queue-filters';
 const emptyCounts: RfiQueueCountsDto = { open: 0, responded: 0, overdue: 0, closed: 0 };
 
-function initialFilters(storageKey: string): RfiQueueFilterState {
+function initialFilters(storageKey: string, activeFinancialYearPublicId?: string | null): RfiQueueFilterState {
   try {
     const stored = JSON.parse(sessionStorage.getItem(storageKey) ?? '{}') as Partial<RfiQueueFilterState>;
     const parameters = new URLSearchParams(window.location.search);
@@ -36,9 +36,11 @@ function initialFilters(storageKey: string): RfiQueueFilterState {
       search: typeof stored.search === 'string' ? stored.search.slice(0, 200) : '',
       municipalityFinancialYearPublicId: linkedYear && publicIdPattern.test(linkedYear)
         ? linkedYear
-        : typeof stored.municipalityFinancialYearPublicId === 'string' && publicIdPattern.test(stored.municipalityFinancialYearPublicId)
-          ? stored.municipalityFinancialYearPublicId
-          : '',
+        : activeFinancialYearPublicId && publicIdPattern.test(activeFinancialYearPublicId)
+          ? activeFinancialYearPublicId
+          : typeof stored.municipalityFinancialYearPublicId === 'string' && publicIdPattern.test(stored.municipalityFinancialYearPublicId)
+            ? stored.municipalityFinancialYearPublicId
+            : '',
       kind: kinds.includes(linkedKind as RfiQueueFilterState['kind'])
         ? linkedKind as RfiQueueFilterState['kind']
         : kinds.includes(stored.kind as RfiQueueFilterState['kind']) ? stored.kind as RfiQueueFilterState['kind'] : 'all',
@@ -61,9 +63,9 @@ function statusBadge(status: RfiQueueItemDto['status']) {
 }
 
 export function RfiQueue() {
-  const { currentMunicipalityPublicId, pushToast, userProfile } = useApp();
+  const { currentMunicipalityPublicId, currentFinancialYearPublicId, pushToast, userProfile } = useApp();
   const storageKey = `${storageKeyPrefix}:${userProfile?.publicId ?? 'unknown'}:${currentMunicipalityPublicId ?? 'system'}`;
-  const [filters, setFilters] = useState<RfiQueueFilterState>(() => initialFilters(storageKey));
+  const [filters, setFilters] = useState<RfiQueueFilterState>(() => initialFilters(storageKey, currentFinancialYearPublicId));
   const [items, setItems] = useState<RfiQueueItemDto[]>([]);
   const [counts, setCounts] = useState<RfiQueueCountsDto>(emptyCounts);
   const [page, setPage] = useState(1);

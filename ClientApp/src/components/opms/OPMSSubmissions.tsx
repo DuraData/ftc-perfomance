@@ -138,21 +138,21 @@ function formatVariance(value?: number | null): string {
 
 type DashboardSubmissionFilter = 'draft' | 'submitted' | 'returned' | 'approved';
 
-function readDashboardSubmissionScope(): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
+function readDashboardSubmissionScope(activeFinancialYearPublicId?: string | null): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
   const parameters = new URLSearchParams(window.location.search);
   const filter = parameters.get('dashboardFilter');
   const dashboardFilter = filter === 'draft' || filter === 'submitted' || filter === 'returned' || filter === 'approved'
     ? filter as DashboardSubmissionFilter
     : undefined;
   return {
-    municipalityFinancialYearPublicId: parameters.get('municipalityFinancialYearPublicId') || undefined,
+    municipalityFinancialYearPublicId: parameters.get('municipalityFinancialYearPublicId') || activeFinancialYearPublicId || undefined,
     reportingPeriodPublicId: parameters.get('reportingPeriodPublicId') || undefined,
     dashboardFilter,
   };
 }
 
 export function OPMSSubmissionsList() {
-  const { permissions = [], pushToast } = useApp();
+  const { permissions = [], pushToast, currentFinancialYearPublicId } = useApp();
   const [opmsSubmissions, setOpmsSubmissions] = useState<OPMSSubmission[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<OPMSSubmission | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -174,7 +174,7 @@ export function OPMSSubmissionsList() {
   });
   const [valueConfiguration, setValueConfiguration] = useState<PerformanceValueConfiguration>();
   const allSubmissions = useMemo(() => opmsSubmissions, [opmsSubmissions]);
-  const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
+  const [dashboardScope, setDashboardScope] = useState(() => readDashboardSubmissionScope(currentFinancialYearPublicId));
   const permissionSet = useMemo(() => new Set(permissions.map(permission => permission.toUpperCase())), [permissions]);
   const canCreate = permissionSet.has('OPMS_SUBMISSION.CREATE');
   const canReadDueDate = permissionSet.has('OPMS_SUBMISSION.DUEDATE.READ');
@@ -528,7 +528,7 @@ export function OPMSSubmissionsList() {
 }
 
 export function IPMSSubmissionsList() {
-  const { permissions = [], pushToast } = useApp();
+  const { permissions = [], pushToast, currentFinancialYearPublicId } = useApp();
   const [ipmsSubmissions, setIpmsSubmissions] = useState<IPMSSubmission[]>([]);
   const [selectedSubmission, setSelectedSubmission] = useState<IPMSSubmission | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -550,7 +550,7 @@ export function IPMSSubmissionsList() {
   });
   const [valueConfiguration, setValueConfiguration] = useState<PerformanceValueConfiguration>();
   const allSubmissions = useMemo(() => ipmsSubmissions, [ipmsSubmissions]);
-  const [dashboardScope, setDashboardScope] = useState(readDashboardSubmissionScope);
+  const [dashboardScope, setDashboardScope] = useState(() => readDashboardSubmissionScope(currentFinancialYearPublicId));
   const permissionSet = useMemo(() => new Set(permissions.map(permission => permission.toUpperCase())), [permissions]);
   const canCreate = permissionSet.has('IPMS_SUBMISSION.CREATE');
   const canReadDueDate = permissionSet.has('IPMS_SUBMISSION.DUEDATE.READ');

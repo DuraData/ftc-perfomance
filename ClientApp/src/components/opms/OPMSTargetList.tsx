@@ -19,14 +19,14 @@ import { canonicalSaveRows } from '../../lib/performanceTargetContract';
 
 type DashboardTargetFilter = 'assigned' | 'achieved' | 'at-risk' | 'outstanding';
 
-function readDashboardScope(): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
+function readDashboardScope(activeFinancialYearPublicId?: string | null): Pick<RegisterPageQuery, 'municipalityFinancialYearPublicId' | 'reportingPeriodPublicId' | 'dashboardFilter'> {
   const parameters = new URLSearchParams(window.location.search);
   const filter = parameters.get('dashboardFilter');
   const dashboardFilter = filter === 'assigned' || filter === 'achieved' || filter === 'at-risk' || filter === 'outstanding'
     ? filter as DashboardTargetFilter
     : undefined;
   return {
-    municipalityFinancialYearPublicId: parameters.get('municipalityFinancialYearPublicId') || undefined,
+    municipalityFinancialYearPublicId: parameters.get('municipalityFinancialYearPublicId') || activeFinancialYearPublicId || undefined,
     reportingPeriodPublicId: parameters.get('reportingPeriodPublicId') || undefined,
     dashboardFilter,
   };
@@ -130,6 +130,7 @@ export function OPMSTargetList() {
   const {
     setCurrentPath,
     pushToast,
+    currentFinancialYearPublicId,
   } = useApp();
   const canCreateTarget = useHasAnyPermission(['OPMS_KPI.CREATE']);
   const canUpdateTarget = useHasAnyPermission(['OPMS_KPI.UPDATE']);
@@ -150,7 +151,7 @@ export function OPMSTargetList() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [withdrawalTarget, setWithdrawalTarget] = useState<OPMSTarget | null>(null);
   const [withdrawalBusy, setWithdrawalBusy] = useState(false);
-  const [dashboardScope, setDashboardScope] = useState(readDashboardScope);
+  const [dashboardScope, setDashboardScope] = useState(() => readDashboardScope(currentFinancialYearPublicId));
 
   const loadTargets = useCallback(async () => {
     setIsLoading(true);

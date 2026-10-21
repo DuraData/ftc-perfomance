@@ -69,7 +69,7 @@ const RiskHeatmapPage = lazy(() => import('./components/risk/RiskWorkspace').the
 const RiskReportsPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskReportsPage })));
 
 function AppContent() {
-  const { currentPath, isAuthenticated, accessReady, currentMunicipalityPublicId } = useApp();
+  const { currentPath, isAuthenticated, accessReady, currentMunicipalityPublicId, currentFinancialYearPublicId } = useApp();
   const canAccessPath = useCanAccessPath(currentPath);
 
   if (!isAuthenticated) {
@@ -352,7 +352,7 @@ function AppContent() {
   };
 
   return (
-    <TenantScopeBoundary municipalityPublicId={currentMunicipalityPublicId}>
+    <TenantScopeBoundary municipalityPublicId={currentMunicipalityPublicId} municipalityFinancialYearPublicId={currentFinancialYearPublicId}>
       <Suspense fallback={<div role="status" aria-live="polite" className="p-6 text-sm text-secondary-600">Loading workspace…</div>}>
         {renderPage()}
       </Suspense>

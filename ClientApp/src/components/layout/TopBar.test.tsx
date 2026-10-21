@@ -20,6 +20,11 @@ const app = vi.hoisted(() => ({
   setTenantContextSearch: vi.fn(),
   currentMunicipalityPublicId: null as string | null,
   switchMunicipality: vi.fn(),
+  financialYearContexts: [] as Array<{ publicId: string; code: string; name: string; isCurrent: boolean; isActive: boolean }>,
+  currentFinancialYearPublicId: null as string | null,
+  currentFinancialYearLabel: null as string | null,
+  financialYearContextLoading: false,
+  switchFinancialYear: vi.fn(),
 }));
 const api = vi.hoisted(() => ({ getNotifications: vi.fn(), markNotificationRead: vi.fn() }));
 
@@ -33,6 +38,9 @@ describe('TopBar notification feed', () => {
     app.tenantContextTotalPages = 0;
     app.tenantContextTotalCount = 0;
     app.currentMunicipalityPublicId = null;
+    app.financialYearContexts = [];
+    app.currentFinancialYearPublicId = null;
+    app.currentFinancialYearLabel = null;
     app.authenticationGate = null;
     app.permissions = ['Notifications.View'];
     vi.clearAllMocks();
@@ -104,6 +112,28 @@ describe('TopBar notification feed', () => {
     await waitFor(() => expect(app.switchMunicipality).toHaveBeenCalledWith('88888888-8888-8888-8888-888888888888'));
     expect(app.pushToast).toHaveBeenCalledWith('success', 'Municipality context changed');
     expect(screen.queryByRole('dialog', { name: 'Municipality context selector' })).not.toBeInTheDocument();
+  });
+
+  it('displays and switches the persistent financial-year context in wide and narrow layouts', async () => {
+    app.tenantContexts = [{ publicId: '77777777-7777-4777-8777-777777777777', code: 'MUN-007', name: 'Seventh Municipality', isCurrent: true }];
+    app.tenantContextTotalCount = 1;
+    app.currentMunicipalityPublicId = '77777777-7777-4777-8777-777777777777';
+    app.financialYearContexts = [
+      { publicId: '11111111-1111-4111-8111-111111111111', code: '2025/26', name: '2025/26', isCurrent: true, isActive: true },
+      { publicId: '22222222-2222-4222-8222-222222222222', code: '2026/27', name: '2026/27', isCurrent: false, isActive: true },
+    ];
+    app.currentFinancialYearPublicId = '11111111-1111-4111-8111-111111111111';
+    app.currentFinancialYearLabel = '2025/26';
+    app.switchFinancialYear.mockReturnValue(true);
+    api.getNotifications.mockResolvedValue({ success: true, data: { items: [], page: 1, pageSize: 8, totalCount: 0, totalPages: 0, unreadCount: 0 } });
+
+    render(<TopBar title="Dashboard" />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Active financial year' }), { target: { value: '22222222-2222-4222-8222-222222222222' } });
+    expect(app.switchFinancialYear).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222');
+    expect(app.pushToast).toHaveBeenCalledWith('success', 'Financial year context changed');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose municipality context' }));
+    expect(screen.getByRole('combobox', { name: 'Active financial year on narrow screens' })).toBeInTheDocument();
   });
 
   it('provides a named keyboard-contained notification flyout and restores its trigger', async () => {
