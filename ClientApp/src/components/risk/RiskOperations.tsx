@@ -21,7 +21,7 @@ const toIso = (value: string) => new Date(`${value}T12:00:00`).toISOString();
 const scores = [1, 2, 3, 4, 5].map(value => ({ value: String(value), label: String(value) }));
 const riskLabel = (risk: StrategicRiskDto) => `${risk.riskReference ? `${risk.riskReference} · ` : ''}${risk.riskTitle}`;
 const severity = (score: number) => score >= 16 ? 'Critical' : score >= 10 ? 'High' : score >= 5 ? 'Moderate' : 'Low';
-const severityClass = (score: number) => score >= 16 ? 'bg-error-600 text-white' : score >= 10 ? 'bg-warning-500 text-white' : score >= 5 ? 'bg-warning-100 text-warning-900' : 'bg-success-100 text-success-900';
+const severityClass = (score: number) => score >= 16 ? 'bg-error-600 text-white' : score >= 10 ? 'bg-warning-700 text-white' : score >= 5 ? 'bg-warning-100 text-warning-900' : 'bg-success-100 text-success-900';
 
 export function RiskOperations({ view }: { view: RiskOperationsView }) {
   const { pushToast } = useApp();

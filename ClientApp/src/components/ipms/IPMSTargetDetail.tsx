@@ -382,7 +382,7 @@ function HistoryTab({ entries, page, totalPages, totalCount, onPageChange }: { e
       <div className="relative">
         <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-secondary-200 dark:bg-secondary-700" />
         {entries.length === 0 && (
-          <div className="rounded-lg border border-dashed border-secondary-300 bg-secondary-50 px-4 py-10 text-center text-sm text-secondary-500 dark:border-secondary-700 dark:bg-secondary-800">
+          <div className="rounded-lg border border-dashed border-secondary-300 bg-secondary-50 px-4 py-10 text-center text-sm text-secondary-500 dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-300">
             No audit trail entries recorded yet.
           </div>
         )}

@@ -327,10 +327,10 @@ function WorkflowRail({ status, workflow }: { status: SubmissionStatus; workflow
                 <div
                   className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold ${
                     complete
-                      ? 'border-success-600 bg-success-600 text-white'
+                      ? 'border-success-700 bg-success-700 text-white'
                       : current
                         ? 'border-primary-600 bg-primary-600 text-white'
-                        : 'border-secondary-300 bg-white text-secondary-500 dark:border-secondary-600 dark:bg-secondary-900'
+                        : 'border-secondary-300 bg-white text-secondary-500 dark:border-secondary-600 dark:bg-secondary-900 dark:text-secondary-300'
                   }`}
                 >
                   {complete ? <Check className="h-4 w-4" /> : index + 1}
@@ -1280,7 +1280,7 @@ export function SubmissionWorkspace({
             )}
           </div>
           {comments.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-secondary-300 bg-secondary-50 px-4 py-10 text-center text-sm text-secondary-500 dark:border-secondary-700 dark:bg-secondary-800">
+            <div className="rounded-lg border border-dashed border-secondary-300 bg-secondary-50 px-4 py-10 text-center text-sm text-secondary-500 dark:border-secondary-700 dark:bg-secondary-800 dark:text-secondary-300">
               No legacy submission comments recorded.
             </div>
           ) : (

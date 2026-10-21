@@ -218,7 +218,7 @@ export function TopBar({ title, subtitle, onOpenNavigation, navigationOpen = fal
             aria-controls="mobile-navigation-dialog"
             aria-haspopup="dialog"
             onClick={onOpenNavigation}
-            className="shrink-0 rounded-lg p-2 text-secondary-500 transition-colors hover:bg-secondary-100 dark:text-secondary-400 dark:hover:bg-secondary-800 md:hidden"
+            className="shrink-0 rounded-lg p-2 text-secondary-600 transition-colors hover:bg-secondary-100 dark:text-secondary-400 dark:hover:bg-secondary-800 md:hidden"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -269,7 +269,7 @@ export function TopBar({ title, subtitle, onOpenNavigation, navigationOpen = fal
                 setShowUserMenu(false);
                 setShowTenantMenu(current => !current);
               }}
-              className="rounded-lg p-2 text-secondary-500 transition-colors hover:bg-secondary-100 dark:text-secondary-400 dark:hover:bg-secondary-800"
+              className="rounded-lg p-2 text-secondary-600 transition-colors hover:bg-secondary-100 dark:text-secondary-400 dark:hover:bg-secondary-800"
             >
               <Building2 className="h-5 w-5" />
             </button>
@@ -340,7 +340,7 @@ export function TopBar({ title, subtitle, onOpenNavigation, navigationOpen = fal
           >
             <Bell className="w-5 h-5 text-secondary-500 dark:text-secondary-400" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-error-500 text-white text-xs rounded-full flex items-center justify-center">
+              <span className="absolute top-1 right-1 w-4 h-4 bg-error-600 text-white text-xs rounded-full flex items-center justify-center">
                 {unreadCount}
               </span>
             )}
@@ -463,7 +463,7 @@ export function TopBar({ title, subtitle, onOpenNavigation, navigationOpen = fal
                         logout();
                         setShowUserMenu(false);
                       }}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-error-600 dark:text-error-400 hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors">
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-error-700 dark:text-error-400 hover:bg-error-50 dark:hover:bg-error-900/20 transition-colors">
                       <LogOut className="w-4 h-4" />
                       Sign out
                     </button>

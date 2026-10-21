@@ -71,7 +71,7 @@ export function AccessDeniedPage() {
     <AppShell title="Access Denied" subtitle="Your role, permissions, or scope do not allow this page">
       <Card className="max-w-3xl">
         <div className="flex items-start gap-4">
-          <div className="rounded-full bg-error-100 p-3 text-error-600 dark:bg-error-900/20 dark:text-error-400">
+          <div className="rounded-full bg-error-100 p-3 text-error-700 dark:bg-error-900/20 dark:text-error-400">
             <ShieldAlert className="h-6 w-6" />
           </div>
           <div className="space-y-3">

@@ -292,7 +292,7 @@ function SelectionToggle({
     <button
       type="button"
       onClick={onToggle}
-      className="inline-flex items-center justify-center rounded p-1 text-secondary-500 hover:bg-secondary-100 dark:hover:bg-secondary-800"
+      className="inline-flex items-center justify-center rounded p-1 text-secondary-600 hover:bg-secondary-100 dark:text-secondary-300 dark:hover:bg-secondary-800"
       aria-label={checked ? 'Deselect row' : 'Select row'}
     >
       {checked ? <CheckSquare className="h-4 w-4 text-primary-600" /> : <Square className="h-4 w-4" />}

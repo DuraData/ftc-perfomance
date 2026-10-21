@@ -17,8 +17,8 @@ const variantStyles: Record<ButtonVariant, string> = {
   secondary: 'bg-secondary-100 text-secondary-700 hover:bg-secondary-200 focus:ring-secondary-500 dark:bg-secondary-700 dark:text-secondary-200 dark:hover:bg-secondary-600',
   outline: 'border border-secondary-300 text-secondary-700 hover:bg-secondary-50 focus:ring-secondary-500 dark:border-secondary-600 dark:text-secondary-300 dark:hover:bg-secondary-800',
   ghost: 'text-secondary-600 hover:bg-secondary-100 focus:ring-secondary-500 dark:text-secondary-400 dark:hover:bg-secondary-800',
-  success: 'bg-success-600 text-white hover:bg-success-700 focus:ring-success-500',
-  warning: 'bg-warning-500 text-white hover:bg-warning-600 focus:ring-warning-500',
+  success: 'bg-success-700 text-white hover:bg-success-800 focus:ring-success-600',
+  warning: 'bg-warning-700 text-white hover:bg-warning-800 focus:ring-warning-600',
   error: 'bg-error-600 text-white hover:bg-error-700 focus:ring-error-500',
 };
 

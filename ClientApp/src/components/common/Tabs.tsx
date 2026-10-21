@@ -105,7 +105,7 @@ export function Tabs({ id, tabs, activeTab, onChange, variant = 'default', size 
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-medium transition-all ${
               activeTab === tab.id
                 ? 'bg-primary-600 text-white shadow-sm'
-                : 'bg-secondary-100 text-secondary-600 hover:bg-secondary-200 dark:bg-secondary-800 dark:text-secondary-400 dark:hover:bg-secondary-700'
+                : 'bg-secondary-100 text-secondary-600 hover:bg-secondary-200 dark:bg-secondary-800 dark:text-secondary-300 dark:hover:bg-secondary-700'
             } ${tab.disabled ? 'opacity-50 cursor-not-allowed' : ''} ${sizeStyles[size]}`}
           >
             {tab.icon && <span className="w-3.5 h-3.5">{tab.icon}</span>}
@@ -115,7 +115,7 @@ export function Tabs({ id, tabs, activeTab, onChange, variant = 'default', size 
                 className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
                   activeTab === tab.id
                     ? 'bg-white/20 text-white'
-                    : 'bg-secondary-200 text-secondary-600 dark:bg-secondary-700 dark:text-secondary-400'
+                    : 'bg-secondary-200 text-secondary-600 dark:bg-secondary-700 dark:text-secondary-300'
                 }`}
               >
                 {tab.badge}
@@ -206,7 +206,7 @@ export function Tabs({ id, tabs, activeTab, onChange, variant = 'default', size 
               className={`px-1 py-0.5 rounded text-[10px] font-medium ${
                 activeTab === tab.id
                   ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300'
-                  : 'bg-secondary-200 text-secondary-600 dark:bg-secondary-700 dark:text-secondary-400'
+                  : 'bg-secondary-200 text-secondary-600 dark:bg-secondary-700 dark:text-secondary-300'
               }`}
             >
               {tab.badge}
@@ -275,7 +275,7 @@ function CompactScrollableTabs({ id, tabs, activeTab, onChange, ariaLabel }: { i
         onClick={() => scroll('left')}
         className={`flex-shrink-0 p-1 rounded transition-all ${
           canScrollLeft
-            ? 'bg-secondary-100 dark:bg-secondary-800 hover:bg-secondary-200 dark:hover:bg-secondary-700 text-secondary-600 dark:text-secondary-400'
+            ? 'bg-secondary-100 dark:bg-secondary-800 hover:bg-secondary-200 dark:hover:bg-secondary-700 text-secondary-600 dark:text-secondary-300'
             : 'opacity-0 pointer-events-none'
         }`}
         disabled={!canScrollLeft}
@@ -323,7 +323,7 @@ function CompactScrollableTabs({ id, tabs, activeTab, onChange, ariaLabel }: { i
                 className={`ml-0.5 px-1 py-0.5 rounded text-[10px] font-semibold ${
                   activeTab === tab.id
                     ? 'bg-white/20 text-white'
-                    : 'bg-secondary-200 text-secondary-500 dark:bg-secondary-700 dark:text-secondary-400 group-hover:bg-secondary-300 dark:group-hover:bg-secondary-600'
+                    : 'bg-secondary-200 text-secondary-600 dark:bg-secondary-700 dark:text-secondary-300 group-hover:bg-secondary-300 dark:group-hover:bg-secondary-600'
                 }`}
               >
                 {tab.badge}
@@ -340,7 +340,7 @@ function CompactScrollableTabs({ id, tabs, activeTab, onChange, ariaLabel }: { i
         onClick={() => scroll('right')}
         className={`flex-shrink-0 p-1 rounded transition-all ${
           canScrollRight
-            ? 'bg-secondary-100 dark:bg-secondary-800 hover:bg-secondary-200 dark:hover:bg-secondary-700 text-secondary-600 dark:text-secondary-400'
+            ? 'bg-secondary-100 dark:bg-secondary-800 hover:bg-secondary-200 dark:hover:bg-secondary-700 text-secondary-600 dark:text-secondary-300'
             : 'opacity-0 pointer-events-none'
         }`}
         disabled={!canScrollRight}

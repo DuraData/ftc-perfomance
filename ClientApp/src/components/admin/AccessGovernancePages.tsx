@@ -234,7 +234,7 @@ export function PermissionSimulationPage() {
 
         <Card className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-full bg-primary-100 p-2 text-primary-600 dark:bg-primary-900/20 dark:text-primary-300">
+            <div className="rounded-full bg-primary-100 p-2 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300">
               <Shield className="h-5 w-5" />
             </div>
             <div>
