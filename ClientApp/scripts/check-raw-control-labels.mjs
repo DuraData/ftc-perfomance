@@ -107,6 +107,8 @@ function selfTest() {
       const dynamicId = 'dynamic-id';
       return <>
         <input />
+        <input aria-label="" />
+        <select aria-labelledby={undefined} />
         <input aria-label="Named input" />
         <label>Wrapped input<input /></label>
         <label htmlFor="explicit-id">Explicit input</label><input id="explicit-id" />
@@ -116,8 +118,10 @@ function selfTest() {
     }
   `, detected);
 
-  if (detected.length !== 1 || !detected[0].includes('<input>')) {
-    console.error(`Raw form control accessible-name self-test failed: expected one violation, found ${detected.length}.`);
+  if (detected.length !== 3
+    || detected.filter(failure => failure.includes('<input>')).length !== 2
+    || detected.filter(failure => failure.includes('<select>')).length !== 1) {
+    console.error(`Raw form control accessible-name self-test failed: expected three representative violations, found ${detected.length}.`);
     process.exit(1);
   }
 }
@@ -148,8 +152,12 @@ function hasEmptyLiteral(initializer) {
 }
 
 function hasEmptyExpression(expression) {
-  return (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression))
-    && expression.text.trim().length === 0;
+  if ((ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression))
+    && expression.text.trim().length === 0)
+    return true;
+  return expression.kind === ts.SyntaxKind.NullKeyword
+    || (ts.isIdentifier(expression) && expression.text === 'undefined')
+    || (ts.isVoidExpression(expression) && ts.isNumericLiteral(expression.expression) && expression.expression.text === '0');
 }
 
 selfTest();
