@@ -79,6 +79,14 @@ public sealed record DataCutoverAcceptanceOptions(
 
 public sealed record DataCutoverScenarioEvidence(string Name, bool Passed, IReadOnlyList<string> Checks);
 
+public sealed record DataCutoverExceptionEvidence(
+    string Category,
+    string RecordType,
+    Guid RecordPublicId,
+    string Status,
+    string Reason,
+    string? SourceEvidence = null);
+
 public sealed record DataCutoverAcceptanceEvidence(
     int SchemaVersion,
     bool Succeeded,
@@ -92,6 +100,7 @@ public sealed record DataCutoverAcceptanceEvidence(
     int MigrationCount,
     bool DatabaseRetained,
     IReadOnlyList<DataCutoverScenarioEvidence> Scenarios,
+    IReadOnlyList<DataCutoverExceptionEvidence> Exceptions,
     IReadOnlyDictionary<string, int> PersistedEvidence,
     string? EvidencePath);
 
@@ -115,7 +124,7 @@ public static class DataCutoverAcceptanceRunner
         SqlServer = new { Server = SqlServerName, RequiredDatabasePrefix = SqlServerDatabasePrefix, ConnectionSource = "environment variable only" },
         Sqlite = new { RequiredFileNameMarker = SqliteFileMarker, NetworkPathsAllowed = false },
         Scenarios = new[] { "tenant ownership", "target-period normalization", "submission-period reconciliation", "legacy rating reconciliation" },
-        Guarantees = new[] { "provider-appropriate schema initialization", "full migration chain on SQL Server", "tenant isolation", "append-only provenance", "audit persistence", "idempotent rerun", "legacy source preservation", "isolated cleanup" },
+        Guarantees = new[] { "provider-appropriate schema initialization", "full migration chain on SQL Server", "tenant isolation", "append-only provenance", "audit persistence", "idempotent rerun", "legacy source preservation", "consolidated exception inventory", "isolated cleanup" },
         Output = "redacted JSON reconciliation evidence"
     };
 
@@ -131,6 +140,7 @@ public static class DataCutoverAcceptanceRunner
         var startedAt = DateTime.UtcNow;
         var stopwatch = Stopwatch.StartNew();
         var scenarios = new List<DataCutoverScenarioEvidence>();
+        var exceptions = new List<DataCutoverExceptionEvidence>();
         var migrationCount = 0;
 
         try
@@ -160,16 +170,16 @@ public static class DataCutoverAcceptanceRunner
             var governance = new WorkflowGovernanceService(context, tenantContext: tenant);
             var principal = Principal(seeded.Administrator.Id);
 
-            scenarios.Add(await RunTenantOwnershipAsync(context, tenant, users, governance, principal, seeded, cancellationToken));
+            scenarios.Add(await RunTenantOwnershipAsync(context, tenant, users, governance, principal, seeded, exceptions, cancellationToken));
             context.ChangeTracker.Clear();
             context.AttachRange(runtimeUsers);
-            scenarios.Add(await RunTargetNormalizationAsync(context, tenant, users, governance, principal, seeded, cancellationToken));
+            scenarios.Add(await RunTargetNormalizationAsync(context, tenant, users, governance, principal, seeded, exceptions, cancellationToken));
             context.ChangeTracker.Clear();
             context.AttachRange(runtimeUsers);
-            scenarios.Add(await RunSubmissionPeriodAsync(context, tenant, users, governance, principal, seeded, cancellationToken));
+            scenarios.Add(await RunSubmissionPeriodAsync(context, tenant, users, governance, principal, seeded, exceptions, cancellationToken));
             context.ChangeTracker.Clear();
             context.AttachRange(runtimeUsers);
-            scenarios.Add(await RunRatingAsync(context, tenant, users, governance, principal, seeded, cancellationToken));
+            scenarios.Add(await RunRatingAsync(context, tenant, users, governance, principal, seeded, exceptions, cancellationToken));
             context.ChangeTracker.Clear();
 
             var persisted = new Dictionary<string, int>(StringComparer.Ordinal)
@@ -183,6 +193,9 @@ public static class DataCutoverAcceptanceRunner
             };
             if (persisted.Values.Any(value => value < 1))
                 throw new InvalidDataException("The cutover rehearsal did not persist every required provenance, canonical, and audit record.");
+            if (exceptions.Count != 6 || exceptions.Select(item => item.Category).Distinct(StringComparer.Ordinal).Count() != 4)
+                throw new InvalidDataException($"The consolidated exception inventory is incomplete: expected 6 deterministic exceptions but found {exceptions.Count}: "
+                    + string.Join(" | ", exceptions.Select(item => $"{item.Category}/{item.RecordType}/{item.Status}: {item.Reason}")));
 
             stopwatch.Stop();
             var evidencePath = ResolveEvidencePath(options.EvidencePath);
@@ -191,7 +204,9 @@ public static class DataCutoverAcceptanceRunner
                 startedAt, DateTime.UtcNow, Math.Round(stopwatch.Elapsed.TotalSeconds, 3),
                 target.Provider == "SQL Server" ? "EF Core migration chain" : "Current EF Core model",
                 target.Provider == "SQL Server",
-                migrationCount, options.KeepDatabase, scenarios, persisted, evidencePath);
+                migrationCount, options.KeepDatabase, scenarios,
+                exceptions.OrderBy(item => item.Category).ThenBy(item => item.RecordType).ThenBy(item => item.RecordPublicId).ToArray(),
+                persisted, evidencePath);
 
             if (evidencePath != null)
             {
@@ -255,10 +270,14 @@ public static class DataCutoverAcceptanceRunner
 
     private static async Task<DataCutoverScenarioEvidence> RunTenantOwnershipAsync(
         ApplicationDbContext context, AcceptanceTenantContext tenant, UserManager<ApplicationUser> users,
-        IWorkflowGovernanceService governance, ClaimsPrincipal principal, SeededData seeded, CancellationToken cancellationToken)
+        IWorkflowGovernanceService governance, ClaimsPrincipal principal, SeededData seeded,
+        ICollection<DataCutoverExceptionEvidence> exceptions, CancellationToken cancellationToken)
     {
         var controller = Controller(new LegacyTenantOwnershipReconciliationController(context, tenant, users, governance), principal, "cutover-tenant");
         var preview = Data(await controller.Preview(LegacyTenantEntityType.Department, 1, 25));
+        foreach (var item in preview.Items.Where(item => item.Status != "Ready"))
+            exceptions.Add(new("Tenant ownership", item.EntityType.ToString(), item.EntityPublicId,
+                item.Status, item.Message, item.SourceEvidence));
         var ready = preview.Items.Single(item => item.EntityPublicId == seeded.LegacyDepartment.PublicId);
         Require(ready.Status == "Ready", "Legacy tenant ownership was not deterministically resolvable.");
         var result = Data(await controller.Execute(new(LegacyTenantEntityType.Department, ready.EntityPublicId,
@@ -280,10 +299,14 @@ public static class DataCutoverAcceptanceRunner
 
     private static async Task<DataCutoverScenarioEvidence> RunTargetNormalizationAsync(
         ApplicationDbContext context, AcceptanceTenantContext tenant, UserManager<ApplicationUser> users,
-        IWorkflowGovernanceService governance, ClaimsPrincipal principal, SeededData seeded, CancellationToken cancellationToken)
+        IWorkflowGovernanceService governance, ClaimsPrincipal principal, SeededData seeded,
+        ICollection<DataCutoverExceptionEvidence> exceptions, CancellationToken cancellationToken)
     {
         var controller = Controller(new TargetNormalizationController(context, tenant, new PerformanceUnitEngine(), users, governance), principal, "cutover-target");
         var preview = Data(await controller.Preview(SubmissionKind.Opms));
+        foreach (var item in preview.Items.Where(item => item.Status == "Blocked"))
+            exceptions.Add(new("Target normalization", SubmissionKind.Opms.ToString(), item.TargetPublicId,
+                item.Status, item.Error ?? "Manual target reconciliation is required."));
         var ready = preview.Items.Single(item => item.TargetPublicId == seeded.NormalizationTarget.PublicId);
         Require(ready.Status == "Ready" && ready.MissingPeriodTargets == 2,
             $"Legacy target did not produce the expected canonical period plan: status={ready.Status}, missing={ready.MissingPeriodTargets}, error={ready.Error}");
@@ -301,10 +324,14 @@ public static class DataCutoverAcceptanceRunner
 
     private static async Task<DataCutoverScenarioEvidence> RunSubmissionPeriodAsync(
         ApplicationDbContext context, AcceptanceTenantContext tenant, UserManager<ApplicationUser> users,
-        IWorkflowGovernanceService governance, ClaimsPrincipal principal, SeededData seeded, CancellationToken cancellationToken)
+        IWorkflowGovernanceService governance, ClaimsPrincipal principal, SeededData seeded,
+        ICollection<DataCutoverExceptionEvidence> exceptions, CancellationToken cancellationToken)
     {
         var controller = Controller(new LegacySubmissionPeriodReconciliationController(context, tenant, users, governance), principal, "cutover-period");
         var preview = Data(await controller.Preview(SubmissionKind.Opms, 1, 25));
+        foreach (var item in preview.Items.Where(item => item.Status == "Blocked"))
+            exceptions.Add(new("Submission period", item.SubmissionKind.ToString(), item.SubmissionPublicId,
+                item.Status, item.Message, item.LegacyQuarter));
         var row = preview.Items.Single(item => item.SubmissionPublicId == seeded.PeriodSubmission.PublicId);
         var candidate = row.Candidates.Single();
         Require(row.Status == "Ready" && !candidate.HasSubmissionConflict, "Legacy submission period was not unambiguous.");
@@ -321,10 +348,14 @@ public static class DataCutoverAcceptanceRunner
 
     private static async Task<DataCutoverScenarioEvidence> RunRatingAsync(
         ApplicationDbContext context, AcceptanceTenantContext tenant, UserManager<ApplicationUser> users,
-        IWorkflowGovernanceService governance, ClaimsPrincipal principal, SeededData seeded, CancellationToken cancellationToken)
+        IWorkflowGovernanceService governance, ClaimsPrincipal principal, SeededData seeded,
+        ICollection<DataCutoverExceptionEvidence> exceptions, CancellationToken cancellationToken)
     {
         var controller = Controller(new LegacyRatingReconciliationController(context, tenant, users, governance), principal, "cutover-rating");
         var preview = Data(await controller.Preview(SubmissionKind.Opms, LegacyRatingSourceKind.VerifierScore, 1, 25));
+        foreach (var item in preview.Items.Where(item => item.Status == "Blocked"))
+            exceptions.Add(new("Legacy rating", item.SourceKind.ToString(), item.SubmissionPublicId,
+                item.Status, item.StatusReason, item.SourceKey));
         var row = preview.Items.Single(item => item.SubmissionPublicId == seeded.RatingSubmission.PublicId);
         var candidate = row.Candidates.Single();
         Require(row.Status == "Ready" && row.SourceScore == 4m, "Legacy rating did not resolve to one workflow candidate.");
@@ -355,11 +386,16 @@ public static class DataCutoverAcceptanceRunner
         var legacyYear = new Period { Code = "FY2024", Name = "2024/25", FiscalYear = year.Code, StartDate = year.StartDate, EndDate = year.EndDate, IsActive = true };
         var legacyDepartment = new Department { Code = "LEGACY-A", Name = "Legacy Department A" };
         var foreignLegacyDepartment = new Department { Code = "LEGACY-B", Name = "Legacy Department B" };
-        context.AddRange(municipality, otherMunicipality, administrator, historicalActor, year, legacyYear, legacyDepartment, foreignLegacyDepartment);
+        var blockedLegacyDepartment = new Department { Code = "LEGACY-NONE", Name = "Legacy Department Without Evidence" };
+        var ambiguousLegacyDepartment = new Department { Code = "LEGACY-MULTI", Name = "Legacy Department With Conflicting Evidence" };
+        context.AddRange(municipality, otherMunicipality, administrator, historicalActor, year, legacyYear,
+            legacyDepartment, foreignLegacyDepartment, blockedLegacyDepartment, ambiguousLegacyDepartment);
         await context.SaveChangesAsync(cancellationToken);
         context.Positions.AddRange(
             new Position { MunicipalityId = municipality.Id, DepartmentId = legacyDepartment.Id, Code = "CUT-A-P", Name = "Cutover A position" },
-            new Position { MunicipalityId = otherMunicipality.Id, DepartmentId = foreignLegacyDepartment.Id, Code = "CUT-B-P", Name = "Cutover B position" });
+            new Position { MunicipalityId = otherMunicipality.Id, DepartmentId = foreignLegacyDepartment.Id, Code = "CUT-B-P", Name = "Cutover B position" },
+            new Position { MunicipalityId = municipality.Id, DepartmentId = ambiguousLegacyDepartment.Id, Code = "CUT-MULTI-A", Name = "Conflicting A position" },
+            new Position { MunicipalityId = otherMunicipality.Id, DepartmentId = ambiguousLegacyDepartment.Id, Code = "CUT-MULTI-B", Name = "Conflicting B position" });
         var municipalityYear = new MunicipalityFinancialYear
         {
             MunicipalityId = municipality.Id, FinancialYearId = year.Id, FinancialYear = year,
@@ -387,35 +423,78 @@ public static class DataCutoverAcceptanceRunner
         var periodTarget = new OpmsTarget
         {
             MunicipalityId = municipality.Id, PeriodId = legacyYear.Id, IndicatorNumber = "CUT-PERIOD",
-            TargetName = "Legacy submission period target", KpiDescription = "Legacy submission period target", PerformanceObjective = "Objective"
+            TargetName = "Legacy submission period target", KpiDescription = "Legacy submission period target", PerformanceObjective = "Objective",
+            TargetUnitType = "percentage", AnnualTarget = 100m, AnnualTargetDescription = "Annual target",
+            Q1Target = 20m, Q1Description = "Quarter 1 target"
         };
         var ratingTarget = new OpmsTarget
         {
-            MunicipalityId = municipality.Id, AssignedUserId = historicalActor.Id, IndicatorNumber = "CUT-RATING",
-            TargetName = "Legacy rating target", KpiDescription = "Legacy rating target", AnnualTargetDescription = "Target", PerformanceObjective = "Objective"
+            MunicipalityId = municipality.Id, PeriodId = legacyYear.Id, AssignedUserId = historicalActor.Id, IndicatorNumber = "CUT-RATING",
+            TargetName = "Legacy rating target", KpiDescription = "Legacy rating target", PerformanceObjective = "Objective",
+            TargetUnitType = "percentage", AnnualTarget = 100m, AnnualTargetDescription = "Annual target",
+            Q1Target = 20m, Q1Description = "Quarter 1 target"
+        };
+        var blockedNormalizationTarget = new OpmsTarget
+        {
+            MunicipalityId = municipality.Id, PeriodId = legacyYear.Id, IndicatorNumber = "CUT-BLOCKED-TARGET",
+            TargetName = "Blocked legacy normalization target", KpiDescription = "Blocked legacy normalization target",
+            PerformanceObjective = "Objective", TargetUnitType = "percentage", AnnualTarget = 100m,
+            AnnualTargetDescription = "Annual target", Q3RevisedTarget = 75m
         };
         var scheme = new RatingScheme { MunicipalityId = municipality.Id, Code = "CUTOVER-FIVE", Name = "Cutover five point" };
         var ratingValue = new RatingSchemeValue { MunicipalityId = municipality.Id, RatingScheme = scheme, Value = 4m, Label = "Achieved", SortOrder = 4 };
-        context.AddRange(q1, annual, normalizationTarget, periodTarget, ratingTarget, scheme, ratingValue);
+        context.AddRange(q1, annual, normalizationTarget, periodTarget, ratingTarget, blockedNormalizationTarget, scheme, ratingValue);
         await context.SaveChangesAsync(cancellationToken);
         context.PerformancePeriodTargets.Add(new PerformancePeriodTarget
         {
             MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, OpmsTargetId = periodTarget.Id,
-            UnitKind = PerformanceUnitKind.AbsoluteCount, Direction = PerformanceDirection.HigherIsBetter,
-            TargetValue = "10", CreatedByUserId = administrator.Id
+            UnitKind = PerformanceUnitKind.PercentageBased, Direction = PerformanceDirection.HigherIsBetter,
+            TargetValue = "20", Description = "Quarter 1 target", CreatedByUserId = administrator.Id
         });
+        context.PerformancePeriodTargets.AddRange(
+            new PerformancePeriodTarget
+            {
+                MunicipalityId = municipality.Id, ReportingPeriodId = annual.Id, OpmsTargetId = periodTarget.Id,
+                UnitKind = PerformanceUnitKind.PercentageBased, Direction = PerformanceDirection.HigherIsBetter,
+                TargetValue = "100", Description = "Annual target", CreatedByUserId = administrator.Id
+            },
+            new PerformancePeriodTarget
+            {
+                MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, OpmsTargetId = ratingTarget.Id,
+                UnitKind = PerformanceUnitKind.PercentageBased, Direction = PerformanceDirection.HigherIsBetter,
+                TargetValue = "20", Description = "Quarter 1 target", CreatedByUserId = administrator.Id
+            },
+            new PerformancePeriodTarget
+            {
+                MunicipalityId = municipality.Id, ReportingPeriodId = annual.Id, OpmsTargetId = ratingTarget.Id,
+                UnitKind = PerformanceUnitKind.PercentageBased, Direction = PerformanceDirection.HigherIsBetter,
+                TargetValue = "100", Description = "Annual target", CreatedByUserId = administrator.Id
+            });
         var periodSubmission = new OpmsSubmission
         {
             MunicipalityId = municipality.Id, OpmsTargetId = periodTarget.Id, Quarter = "Quarter 1",
             BaseState = SubmissionBaseStates.InProgress, Status = "Draft", CreatedBy = administrator.Id
         };
+        var blockedPeriodSubmission = new OpmsSubmission
+        {
+            MunicipalityId = municipality.Id, OpmsTargetId = periodTarget.Id, Quarter = "Legacy Sprint",
+            BaseState = SubmissionBaseStates.InProgress, Status = "Draft", CreatedBy = administrator.Id
+        };
         var ratingSubmission = new OpmsSubmission
         {
-            MunicipalityId = municipality.Id, OpmsTargetId = ratingTarget.Id, Quarter = "Q1",
+            MunicipalityId = municipality.Id, OpmsTargetId = ratingTarget.Id, ReportingPeriodId = q1.Id, Quarter = "Q1",
             BaseState = SubmissionBaseStates.Submitted, Status = "verified", SubmittedByUserId = historicalActor.Id,
             SubmittedAt = new DateTime(2024, 8, 1, 8, 0, 0, DateTimeKind.Utc), VerifierScore = 4m,
             VerifierUserId = historicalActor.Id, VerifiedAt = new DateTime(2024, 8, 2, 9, 30, 0, DateTimeKind.Utc),
             VerifierComments = "Historical verifier comment"
+        };
+        var blockedRatingSubmission = new OpmsSubmission
+        {
+            MunicipalityId = municipality.Id, OpmsTargetId = ratingTarget.Id, ReportingPeriodId = annual.Id, Quarter = "Annual",
+            BaseState = SubmissionBaseStates.Submitted, Status = "verified", SubmittedByUserId = historicalActor.Id,
+            SubmittedAt = new DateTime(2024, 8, 3, 8, 0, 0, DateTimeKind.Utc), VerifierScore = 4m,
+            VerifierUserId = historicalActor.Id, VerifiedAt = new DateTime(2024, 8, 4, 9, 30, 0, DateTimeKind.Utc),
+            VerifierComments = "Historical rating without workflow evidence"
         };
         var workflow = new WorkflowDefinition
         {
@@ -428,7 +507,7 @@ public static class DataCutoverAcceptanceRunner
             RequiredActionCode = "OPMS_SUBMISSION.VERIFY", RequiredPermissionCode = "OPMS_SUBMISSION.VERIFY",
             RequiresRating = true, RatingScheme = scheme, IsTerminal = true
         };
-        context.AddRange(periodSubmission, ratingSubmission, workflow, stage);
+        context.AddRange(periodSubmission, blockedPeriodSubmission, ratingSubmission, blockedRatingSubmission, workflow, stage);
         await context.SaveChangesAsync(cancellationToken);
         var instance = new SubmissionWorkflowInstance
         {

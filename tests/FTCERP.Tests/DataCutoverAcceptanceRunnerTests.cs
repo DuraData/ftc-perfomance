@@ -23,6 +23,13 @@ public sealed class DataCutoverAcceptanceRunnerTests : IDisposable
         evidence.SchemaInitialization.Should().Be("Current EF Core model");
         evidence.MigrationsApplied.Should().BeFalse();
         evidence.Scenarios.Should().HaveCount(4).And.OnlyContain(scenario => scenario.Passed);
+        evidence.Exceptions.Should().HaveCount(6);
+        evidence.Exceptions.Should().ContainSingle(item => item.Category == "Target normalization" && item.Status == "Blocked");
+        evidence.Exceptions.Should().ContainSingle(item => item.Category == "Submission period" && item.Status == "Blocked");
+        evidence.Exceptions.Should().ContainSingle(item => item.Category == "Legacy rating" && item.Status == "Blocked");
+        evidence.Exceptions.Should().Contain(item => item.Category == "Tenant ownership" && item.Status == "Blocked");
+        evidence.Exceptions.Should().Contain(item => item.Category == "Tenant ownership" && item.Status == "Ambiguous");
+        evidence.Exceptions.Should().Contain(item => item.Category == "Tenant ownership" && item.Status == "DifferentMunicipality");
         evidence.PersistedEvidence.Should().Contain(new Dictionary<string, int>
         {
             ["tenantOwnershipReconciliations"] = 1,
