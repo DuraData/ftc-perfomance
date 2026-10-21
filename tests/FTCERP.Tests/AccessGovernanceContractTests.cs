@@ -261,6 +261,33 @@ public sealed class AccessGovernanceContractTests
         Assert.Equal("X-Municipality-Id", TenantResolutionMiddleware.LegacyHeaderName);
     }
 
+    [Fact]
+    public async Task Anonymous_authentication_endpoints_ignore_stale_authenticated_tenant_context()
+    {
+        var reachedEndpoint = false;
+        var middleware = new TenantResolutionMiddleware(_ =>
+        {
+            reachedEndpoint = true;
+            return Task.CompletedTask;
+        });
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.NameIdentifier, "stale-session-user")], "stale-cookie")),
+        };
+        context.Request.Headers[TenantResolutionMiddleware.HeaderName] = Guid.NewGuid().ToString();
+        context.SetEndpoint(new Endpoint(
+            _ => Task.CompletedTask,
+            new EndpointMetadataCollection(new AllowAnonymousAttribute()),
+            "anonymous authentication endpoint"));
+
+        await middleware.InvokeAsync(context, null!, null!, null!);
+
+        Assert.True(reachedEndpoint);
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.False(context.Items.ContainsKey("OPMS.MunicipalityId"));
+    }
+
     private static void AssertGone(ActionResult? result)
     {
         var objectResult = Assert.IsType<ObjectResult>(result);

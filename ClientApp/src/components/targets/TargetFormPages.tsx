@@ -1605,7 +1605,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
                   <TargetValueInput label="Q1 target" unitValue={form.q1UnitType} value={form.q1Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q1Target: value }))} />
                 </div>
-                <Textarea label="" rows={2} value={form.q1Description} onChange={(e) => setForm(prev => ({ ...prev, q1Description: e.target.value }))} placeholder="Description" />
+                <Textarea label="Quarter 1 description" rows={2} value={form.q1Description} onChange={(e) => setForm(prev => ({ ...prev, q1Description: e.target.value }))} placeholder="Describe the Quarter 1 target" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q1UnitType)}</span>
@@ -1627,7 +1627,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
                   <TargetValueInput label="Q2 target" unitValue={form.q2UnitType} value={form.q2Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q2Target: value }))} />
                 </div>
-                <Textarea label="" rows={2} value={form.q2Description} onChange={(e) => setForm(prev => ({ ...prev, q2Description: e.target.value }))} placeholder="Description" />
+                <Textarea label="Quarter 2 description" rows={2} value={form.q2Description} onChange={(e) => setForm(prev => ({ ...prev, q2Description: e.target.value }))} placeholder="Describe the Quarter 2 target" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q2UnitType)}</span>
@@ -1649,7 +1649,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
                   <TargetValueInput label="Mid-Year target" unitValue={form.midTermUnitType} value={form.midTermTarget} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, midTermTarget: value }))} />
                 </div>
-                <Textarea label="" rows={2} value={form.midTermDescription} onChange={(e) => setForm(prev => ({ ...prev, midTermDescription: e.target.value }))} placeholder="Description" />
+                <Textarea label="Mid-Year description" rows={2} value={form.midTermDescription} onChange={(e) => setForm(prev => ({ ...prev, midTermDescription: e.target.value }))} placeholder="Describe the Mid-Year target" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.midTermUnitType)}</span>
@@ -1671,7 +1671,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
                   <TargetValueInput label="Q3 target" unitValue={form.q3UnitType} value={form.q3Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q3Target: value }))} />
                 </div>
-                <Textarea label="" rows={2} value={form.q3Description} onChange={(e) => setForm(prev => ({ ...prev, q3Description: e.target.value }))} placeholder="Description" />
+                <Textarea label="Quarter 3 description" rows={2} value={form.q3Description} onChange={(e) => setForm(prev => ({ ...prev, q3Description: e.target.value }))} placeholder="Describe the Quarter 3 target" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q3UnitType)}</span>
@@ -1693,7 +1693,7 @@ export function OPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
                   <TargetValueInput label="Q4 target" unitValue={form.q4UnitType} value={form.q4Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q4Target: value }))} />
                 </div>
-                <Textarea label="" rows={2} value={form.q4Description} onChange={(e) => setForm(prev => ({ ...prev, q4Description: e.target.value }))} placeholder="Description" />
+                <Textarea label="Quarter 4 description" rows={2} value={form.q4Description} onChange={(e) => setForm(prev => ({ ...prev, q4Description: e.target.value }))} placeholder="Describe the Quarter 4 target" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q4UnitType)}</span>
@@ -2070,7 +2070,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
                   <TargetValueInput label="Q1 target" unitValue={form.q1UnitType} value={form.q1Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q1Target: value }))} />
                 </div>
-                <Textarea label="" rows={2} value={form.q1Description} onChange={(e) => setForm(prev => ({ ...prev, q1Description: e.target.value }))} placeholder="Description" />
+                <Textarea label="Quarter 1 description" rows={2} value={form.q1Description} onChange={(e) => setForm(prev => ({ ...prev, q1Description: e.target.value }))} placeholder="Describe the Quarter 1 target" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q1UnitType)}</span>
@@ -2092,7 +2092,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
                   <TargetValueInput label="Q2 target" unitValue={form.q2UnitType} value={form.q2Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q2Target: value }))} />
                 </div>
-                <Textarea label="" rows={2} value={form.q2Description} onChange={(e) => setForm(prev => ({ ...prev, q2Description: e.target.value }))} placeholder="Description" />
+                <Textarea label="Quarter 2 description" rows={2} value={form.q2Description} onChange={(e) => setForm(prev => ({ ...prev, q2Description: e.target.value }))} placeholder="Describe the Quarter 2 target" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q2UnitType)}</span>
@@ -2114,7 +2114,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
                   <TargetValueInput label="Mid-Year target" unitValue={form.midTermUnitType} value={form.midTermTarget} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, midTermTarget: value }))} />
                 </div>
-                <Textarea label="" rows={2} value={form.midTermDescription} onChange={(e) => setForm(prev => ({ ...prev, midTermDescription: e.target.value }))} placeholder="Description" />
+                <Textarea label="Mid-Year description" rows={2} value={form.midTermDescription} onChange={(e) => setForm(prev => ({ ...prev, midTermDescription: e.target.value }))} placeholder="Describe the Mid-Year target" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.midTermUnitType)}</span>
@@ -2136,7 +2136,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
                   <TargetValueInput label="Q3 target" unitValue={form.q3UnitType} value={form.q3Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q3Target: value }))} />
                 </div>
-                <Textarea label="" rows={2} value={form.q3Description} onChange={(e) => setForm(prev => ({ ...prev, q3Description: e.target.value }))} placeholder="Description" />
+                <Textarea label="Quarter 3 description" rows={2} value={form.q3Description} onChange={(e) => setForm(prev => ({ ...prev, q3Description: e.target.value }))} placeholder="Describe the Quarter 3 target" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q3UnitType)}</span>
@@ -2158,7 +2158,7 @@ export function IPMSTargetFormPage({ targetId }: { targetId?: string }) {
                   <p className="text-xs font-medium text-secondary-500 uppercase tracking-wide">Target</p>
                   <TargetValueInput label="Q4 target" unitValue={form.q4UnitType} value={form.q4Target} configuration={configuration} onChange={(value) => setForm(prev => ({ ...prev, q4Target: value }))} />
                 </div>
-                <Textarea label="" rows={2} value={form.q4Description} onChange={(e) => setForm(prev => ({ ...prev, q4Description: e.target.value }))} placeholder="Description" />
+                <Textarea label="Quarter 4 description" rows={2} value={form.q4Description} onChange={(e) => setForm(prev => ({ ...prev, q4Description: e.target.value }))} placeholder="Describe the Quarter 4 target" />
                 <div className="flex items-center gap-2 text-xs text-secondary-500">
                   <span className="w-2 h-2 rounded-full bg-secondary-400"></span>
                   <span>{getTargetUnitLabel(form.q4UnitType)}</span>

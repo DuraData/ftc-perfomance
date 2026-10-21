@@ -192,6 +192,13 @@ const SESSION_MARKER_KEY = 'auth_session';
 export const AUTH_SESSION_EXPIRED_EVENT = 'opms:auth-session-expired';
 const TENANT_STORAGE_KEY = 'municipality_context_public_id';
 const LEGACY_TENANT_STORAGE_KEY = 'municipality_context_id';
+const TENANT_AGNOSTIC_AUTH_ENDPOINTS = new Set([
+  '/v1/auth/login',
+  '/v1/auth/refresh-token',
+  '/v1/auth/password/forgot',
+  '/v1/auth/password/reset',
+  '/v1/auth/enterprise/options',
+]);
 let refreshPromise: Promise<ApiResponse<LoginResponse>> | null = null;
 sessionStorage.removeItem('auth_token');
 sessionStorage.removeItem(LEGACY_TENANT_STORAGE_KEY);
@@ -211,6 +218,10 @@ function addTenantHeader(headers: Record<string, string>) {
   const municipalityPublicId = getCurrentMunicipalityPublicId();
   if (municipalityPublicId !== null) headers['X-Municipality-Public-Id'] = municipalityPublicId;
   return headers;
+}
+
+function addEndpointTenantHeader(endpoint: string, headers: Record<string, string>) {
+  return TENANT_AGNOSTIC_AUTH_ENDPOINTS.has(endpoint) ? headers : addTenantHeader(headers);
 }
 
 function markSessionEstablished() {
@@ -1200,7 +1211,7 @@ async function fetchApi<T>(
     ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
   };
 
-  addTenantHeader(headers);
+  addEndpointTenantHeader(endpoint, headers);
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
@@ -1218,7 +1229,7 @@ async function fetchApi<T>(
           ...suppliedHeaders,
           ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
         };
-        addTenantHeader(retryHeaders);
+        addEndpointTenantHeader(endpoint, retryHeaders);
         const retryResponse = await fetch(`${API_BASE_URL}${endpoint}`, {
           ...options,
           headers: retryHeaders,
@@ -1286,7 +1297,7 @@ async function refreshAccessToken(): Promise<ApiResponse<LoginResponse>> {
     refreshPromise = (async () => {
       const response = await fetch(`${API_BASE_URL}/v1/auth/refresh-token`, {
         method: 'POST',
-        headers: addTenantHeader({ 'Content-Type': 'application/json', 'X-OPMS-Request': 'same-origin' }),
+        headers: addEndpointTenantHeader('/v1/auth/refresh-token', { 'Content-Type': 'application/json', 'X-OPMS-Request': 'same-origin' }),
         credentials: 'include',
       });
       const data = await readApiResponse<LoginResponse>(response);

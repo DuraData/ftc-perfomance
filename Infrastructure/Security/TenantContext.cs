@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using FTCERP.Host.Domain.Entities;
 using FTCERP.Host.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,7 +21,7 @@ public sealed class HttpTenantContext(IHttpContextAccessor accessor) : ITenantCo
     public string? UserId => accessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
 }
 
-public sealed class TenantResolutionMiddleware(RequestDelegate next)
+public sealed class TenantResolutionMiddleware(RequestDelegate next, ILogger<TenantResolutionMiddleware>? logger = null)
 {
     internal const string MunicipalityItem = "OPMS.MunicipalityId";
     internal const string SystemItem = "OPMS.SystemScope";
@@ -29,6 +30,16 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
 
     public async Task InvokeAsync(HttpContext context, UserManager<ApplicationUser> userManager, IAccessControlService accessControl, ApplicationDbContext dbContext)
     {
+        // Authentication endpoints explicitly marked anonymous must remain reachable even when
+        // the browser carries an expired authentication cookie and a stale tenant selection.
+        // Their controllers resolve the relevant account/municipality from the submitted
+        // authentication contract, so a previous session must not gate the new sign-in flow.
+        if (context.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() is not null)
+        {
+            await next(context);
+            return;
+        }
+
         var userId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId)) { await next(context); return; }
         var user = await userManager.FindByIdAsync(userId);
@@ -58,6 +69,12 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
                 .SingleOrDefaultAsync(context.RequestAborted);
             if (!resolved.HasValue || (!system && !allowed.Contains(resolved.Value)))
             {
+                logger?.LogWarning(
+                    "Rejected requested municipality context. System scope: {SystemScope}; active assigned municipalities: {AllowedCount}; municipality resolved: {Resolved}; assignment matched: {AssignmentMatched}",
+                    system,
+                    allowed.Length,
+                    resolved.HasValue,
+                    resolved.HasValue && allowed.Contains(resolved.Value));
                 await ApiProblemDetails.WriteAsync(context, StatusCodes.Status403Forbidden,
                     "The requested municipality context is not authorized.", "TENANT_CONTEXT_DENIED");
                 return;

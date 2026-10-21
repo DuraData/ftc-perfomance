@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AUTH_SESSION_EXPIRED_EVENT, getMfaStatus, getMyPermissions, isAuthenticated, login, retryNotificationDelivery } from './api';
+import { AUTH_SESSION_EXPIRED_EVENT, completeEnterpriseLogin, getEnterpriseSignInOptions, getMfaStatus, getMyPermissions, isAuthenticated, login, requestPasswordReset, resetPassword, retryNotificationDelivery } from './api';
 
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -37,6 +37,23 @@ describe('cookie-only authentication sessions', () => {
     expect(sessionStorage.getItem('auth_session')).toBe('1');
     expect(sessionStorage.getItem('auth_token')).toBeNull();
     expect(isAuthenticated()).toBe(true);
+  });
+
+  it('keeps stale municipality context out of every pre-authentication request', async () => {
+    sessionStorage.setItem('municipality_context_public_id', '00000000-0000-4000-8000-000000000001');
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true, data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await login({ email: 'user@example.test', password: 'not-a-real-password' });
+    await completeEnterpriseLogin();
+    await getEnterpriseSignInOptions('user@example.test');
+    await requestPasswordReset('user@example.test');
+    await resetPassword('user@example.test', 'one-time-token', 'A-Strong-New-Password9!');
+
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect((init as RequestInit).headers).not.toHaveProperty('X-Municipality-Public-Id');
+    }
   });
 
   it('coalesces concurrent refreshes and retries without bearer headers or token bodies', async () => {
