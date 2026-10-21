@@ -1284,6 +1284,16 @@ export type WorkflowQueueName =
   | 'internal-audit-returned'
   | 'approved-closed';
 
+export type WorkflowQueueFilters = {
+  search?: string;
+  municipalityFinancialYearPublicId?: string;
+  kind?: 'all' | 'opms' | 'ipms';
+  period?: '' | Quarter;
+  status?: 'all' | SubmissionStatus;
+  sortBy?: 'createdAt' | 'dueDate' | 'targetName' | 'indicatorNumber' | 'quarter' | 'status';
+  sortDirection?: 'asc' | 'desc';
+};
+
 export interface WorkflowQueueCountsDto {
   mySubmissions: number;
   verification: number;

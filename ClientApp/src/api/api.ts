@@ -181,6 +181,7 @@ import type {
   LegacyTenantOwnershipResultDto,
   PerformanceDashboardDto,
   WorkflowQueueDto,
+  WorkflowQueueFilters,
   WorkflowQueueName,
   IdpImportBatch,
   IdpImportBatchSummary,
@@ -2429,8 +2430,15 @@ export async function getIpmsPerformanceDashboard(filters: { municipalityFinanci
   return get<PerformanceDashboardDto>(`/v1/performance-dashboards/ipms${query}`);
 }
 
-export async function getWorkflowQueue(queue: WorkflowQueueName, page = 1, pageSize = 25): Promise<ApiResponse<WorkflowQueueDto>> {
+export async function getWorkflowQueue(queue: WorkflowQueueName, page = 1, pageSize = 25, filters: WorkflowQueueFilters = {}): Promise<ApiResponse<WorkflowQueueDto>> {
   const parameters = new URLSearchParams({ queue, page: String(page), pageSize: String(pageSize) });
+  if (filters.search?.trim()) parameters.set('search', filters.search.trim());
+  if (filters.municipalityFinancialYearPublicId) parameters.set('municipalityFinancialYearPublicId', filters.municipalityFinancialYearPublicId);
+  if (filters.kind && filters.kind !== 'all') parameters.set('kind', filters.kind);
+  if (filters.period) parameters.set('period', filters.period);
+  if (filters.status && filters.status !== 'all') parameters.set('status', filters.status);
+  if (filters.sortBy) parameters.set('sortBy', filters.sortBy);
+  if (filters.sortDirection) parameters.set('sortDirection', filters.sortDirection);
   return get<WorkflowQueueDto>(`/v1/workflow-queues?${parameters.toString()}`);
 }
 

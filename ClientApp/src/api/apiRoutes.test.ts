@@ -656,10 +656,13 @@ describe('versioned API routes', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await getWorkflowQueue('under-approval', 3, 20);
+    await getWorkflowQueue('under-approval', 3, 20, {
+      search: 'water', municipalityFinancialYearPublicId: 'year-1', kind: 'opms', period: 'Q2', status: 'pending_approval',
+      sortBy: 'dueDate', sortDirection: 'asc',
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/v1/workflow-queues?queue=under-approval&page=3&pageSize=20'),
+      expect.stringContaining('/v1/workflow-queues?queue=under-approval&page=3&pageSize=20&search=water&municipalityFinancialYearPublicId=year-1&kind=opms&period=Q2&status=pending_approval&sortBy=dueDate&sortDirection=asc'),
       expect.objectContaining({ credentials: 'include' }),
     );
   });

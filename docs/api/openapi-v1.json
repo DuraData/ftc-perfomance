@@ -92978,17 +92978,60 @@
             }
           },
           {
-            "name": "Offset",
+            "name": "Search",
             "in": "query",
             "schema": {
-              "type": "integer",
-              "format": "int32"
+              "maxLength": 200,
+              "minLength": 0,
+              "type": "string"
             }
           },
           {
-            "name": "NormalizedQueue",
+            "name": "MunicipalityFinancialYearPublicId",
             "in": "query",
             "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Kind",
+            "in": "query",
+            "schema": {
+              "pattern": "^(?i:all|opms|ipms)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Period",
+            "in": "query",
+            "schema": {
+              "maxLength": 50,
+              "minLength": 0,
+              "type": "string"
+            }
+          },
+          {
+            "name": "Status",
+            "in": "query",
+            "schema": {
+              "pattern": "^(?i:all|draft|submitted|pending_verification|verified|pending_approval|approved|reviewed|returned_for_info|verify_rejected|rejected|audited|completed|cancelled)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "SortBy",
+            "in": "query",
+            "schema": {
+              "pattern": "^(?i:createdAt|dueDate|targetName|indicatorNumber|quarter|status)$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "SortDirection",
+            "in": "query",
+            "schema": {
+              "pattern": "^(?i:asc|desc)$",
               "type": "string"
             }
           }

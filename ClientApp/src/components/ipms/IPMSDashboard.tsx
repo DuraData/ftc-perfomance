@@ -211,8 +211,8 @@ export function IPMSDashboardPage() {
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               {oversightTile('KPIs with outstanding periods', stats.allPeriodsOutstandingTargets, `of ${stats.allPeriodsTotalTargets} scoped KPIs`, () => setCurrentPath(allPeriodsDrilldownPath('/ipms/targets', 'outstanding')), allPeriodsDrilldownDisabled)}
               {oversightTile('Returned submissions', stats.allPeriodsReturnedSubmissions, 'awaiting information or correction', () => setCurrentPath(allPeriodsDrilldownPath('/ipms/submissions', 'returned')), allPeriodsDrilldownDisabled)}
-              {oversightTile('Pending verification', stats.allPeriodsPendingVerification, 'across the financial year', () => setCurrentPath('/workflow/verification'), allPeriodsDrilldownDisabled)}
-              {oversightTile('Pending approval', stats.allPeriodsPendingApproval, 'across the financial year', () => setCurrentPath('/workflow/approval'), allPeriodsDrilldownDisabled)}
+              {oversightTile('Pending verification', stats.allPeriodsPendingVerification, 'across the financial year', () => setCurrentPath(`/workflow/verification?municipalityFinancialYearPublicId=${encodeURIComponent(financialYearId)}&kind=ipms`), allPeriodsDrilldownDisabled)}
+              {oversightTile('Pending approval', stats.allPeriodsPendingApproval, 'across the financial year', () => setCurrentPath(`/workflow/approval?municipalityFinancialYearPublicId=${encodeURIComponent(financialYearId)}&kind=ipms`), allPeriodsDrilldownDisabled)}
               {stats.allPeriodsOpenRfis != null ? oversightTile('Open RFIs', stats.allPeriodsOpenRfis, 'unresolved across all periods', () => setCurrentPath(`/reports/outstanding-rfi?municipalityFinancialYearPublicId=${encodeURIComponent(financialYearId)}&kind=2`), allPeriodsDrilldownDisabled) : null}
             </div>
           </section>

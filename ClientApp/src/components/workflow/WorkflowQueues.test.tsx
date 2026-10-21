@@ -9,6 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   getIpmsSubmission: vi.fn(),
   getInternalAuditSubmission: vi.fn(),
   saveInternalAuditAssessment: vi.fn(),
+  getMunicipalityFinancialYearMastersPage: vi.fn(),
 }));
 
 const appMocks = vi.hoisted(() => ({
@@ -18,6 +19,7 @@ const appMocks = vi.hoisted(() => ({
   userProfile: { id: 'submitter-live' },
 }));
 const securityMocks = vi.hoisted(() => ({ canReadField: vi.fn() }));
+const yearPublicId = '11111111-1111-4111-8111-111111111111';
 
 vi.mock('../../api/api', () => apiMocks);
 vi.mock('../../context/AppContext', () => ({ useApp: () => appMocks }));
@@ -27,9 +29,15 @@ vi.mock('../layout/AppShell', () => ({ AppShell: ({ children, title }: { childre
 describe('WorkflowQueues', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
+    window.history.replaceState({}, '', '/workflow/verification');
     Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
     appMocks.currentPath = '/workflow/verification';
     securityMocks.canReadField.mockReturnValue(true);
+    apiMocks.getMunicipalityFinancialYearMastersPage.mockResolvedValue({
+      success: true,
+      data: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
+    });
   });
 
   it('renders queue counts and rows from the authorised API response', async () => {
@@ -61,7 +69,7 @@ describe('WorkflowQueues', () => {
     expect(screen.getByRole('main', { name: 'Verification Queue' })).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'Verification Queue submissions' })).toBeInTheDocument();
     expect(screen.getByText('1 authorised item')).toBeInTheDocument();
-    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1);
+    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1, 25, defaultQueueFiltersForTest());
 
     apiMocks.getOpmsSubmission.mockResolvedValue({ success: false });
     fireEvent.click(screen.getByText('Live Water KPI'));
@@ -87,7 +95,7 @@ describe('WorkflowQueues', () => {
 
     expect(await screen.findByText('Returned Submissions')).toBeInTheDocument();
     expect(screen.getByText('1')).toBeInTheDocument();
-    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('my-returned', 1);
+    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('my-returned', 1, 25, defaultQueueFiltersForTest());
   });
 
   it.each([
@@ -103,7 +111,7 @@ describe('WorkflowQueues', () => {
 
     expect(await screen.findByRole('main', { name: title })).toBeInTheDocument();
     expect(screen.getByRole('table', { name: `${title} submissions` })).toBeInTheDocument();
-    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith(queue, 1);
+    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith(queue, 1, 25, defaultQueueFiltersForTest());
   });
 
   it.each([
@@ -124,19 +132,19 @@ describe('WorkflowQueues', () => {
 
     expect(await screen.findByRole('main', { name: title })).toBeInTheDocument();
     expect(screen.getByRole('table', { name: `${title} submissions` })).toBeInTheDocument();
-    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith(queue, 1);
+    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith(queue, 1, 25, defaultQueueFiltersForTest());
   });
 
   it('rebinds the governed queue when navigation changes between workflow routes', async () => {
     apiMocks.getWorkflowQueue.mockImplementation((queue: string) => Promise.resolve(emptyQueueResponse(queue)));
     const { rerender } = render(<WorkflowQueues />);
-    await waitFor(() => expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1));
+    await waitFor(() => expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1, 25, defaultQueueFiltersForTest()));
 
     appMocks.currentPath = '/workflow/approval';
     rerender(<WorkflowQueues />);
 
     expect(await screen.findByRole('main', { name: 'Approval Queue' })).toBeInTheDocument();
-    await waitFor(() => expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('approval', 1));
+    await waitFor(() => expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('approval', 1, 25, defaultQueueFiltersForTest()));
     expect(screen.getByRole('table', { name: 'Approval Queue submissions' })).toBeInTheDocument();
     expect(screen.queryByRole('table', { name: 'Verification Queue submissions' })).not.toBeInTheDocument();
   });
@@ -201,7 +209,67 @@ describe('WorkflowQueues', () => {
     expect(screen.getByText('Restricted')).toBeInTheDocument();
     expect(securityMocks.canReadField).toHaveBeenCalledWith('OPMS_SUBMISSION', 'SubmitterIdentity');
   });
+
+  it('restores server-side queue filters for the session and updates them without client-side filtering', async () => {
+    sessionStorage.setItem('workflow-queue-filters:verification', JSON.stringify({
+      search: 'Water', municipalityFinancialYearPublicId: yearPublicId, kind: 'opms', period: 'Q2', status: 'pending_verification',
+      sortBy: 'dueDate', sortDirection: 'asc',
+    }));
+    apiMocks.getWorkflowQueue.mockResolvedValue(emptyQueueResponse('verification'));
+
+    render(<WorkflowQueues />);
+
+    expect(await screen.findByLabelText('Search KPI or indicator')).toHaveValue('Water');
+    expect(screen.getByLabelText('Framework')).toHaveValue('opms');
+    expect(screen.getByLabelText('Period')).toHaveValue('Q2');
+    await waitFor(() => expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1, 25, {
+      search: 'Water', municipalityFinancialYearPublicId: yearPublicId, kind: 'opms', period: 'Q2', status: 'pending_verification',
+      sortBy: 'dueDate', sortDirection: 'asc',
+    }));
+
+    fireEvent.change(screen.getByLabelText('Search KPI or indicator'), { target: { value: 'Roads' } });
+
+    await waitFor(() => expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1, 25, {
+      search: 'Roads', municipalityFinancialYearPublicId: yearPublicId, kind: 'opms', period: 'Q2', status: 'pending_verification',
+      sortBy: 'dueDate', sortDirection: 'asc',
+    }));
+    expect(JSON.parse(sessionStorage.getItem('workflow-queue-filters:verification') ?? '{}')).toMatchObject({ search: 'Roads', municipalityFinancialYearPublicId: yearPublicId, kind: 'opms', period: 'Q2' });
+  });
+
+  it('uses the dashboard financial-year and framework deep link as the authoritative initial queue filter', async () => {
+    sessionStorage.setItem('workflow-queue-filters:verification', JSON.stringify({
+      ...defaultQueueFiltersForTest(), municipalityFinancialYearPublicId: '22222222-2222-4222-8222-222222222222', kind: 'ipms',
+    }));
+    window.history.replaceState({}, '', `/workflow/verification?municipalityFinancialYearPublicId=${yearPublicId}&kind=opms`);
+    apiMocks.getWorkflowQueue.mockResolvedValue(emptyQueueResponse('verification'));
+
+    render(<WorkflowQueues />);
+
+    await waitFor(() => expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1, 25, {
+      ...defaultQueueFiltersForTest(), municipalityFinancialYearPublicId: yearPublicId, kind: 'opms',
+    }));
+    expect(screen.getByLabelText('Financial year')).toHaveValue(yearPublicId);
+    expect(screen.getByLabelText('Framework')).toHaveValue('opms');
+  });
+
+  it('discards invalid session filter values before calling the queue API', async () => {
+    sessionStorage.setItem('workflow-queue-filters:verification', JSON.stringify({
+      search: 'x'.repeat(250), municipalityFinancialYearPublicId: 'not-a-public-id', kind: 'outside', period: 'Q9',
+      status: 'invented', sortBy: 'raw-sql', sortDirection: 'sideways',
+    }));
+    apiMocks.getWorkflowQueue.mockResolvedValue(emptyQueueResponse('verification'));
+
+    render(<WorkflowQueues />);
+
+    await waitFor(() => expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1, 25, {
+      ...defaultQueueFiltersForTest(), search: 'x'.repeat(200),
+    }));
+  });
 });
+
+function defaultQueueFiltersForTest() {
+  return { search: '', municipalityFinancialYearPublicId: '', kind: 'all', period: '', status: 'all', sortBy: 'createdAt', sortDirection: 'desc' };
+}
 
 function emptyCountsForTest() {
   return {

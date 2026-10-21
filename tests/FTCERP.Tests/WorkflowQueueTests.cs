@@ -140,6 +140,16 @@ public sealed class WorkflowQueueTests
             Name = "IPMS queue workflow",
             EffectiveFrom = financialYear.StartDate
         };
+        var reportingPeriod = new ReportingPeriod
+        {
+            MunicipalityFinancialYear = municipalityYear,
+            Code = "Q1",
+            Name = "Quarter 1",
+            PeriodType = ReportingPeriodType.Quarter1,
+            Sequence = 1,
+            StartDate = new DateTime(2025, 7, 1),
+            EndDate = new DateTime(2025, 9, 30)
+        };
         var opmsDraft = OpmsTarget("opms-draft", user.Id, municipality.Id);
         var opmsVerify = OpmsTarget("opms-verify", other.Id, municipality.Id);
         var opmsPms = OpmsTarget("opms-pms", user.Id, municipality.Id);
@@ -148,7 +158,7 @@ public sealed class WorkflowQueueTests
         var opmsOutside = OpmsTarget("opms-outside", other.Id, municipality.Id);
         var ipmsApproved = IpmsTarget("ipms-approved", user.Id, municipality.Id);
         var ipmsOutside = IpmsTarget("ipms-outside", other.Id, municipality.Id);
-        context.AddRange(municipalityYear, opmsDefinition, ipmsDefinition, opmsDraft, opmsVerify, opmsPms, opmsAudit, opmsReturned, opmsOutside, ipmsApproved, ipmsOutside);
+        context.AddRange(municipalityYear, opmsDefinition, ipmsDefinition, reportingPeriod, opmsDraft, opmsVerify, opmsPms, opmsAudit, opmsReturned, opmsOutside, ipmsApproved, ipmsOutside);
 
         var ownDraft = OpmsSubmission("own-draft", "opms-draft", "completed", SubmissionBaseStates.InProgress, user.Id, municipality.Id, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         var verify = OpmsSubmission("verify", "opms-verify", "draft", SubmissionBaseStates.Submitted, other.Id, municipality.Id, new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc));
@@ -158,6 +168,8 @@ public sealed class WorkflowQueueTests
         var outsideVerify = OpmsSubmission("outside-verify", "opms-outside", "completed", SubmissionBaseStates.Submitted, other.Id, municipality.Id, new DateTime(2026, 1, 3, 0, 0, 0, DateTimeKind.Utc));
         var ownApproved = IpmsSubmission("own-approved", "ipms-approved", "draft", SubmissionBaseStates.Submitted, user.Id, municipality.Id, new DateTime(2026, 1, 4, 0, 0, 0, DateTimeKind.Utc));
         var outsideApproved = IpmsSubmission("outside-approved", "ipms-outside", "draft", SubmissionBaseStates.Submitted, other.Id, municipality.Id, new DateTime(2026, 1, 5, 0, 0, 0, DateTimeKind.Utc));
+        foreach (var submission in new[] { ownDraft, verify, pms, audit, returned, outsideVerify }) submission.ReportingPeriod = reportingPeriod;
+        foreach (var submission in new[] { ownApproved, outsideApproved }) submission.ReportingPeriod = reportingPeriod;
         context.OpmsSubmissions.AddRange(
             ownDraft, verify, pms, audit, returned, outsideVerify);
         context.IpmsSubmissions.AddRange(ownApproved, outsideApproved);
@@ -267,6 +279,34 @@ public sealed class WorkflowQueueTests
         Assert.Equal("completed", approvedItem.Status);
         Assert.Equal(user.PublicId, approvedItem.SubmittedByUserPublicId);
         Assert.DoesNotContain(approved.Page.Items, item => item.PublicId == outsideApprovedPublicId);
+
+        var filteredResult = await controller.Get(new WorkflowQueueQueryRequest
+        {
+            Queue = "my-submissions",
+            Search = "ipms-approved",
+            MunicipalityFinancialYearPublicId = municipalityYear.PublicId,
+            Kind = "ipms",
+            Period = "Q1",
+            Status = "completed",
+            SortBy = "targetName",
+            SortDirection = "asc"
+        });
+        var filtered = Assert.IsType<ApiResponse<WorkflowQueueResponse>>(
+            Assert.IsType<OkObjectResult>(filteredResult.Result).Value).Data!;
+        var filteredItem = Assert.Single(filtered.Page.Items);
+        Assert.Equal(approvedPublicId, filteredItem.PublicId);
+        Assert.Equal(1, filtered.Page.TotalCount);
+        Assert.Equal(5, filtered.Counts.MySubmissions);
+
+        var protectedActorSearchResult = await controller.Get(new WorkflowQueueQueryRequest
+        {
+            Queue = "verification",
+            Search = other.FullName
+        });
+        var protectedActorSearch = Assert.IsType<ApiResponse<WorkflowQueueResponse>>(
+            Assert.IsType<OkObjectResult>(protectedActorSearchResult.Result).Value).Data!;
+        Assert.Empty(protectedActorSearch.Page.Items);
+        Assert.Equal(0, protectedActorSearch.Page.TotalCount);
 
         await AssertQueueStatus(controller, "pms", "approved");
         await AssertQueueStatus(controller, "auditor", "reviewed");

@@ -87,6 +87,8 @@ describe('IPMS dashboard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'KPIs with outstanding periods: 3. of 4 scoped KPIs' }));
     expect(setCurrentPath).toHaveBeenCalledWith('/ipms/targets?municipalityFinancialYearPublicId=year-1&dashboardFilter=outstanding');
+    fireEvent.click(screen.getByRole('button', { name: 'Pending verification: 3. across the financial year' }));
+    expect(setCurrentPath).toHaveBeenCalledWith('/workflow/verification?municipalityFinancialYearPublicId=year-1&kind=ipms');
     fireEvent.click(screen.getByRole('button', { name: 'Open RFIs: 1. unresolved across all periods' }));
     expect(setCurrentPath).toHaveBeenCalledWith('/reports/outstanding-rfi?municipalityFinancialYearPublicId=year-1&kind=2');
   });

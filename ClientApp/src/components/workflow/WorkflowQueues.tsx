@@ -3,8 +3,10 @@ import { FileText } from 'lucide-react';
 import { getIpmsSubmission, getOpmsSubmission, getWorkflowQueue } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
-import type { IPMSSubmission, OPMSSubmission, WorkflowQueueCountsDto, WorkflowQueueItemDto, WorkflowQueueName } from '../../types';
+import type { IPMSSubmission, OPMSSubmission, WorkflowQueueCountsDto, WorkflowQueueFilters, WorkflowQueueItemDto, WorkflowQueueName } from '../../types';
+import { CalendarMasterPicker } from '../common/CalendarMasterPicker';
 import { DataTable } from '../common/DataTable';
+import { Input, Select } from '../common/Form';
 import { Modal } from '../common/Modal';
 import { TabPanel, Tabs } from '../common/Tabs';
 import { AppShell } from '../layout/AppShell';
@@ -21,6 +23,95 @@ const emptyCounts: WorkflowQueueCountsDto = {
 type SubmissionDetail = OPMSSubmission | IPMSSubmission;
 
 type QueueRoute = { queue: WorkflowQueueName; title: string; subtitle: string };
+type QueueFilterState = Required<WorkflowQueueFilters>;
+
+const defaultQueueFilters: QueueFilterState = {
+  search: '', municipalityFinancialYearPublicId: '', kind: 'all', period: '', status: 'all', sortBy: 'createdAt', sortDirection: 'desc',
+};
+const queueKinds = ['all', 'opms', 'ipms'] as const;
+const queuePeriods = ['', 'Q1', 'Q2', 'Mid-Year', 'Q3', 'Q4', 'Annual'] as const;
+const queueStatuses = ['all', 'draft', 'submitted', 'pending_verification', 'verified', 'pending_approval', 'approved', 'reviewed', 'returned_for_info', 'verify_rejected', 'rejected', 'audited', 'completed', 'cancelled'] as const;
+const queueSortFields = ['createdAt', 'dueDate', 'targetName', 'indicatorNumber', 'quarter', 'status'] as const;
+const queueSortDirections = ['asc', 'desc'] as const;
+const publicIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function validPublicId(value: unknown): string {
+  return typeof value === 'string' && publicIdPattern.test(value) ? value : '';
+}
+
+function readQueueFilters(queue: WorkflowQueueName): QueueFilterState {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(`workflow-queue-filters:${queue}`) ?? '{}') as Partial<QueueFilterState>;
+    const stored: QueueFilterState = {
+      search: typeof raw.search === 'string' ? raw.search.slice(0, 200) : '',
+      municipalityFinancialYearPublicId: validPublicId(raw.municipalityFinancialYearPublicId),
+      kind: queueKinds.includes(raw.kind as QueueFilterState['kind']) ? raw.kind as QueueFilterState['kind'] : 'all',
+      period: queuePeriods.includes(raw.period as typeof queuePeriods[number]) ? raw.period as QueueFilterState['period'] : '',
+      status: queueStatuses.includes(raw.status as QueueFilterState['status']) ? raw.status as QueueFilterState['status'] : 'all',
+      sortBy: queueSortFields.includes(raw.sortBy as QueueFilterState['sortBy']) ? raw.sortBy as QueueFilterState['sortBy'] : 'createdAt',
+      sortDirection: queueSortDirections.includes(raw.sortDirection as QueueFilterState['sortDirection']) ? raw.sortDirection as QueueFilterState['sortDirection'] : 'desc',
+    };
+    const parameters = new URLSearchParams(window.location.search);
+    const linkedKind = parameters.get('kind');
+    const linkedPeriod = parameters.get('period');
+    const linkedStatus = parameters.get('status');
+    return {
+      ...stored,
+      municipalityFinancialYearPublicId: validPublicId(parameters.get('municipalityFinancialYearPublicId')) || stored.municipalityFinancialYearPublicId,
+      kind: queueKinds.includes(linkedKind as QueueFilterState['kind']) ? linkedKind as QueueFilterState['kind'] : stored.kind,
+      period: queuePeriods.includes(linkedPeriod as typeof queuePeriods[number]) ? linkedPeriod as QueueFilterState['period'] : stored.period,
+      status: queueStatuses.includes(linkedStatus as QueueFilterState['status']) ? linkedStatus as QueueFilterState['status'] : stored.status,
+    };
+  } catch {
+    return { ...defaultQueueFilters };
+  }
+}
+
+function useSessionQueueFilters(queue: WorkflowQueueName) {
+  const [state, setState] = useState(() => ({ queue, filters: readQueueFilters(queue) }));
+  const filters = state.queue === queue ? state.filters : readQueueFilters(queue);
+
+  useEffect(() => {
+    if (state.queue !== queue) setState({ queue, filters });
+  }, [filters, queue, state.queue]);
+  useEffect(() => {
+    try { sessionStorage.setItem(`workflow-queue-filters:${queue}`, JSON.stringify(filters)); } catch { /* Storage can be unavailable in hardened browsers. */ }
+  }, [filters, queue]);
+
+  const updateFilters = (changes: Partial<QueueFilterState>) => setState({ queue, filters: { ...filters, ...changes } });
+  const resetFilters = () => setState({ queue, filters: { ...defaultQueueFilters } });
+  return { filters, updateFilters, resetFilters };
+}
+
+function QueueFilters({ filters, onChange, onReset }: { filters: QueueFilterState; onChange: (changes: Partial<QueueFilterState>) => void; onReset: () => void }) {
+  return <Card>
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+      <Input label="Search KPI or indicator" value={filters.search} maxLength={200} onChange={event => onChange({ search: event.target.value })} />
+      <CalendarMasterPicker kind="municipality-financial-year" label="Financial year" emptyLabel="All active years" value={filters.municipalityFinancialYearPublicId} onChange={value => onChange({ municipalityFinancialYearPublicId: value })} />
+      <Select label="Framework" value={filters.kind} onChange={event => onChange({ kind: event.target.value as QueueFilterState['kind'] })} options={[
+        { value: 'all', label: 'All frameworks' }, { value: 'opms', label: 'OPMS' }, { value: 'ipms', label: 'IPMS' },
+      ]} />
+      <Select label="Period" value={filters.period} onChange={event => onChange({ period: event.target.value as QueueFilterState['period'] })} options={[
+        { value: '', label: 'All periods' }, { value: 'Q1', label: 'Quarter 1' }, { value: 'Q2', label: 'Quarter 2' },
+        { value: 'Mid-Year', label: 'Mid-Term' }, { value: 'Q3', label: 'Quarter 3' }, { value: 'Q4', label: 'Quarter 4' }, { value: 'Annual', label: 'Annual' },
+      ]} />
+      <Select label="Status" value={filters.status} onChange={event => onChange({ status: event.target.value as QueueFilterState['status'] })} options={[
+        { value: 'all', label: 'All queue statuses' },
+        ...queueStatuses.filter(status => status !== 'all').map(status => ({ value: status, label: statusLabels[status] })),
+      ]} />
+      <div className="flex items-end gap-2 xl:col-span-2">
+        <Select label="Sort by" value={filters.sortBy} onChange={event => onChange({ sortBy: event.target.value as QueueFilterState['sortBy'] })} options={[
+          { value: 'createdAt', label: 'Newest activity' }, { value: 'dueDate', label: 'Due date' }, { value: 'targetName', label: 'KPI name' },
+          { value: 'indicatorNumber', label: 'Indicator number' }, { value: 'quarter', label: 'Period' }, { value: 'status', label: 'Status' },
+        ]} />
+        <Select label="Direction" value={filters.sortDirection} onChange={event => onChange({ sortDirection: event.target.value as QueueFilterState['sortDirection'] })} options={[
+          { value: 'desc', label: 'Descending' }, { value: 'asc', label: 'Ascending' },
+        ]} />
+        <Button type="button" variant="outline" size="sm" onClick={onReset}>Reset</Button>
+      </div>
+    </div>
+  </Card>;
+}
 
 const governedQueueRoutes: Record<string, QueueRoute> = {
   '/workflow/verification': { queue: 'verification', title: 'Verification Queue', subtitle: 'Verify authorised OPMS and IPMS submissions' },
@@ -130,6 +221,7 @@ export function WorkflowQueues() {
   const security = useSecurity();
   const route = governedQueueRoutes[currentPath] ?? governedQueueRoutes['/workflow/verification'];
   const queue = route.queue;
+  const { filters, updateFilters, resetFilters } = useSessionQueueFilters(queue);
   const [selectedItem, setSelectedItem] = useState<WorkflowQueueItemDto | null>(null);
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
   const [items, setItems] = useState<WorkflowQueueItemDto[]>([]);
@@ -138,12 +230,14 @@ export function WorkflowQueues() {
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const changeFilters = (changes: Partial<QueueFilterState>) => { setPage(1); updateFilters(changes); };
+  const clearFilters = () => { setPage(1); resetFilters(); };
 
   useEffect(() => { setPage(1); }, [queue]);
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true); setLoadError(null);
-    void getWorkflowQueue(queue, page).then(result => {
+    void getWorkflowQueue(queue, page, 25, filters).then(result => {
       if (cancelled) return;
       if (!result.success || !result.data) {
         const message = result.message ?? 'Failed to load the workflow queue.';
@@ -156,7 +250,7 @@ export function WorkflowQueues() {
       setLoadError(message); pushToast('error', message); setItems([]); setTotalCount(0);
     }).finally(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
-  }, [page, pushToast, queue]);
+  }, [filters, page, pushToast, queue]);
 
   const openSubmission = async (item: WorkflowQueueItemDto) => {
     setSelectedItem(item);
@@ -172,6 +266,7 @@ export function WorkflowQueues() {
     { id: 'status', header: 'Status', accessor: (row: WorkflowQueueItemDto) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : 'warning'}>{statusLabels[row.status]}</Badge> },
   ];
   return <AppShell title={route.title} subtitle={route.subtitle}><div className="space-y-4">
+    <QueueFilters filters={filters} onChange={changeFilters} onReset={clearFilters} />
     {isLoading && <Card><p className="py-6 text-center text-sm text-secondary-500">Loading authorised workflow items…</p></Card>}
     {!isLoading && loadError && <EmptyState icon={<FileText className="h-6 w-6" />} title="Workflow queue unavailable" description={loadError} />}
     {!isLoading && !loadError && <Card>
@@ -188,6 +283,7 @@ export function MyWorkQueue() {
   const security = useSecurity();
   const route = personalQueueRoutes[currentPath] ?? personalQueueRoutes['/workflow/my-queue'];
   const queue = route.queue;
+  const { filters, updateFilters, resetFilters } = useSessionQueueFilters(queue);
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
   const [selectedKind, setSelectedKind] = useState<'opms' | 'ipms' | null>(null);
   const [items, setItems] = useState<WorkflowQueueItemDto[]>([]);
@@ -195,10 +291,12 @@ export function MyWorkQueue() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const changeFilters = (changes: Partial<QueueFilterState>) => { setPage(1); updateFilters(changes); };
+  const clearFilters = () => { setPage(1); resetFilters(); };
   useEffect(() => { setPage(1); }, [queue]);
   useEffect(() => {
     let cancelled = false; setLoadError(null);
-    void getWorkflowQueue(queue, page).then(result => {
+    void getWorkflowQueue(queue, page, 25, filters).then(result => {
       if (cancelled) return;
       if (!result.success || !result.data) {
         const message = result.message ?? 'Failed to load your work queue.';
@@ -211,7 +309,7 @@ export function MyWorkQueue() {
       setLoadError(message); pushToast('error', message); setItems([]);
     });
     return () => { cancelled = true; };
-  }, [page, pushToast, queue]);
+  }, [filters, page, pushToast, queue]);
   const openSubmission = async (item: WorkflowQueueItemDto) => {
     const detail = await loadSubmissionDetail(item);
     if (!detail) pushToast('error', 'The selected submission is no longer available.'); else { setSelectedSubmission(detail); setSelectedKind(item.kind); }
@@ -237,6 +335,7 @@ export function MyWorkQueue() {
   ];
   return <AppShell title={route.title} subtitle={route.subtitle}><div className="space-y-4">
     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{summary.map(item => <Card key={item.label} className="p-3"><p className="text-lg font-bold text-secondary-900 dark:text-white">{item.value}</p><p className="text-xs text-secondary-500">{item.label}</p></Card>)}</div>
+    <QueueFilters filters={filters} onChange={changeFilters} onReset={clearFilters} />
     {loadError ? <EmptyState icon={<FileText className="h-6 w-6" />} title="Work queue unavailable" description={loadError} /> : <Card><DataTable tableLabel={`${route.title} submissions`} data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} getRowActionLabel={(row) => `Open ${row.kind.toUpperCase()} submission for ${row.targetName}`} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.publicId}`} /><QueuePagination page={page} totalPages={totalPages} onChange={setPage} /></Card>}
     <SubmissionDetailModal submission={selectedSubmission} kind={selectedKind} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedKind(null); }} />
   </div></AppShell>;

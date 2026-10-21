@@ -27,12 +27,11 @@ public sealed class WorkflowQueuesController(
         var ipmsScope = await accessControl.GetQueryScopeAsync(user, "IPMS_SUBMISSION.READ");
         var records = OpmsRecords(opmsScope).Concat(IpmsRecords(ipmsScope));
         var counts = await Summarize(records, user.Id);
-        var filtered = ApplyQueue(records, request.NormalizedQueue, user.Id);
+        var filtered = ApplyFilters(
+            ApplyQueue(records, request.NormalizedQueue, user.Id),
+            request);
         var totalCount = await filtered.CountAsync();
-        var rows = await filtered
-            .OrderByDescending(item => item.CreatedAt)
-            .ThenBy(item => item.Kind)
-            .ThenBy(item => item.Id)
+        var rows = await ApplyOrdering(filtered, request)
             .Skip(request.Offset)
             .Take(request.PageSize)
             .ToListAsync();
@@ -97,6 +96,7 @@ public sealed class WorkflowQueuesController(
                 && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
                 && item.OpmsTarget.IsIndicatorNumberRevised && item.OpmsTarget.RevisedIndicatorNumber != null ? item.OpmsTarget.RevisedIndicatorNumber : item.OpmsTarget.IndicatorNumber,
             Quarter = item.ReportingPeriod == null ? item.Quarter : item.ReportingPeriod.Code,
+            MunicipalityFinancialYearPublicId = item.ReportingPeriod == null ? null : item.ReportingPeriod.MunicipalityFinancialYear.PublicId,
             DueDate = item.DueDate,
             Status = context.SubmissionWorkflowInstances
                 .Where(instance => instance.SubmissionKind == SubmissionKind.Opms && instance.SubmissionId == item.Id)
@@ -150,6 +150,7 @@ public sealed class WorkflowQueuesController(
                 && (item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter3 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Quarter4 || item.ReportingPeriod.PeriodType == ReportingPeriodType.Annual)
                 && item.IpmsTarget.IsIndicatorNumberRevised && item.IpmsTarget.RevisedIndicatorNumber != null ? item.IpmsTarget.RevisedIndicatorNumber : item.IpmsTarget.IndicatorNumber,
             Quarter = item.ReportingPeriod == null ? item.Quarter : item.ReportingPeriod.Code,
+            MunicipalityFinancialYearPublicId = item.ReportingPeriod == null ? null : item.ReportingPeriod.MunicipalityFinancialYear.PublicId,
             DueDate = item.DueDate,
             Status = context.SubmissionWorkflowInstances
                 .Where(instance => instance.SubmissionKind == SubmissionKind.Ipms && instance.SubmissionId == item.Id)
@@ -200,6 +201,51 @@ public sealed class WorkflowQueuesController(
         };
     }
 
+    private static IQueryable<QueueRecord> ApplyFilters(
+        IQueryable<QueueRecord> query,
+        WorkflowQueueQueryRequest request)
+    {
+        if (request.NormalizedSearch is { } search)
+            query = query.Where(item => item.TargetName.Contains(search) || item.IndicatorNumber.Contains(search));
+
+        if (request.MunicipalityFinancialYearPublicId.HasValue)
+            query = query.Where(item => item.MunicipalityFinancialYearPublicId == request.MunicipalityFinancialYearPublicId.Value);
+
+        if (request.NormalizedKind != "all")
+            query = query.Where(item => item.Kind == request.NormalizedKind);
+
+        if (request.NormalizedPeriod is { } period)
+            query = query.Where(item => item.Quarter == period);
+
+        if (request.NormalizedStatus != "all")
+            query = query.Where(item => item.Status == request.NormalizedStatus);
+
+        return query;
+    }
+
+    private static IOrderedQueryable<QueueRecord> ApplyOrdering(
+        IQueryable<QueueRecord> query,
+        WorkflowQueueQueryRequest request)
+    {
+        var ordered = (request.NormalizedSortBy, request.SortDescending) switch
+        {
+            ("duedate", false) => query.OrderBy(item => item.DueDate),
+            ("duedate", true) => query.OrderByDescending(item => item.DueDate),
+            ("targetname", false) => query.OrderBy(item => item.TargetName),
+            ("targetname", true) => query.OrderByDescending(item => item.TargetName),
+            ("indicatornumber", false) => query.OrderBy(item => item.IndicatorNumber),
+            ("indicatornumber", true) => query.OrderByDescending(item => item.IndicatorNumber),
+            ("quarter", false) => query.OrderBy(item => item.Quarter),
+            ("quarter", true) => query.OrderByDescending(item => item.Quarter),
+            ("status", false) => query.OrderBy(item => item.Status),
+            ("status", true) => query.OrderByDescending(item => item.Status),
+            (_, false) => query.OrderBy(item => item.CreatedAt),
+            _ => query.OrderByDescending(item => item.CreatedAt)
+        };
+
+        return ordered.ThenBy(item => item.Kind).ThenBy(item => item.Id);
+    }
+
     private static async Task<WorkflowQueueCountsResponse> Summarize(IQueryable<QueueRecord> query, string userId) =>
         await query.GroupBy(_ => 1).Select(group => new WorkflowQueueCountsResponse(
             group.Count(item => item.SubmittedByUserId == userId || (item.SubmittedByUserId == null && item.AssignedUserId == userId)),
@@ -234,6 +280,7 @@ public sealed class WorkflowQueuesController(
         public string TargetName { get; init; } = string.Empty;
         public string IndicatorNumber { get; init; } = string.Empty;
         public string Quarter { get; init; } = string.Empty;
+        public Guid? MunicipalityFinancialYearPublicId { get; init; }
         public DateTime? DueDate { get; init; }
         public string Status { get; init; } = string.Empty;
         public string? SubmittedByUserId { get; init; }
