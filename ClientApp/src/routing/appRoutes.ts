@@ -5,6 +5,7 @@ const exactApplicationPaths = [
   '/opms/library',
   '/opms/targets',
   '/opms/import',
+  '/opms/revisions',
   '/opms/submissions',
   '/opms/vote-numbers',
   '/opms/tids',

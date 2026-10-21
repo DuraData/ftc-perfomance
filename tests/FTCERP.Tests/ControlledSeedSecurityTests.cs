@@ -561,6 +561,15 @@ public sealed class ControlledSeedSecurityTests
         permission.NavigationCode.Should().Be("NAV.SDBIP.DASHBOARD");
         (await context.RolePermissions.SingleAsync(item => item.RoleId == role.Id && item.PermissionId == permission.Id)).IsAllowed.Should().BeTrue();
 
+        var revisionsNavigation = await context.SecurityNavigationItems.SingleAsync(item => item.Code == "NAV.SDBIP.REVISIONS");
+        revisionsNavigation.Name.Should().Be("Revision Management");
+        revisionsNavigation.Route.Should().Be("/opms/revisions");
+        revisionsNavigation.RequiredPermissionCode.Should().Be("NAV.SDBIP.REVISIONS");
+        revisionsNavigation.ParentId.Should().Be(navigation.ParentId);
+        var revisionsPermission = await context.Permissions.SingleAsync(item => item.Code == "NAV.SDBIP.REVISIONS");
+        revisionsPermission.Kind.Should().Be(SecurityPermissionKind.Navigation);
+        (await context.RolePermissions.SingleAsync(item => item.RoleId == role.Id && item.PermissionId == revisionsPermission.Id)).IsAllowed.Should().BeTrue();
+
         var registerPermission = await context.Permissions.SingleAsync(item => item.Code == "NAV.SDBIP.REGISTER");
         var modernRole = new ApplicationRole
         {
@@ -583,7 +592,9 @@ public sealed class ControlledSeedSecurityTests
 
         await SecurityRegistrySeeder.SeedAsync(context);
         (await context.SecurityNavigationItems.CountAsync(item => item.Code == "NAV.SDBIP.DASHBOARD")).Should().Be(1);
+        (await context.SecurityNavigationItems.CountAsync(item => item.Code == "NAV.SDBIP.REVISIONS")).Should().Be(1);
         (await context.RolePermissions.CountAsync(item => item.RoleId == role.Id && item.PermissionId == permission.Id)).Should().Be(1);
+        (await context.RolePermissions.CountAsync(item => item.RoleId == role.Id && item.PermissionId == revisionsPermission.Id)).Should().Be(1);
         (await context.RolePermissions.SingleAsync(item => item.RoleId == modernRole.Id && item.PermissionId == permission.Id)).IsAllowed.Should().BeTrue();
     }
 

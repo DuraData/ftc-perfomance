@@ -9,6 +9,7 @@ import { isKnownApplicationPath } from './routing/appRoutes';
 const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(module => ({ default: module.Dashboard })));
 const OPMSTargetList = lazy(() => import('./components/opms/OPMSTargetList').then(module => ({ default: module.OPMSTargetList })));
 const SdbipImportWorkspace = lazy(() => import('./components/opms/SdbipImportWorkspace').then(module => ({ default: module.SdbipImportWorkspace })));
+const SdbipRevisionManagement = lazy(() => import('./components/opms/SdbipRevisionManagement').then(module => ({ default: module.SdbipRevisionManagement })));
 const OPMSTargetDetail = lazy(() => import('./components/opms/OPMSTargetDetail').then(module => ({ default: module.OPMSTargetDetail })));
 const OPMSSubmissionsList = lazy(() => import('./components/opms/OPMSSubmissions').then(module => ({ default: module.OPMSSubmissionsList })));
 const IPMSSubmissionsList = lazy(() => import('./components/opms/OPMSSubmissions').then(module => ({ default: module.IPMSSubmissionsList })));
@@ -147,6 +148,8 @@ function AppContent() {
         return <OPMSTargetList />;
       case '/opms/import':
         return <SdbipImportWorkspace />;
+      case '/opms/revisions':
+        return <SdbipRevisionManagement />;
       case '/opms/submissions':
         return <OPMSSubmissionsList />;
       case '/opms/vote-numbers':
