@@ -191,6 +191,7 @@ try {
         & (Join-Path $PSScriptRoot 'Invoke-OpmsSqlServerRecoveryDrill.ps1') -ValidateOnly
         Invoke-NativeCommand 'dotnet' @('run', '--project', 'tools/FTCERP.RecoveryDrill/FTCERP.RecoveryDrill.csproj', '--no-restore', '--configuration', 'Release', '--', '--validate-only') $repositoryRoot
         Invoke-NativeCommand 'dotnet' @('run', '--project', 'tools/FTCERP.PerformanceAcceptance/FTCERP.PerformanceAcceptance.csproj', '--no-restore', '--configuration', 'Release', '--', '--validate-only') $repositoryRoot
+        Invoke-NativeCommand 'dotnet' @('run', '--project', 'tools/FTCERP.DataCutoverAcceptance/FTCERP.DataCutoverAcceptance.csproj', '--no-restore', '--configuration', 'Release', '--', '--validate-only') $repositoryRoot
     }
 
     Invoke-QualityStep 'Audit backend dependencies' { Invoke-BackendDependencyAudit }
