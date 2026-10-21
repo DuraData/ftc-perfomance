@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { SecurityAdministrationPage } from './SecurityAdministration';
+import { SecurityAdministrationPage, type SecurityAdministrationView } from './SecurityAdministration';
 
 const api = vi.hoisted(() => ({
   getSecurityRolesPage: vi.fn(), getSecurityUsersPage: vi.fn(), getSecurityPermissionDefinitionsPage: vi.fn(),
@@ -38,6 +38,19 @@ describe('SecurityAdministrationPage role assignments', () => {
     expect(await screen.findByRole('main', { name: 'Security Administration' })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
     expect(document.title).toBe('Security Administration | OPMS');
+  });
+
+  it.each([
+    ['roles', 'Role Administration', 'Role details', 'Effective permission preview', 'Role permission definitions'],
+    ['permissions', 'Permission Administration', 'Role permission definitions', 'Navigation editor', 'Role details'],
+  ] as const)('renders the %s route as a distinct governed workspace', async (view, title, primarySection, secondarySection, hiddenSection) => {
+    render(<SecurityAdministrationPage view={view as SecurityAdministrationView} />);
+
+    expect(await screen.findByRole('main', { name: title })).toBeInTheDocument();
+    expect(screen.getByText(primarySection)).toBeInTheDocument();
+    expect(screen.getByText(secondarySection)).toBeInTheDocument();
+    expect(screen.queryByText(hiddenSection)).not.toBeInTheDocument();
+    expect(document.title).toBe(`${title} | OPMS`);
   });
 
   it('authors department, unit, and effective dates instead of role ids alone', async () => {

@@ -31,9 +31,18 @@ type AssignmentDraft = { rolePublicId: string; municipalityPublicId?: string; de
 const scopes = ['', 'Self', 'AssignedKpiScope', 'AssignedTargetScope', 'AssignedProjectScope', 'AssignedTaskScope', 'UnitScope', 'DepartmentScope', 'InstitutionScope', 'System'];
 const kinds = ['Resource', 'Navigation', 'Member', 'Action', 'Report'] as const;
 const toLocalDateTime = (value?: string) => value ? new Date(new Date(value).getTime() - new Date(value).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
+export type SecurityAdministrationView = 'all' | 'roles' | 'permissions';
+const viewMetadata: Record<SecurityAdministrationView, { title: string; subtitle: string }> = {
+  all: { title: 'Security Administration', subtitle: 'Configure deny-by-default navigation, CRUD, field, action and scope rules. Explicit deny overrides allow.' },
+  roles: { title: 'Role Administration', subtitle: 'Create governed roles, maintain effective-dated assignments and inspect effective access.' },
+  permissions: { title: 'Permission Administration', subtitle: 'Configure role permissions and govern the navigation, resource, member and action registries.' },
+};
 
-export function SecurityAdministrationPage() {
+export function SecurityAdministrationPage({ view = 'all' }: { view?: SecurityAdministrationView }) {
   const { currentMunicipalityPublicId } = useApp();
+  const page = viewMetadata[view];
+  const showRoles = view === 'all' || view === 'roles';
+  const showPermissions = view === 'all' || view === 'permissions';
   const [roles, setRoles] = useState<SecurityRoleSummary[]>([]);
   const [rolePage, setRolePage] = useState(1);
   const [roleTotalPages, setRoleTotalPages] = useState(0);
@@ -221,11 +230,11 @@ export function SecurityAdministrationPage() {
 
   return (
     <AppShell
-      title="Security Administration"
-      subtitle="Configure deny-by-default navigation, CRUD, field, action and scope rules. Explicit deny overrides allow."
+      title={page.title}
+      subtitle={page.subtitle}
     >
       <div className="space-y-6">
-      <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      {showRoles && <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <div className="grid gap-5 lg:grid-cols-2">
           <div>
             <h2 className="font-semibold text-gray-900">Role details</h2>
@@ -255,9 +264,15 @@ export function SecurityAdministrationPage() {
             </div>
           </div>
         </div>
-      </section>
+      </section>}
 
-      <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      {showPermissions && <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="border-b border-gray-200 px-4 py-3"><h2 className="font-semibold text-gray-900">Role permission definitions</h2><p className="mt-1 text-sm text-gray-600">Assign explicit allow or deny decisions and optional record scope to the selected role.</p></div>
+        {!showRoles && <div className="grid gap-3 border-b border-gray-200 p-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,1fr)_auto] md:items-end">
+          <label className="text-sm font-medium text-gray-700">Search roles<input aria-label="Search permission roles" placeholder="Search role code, name or description" className="mt-1 w-full rounded border border-gray-300 p-2 font-normal" value={roleSearch} onChange={event => { setRoleSearch(event.target.value); setRolePage(1); }} /></label>
+          <label className="text-sm font-medium text-gray-700" htmlFor="permission-role">Configure role<select id="permission-role" className="mt-1 w-full rounded border border-gray-300 p-2 font-normal" value={roleId} onChange={event => setRoleId(event.target.value)}>{roles.map(role => <option key={role.publicId} value={role.publicId}>{role.name}{role.isSystemRole ? ' (system)' : ''}</option>)}</select></label>
+          {roleTotalPages > 1 && <div className="flex items-center gap-2 text-sm text-gray-600"><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={rolePage <= 1} onClick={() => setRolePage(value => Math.max(1, value - 1))}>Previous roles</button><span>Page {rolePage} of {roleTotalPages}</span><button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={rolePage >= roleTotalPages} onClick={() => setRolePage(value => value + 1)}>Next roles</button></div>}
+        </div>}
         <div className="flex flex-wrap border-b border-gray-200 px-4 pt-3">
           {kinds.map(item => (
             <button key={item} type="button" onClick={() => { setKind(item); setDefinitionPage(1); }} className={`mr-2 border-b-2 px-3 py-2 text-sm ${kind === item ? 'border-blue-600 font-medium text-blue-700' : 'border-transparent text-gray-600'}`}>
@@ -291,13 +306,13 @@ export function SecurityAdministrationPage() {
           <span className="text-sm text-gray-600">{message}</span>
           <div className="flex min-w-0 w-full flex-wrap items-center gap-2 sm:w-auto"><input aria-label="Role permission governance reason" placeholder="Reason for permission replacement" className="min-w-0 flex-1 rounded border border-gray-300 p-2 text-sm sm:min-w-72" value={permissionReason} onChange={event => setPermissionReason(event.target.value)} /><button type="button" disabled={busy || !roleId || permissionReason.trim().length < 5} onClick={() => void save()} className="rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{busy ? 'Working…' : 'Save role security'}</button></div>
         </div>
-      </section>
+      </section>}
 
-      <NavigationRegistryEditor refreshToken={definitionRefreshToken} />
+      {showPermissions && <NavigationRegistryEditor refreshToken={definitionRefreshToken} />}
 
-      <SecurityRegistryEditor onDefinitionsChanged={() => setDefinitionRefreshToken(value => value + 1)} />
+      {showPermissions && <SecurityRegistryEditor onDefinitionsChanged={() => setDefinitionRefreshToken(value => value + 1)} />}
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      {showRoles && <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <h2 className="text-lg font-semibold">Effective permission preview</h2>
         <div className="mt-3 flex flex-wrap gap-2">
           <input aria-label="Search security users" placeholder="Search users" className="min-w-0 w-full rounded border border-gray-300 p-2 sm:w-auto sm:min-w-64" value={userSearch} onChange={event => { setUserSearch(event.target.value); setUserPage(1); }} />
@@ -328,7 +343,7 @@ export function SecurityAdministrationPage() {
           <button type="button" disabled={busy || assignmentReason.trim().length < 5} onClick={() => void saveUserRoles()} className="mt-3 rounded bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Save user roles</button>
         </div>}
         {preview && <div className="mt-4 grid gap-4 md:grid-cols-3"><PreviewList title="Roles" values={preview.roles}/><PreviewList title="Scopes" values={preview.scopes}/><PreviewList title="Effective permissions" values={preview.permissions}/></div>}
-      </section>
+      </section>}
       </div>
     </AppShell>
   );

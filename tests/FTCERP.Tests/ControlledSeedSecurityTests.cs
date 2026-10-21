@@ -623,6 +623,7 @@ public sealed class ControlledSeedSecurityTests
 
         var expected = new Dictionary<string, (string Route, string Permission)>
         {
+            ["NAV.ADMIN.PERMISSIONS"] = ("/system-administration/permissions", "NAV.ADMIN.PERMISSIONS"),
             ["NAV.ADMIN.ROLE_IMPLEMENTATION_AUDIT"] = ("/system-administration/role-implementation-audit", "RoleImplementationAudit.View"),
             ["NAV.ADMIN.ROLE_ACCESS_MATRIX"] = ("/system-administration/role-access-matrix", "SystemAdministration.RoleAccessMatrix.View"),
             ["NAV.ADMIN.PERMISSION_SIMULATION"] = ("/system-administration/permission-simulation", "SystemAdministration.PermissionSimulation.View"),

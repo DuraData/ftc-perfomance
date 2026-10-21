@@ -224,17 +224,17 @@ function AppContent() {
       case '/admin/users':
         return <AdminUsersPage />;
       case '/admin/roles':
-        return <SecurityAdministrationPage />;
+        return <SecurityAdministrationPage view="roles" />;
       case '/admin/permissions':
-        return <SecurityAdministrationPage />;
+        return <SecurityAdministrationPage view="permissions" />;
       case '/admin/audit':
         return <AdminAuditLogsPage />;
       case '/system-administration/users':
         return <AdminUsersPage />;
       case '/system-administration/roles':
-        return <SecurityAdministrationPage />;
+        return <SecurityAdministrationPage view="roles" />;
       case '/system-administration/permissions':
-        return <SecurityAdministrationPage />;
+        return <SecurityAdministrationPage view="permissions" />;
       case '/system-administration/security':
         return <SecurityAdministrationPage />;
       case '/system-administration/authentication':
