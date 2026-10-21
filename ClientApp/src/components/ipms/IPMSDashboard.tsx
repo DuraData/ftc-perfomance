@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, CalendarRange, ClipboardList, FileText, Layers, RefreshCw } from 'lucide-react';
+import { AlertTriangle, BarChart3, CalendarRange, ClipboardList, FileText, Layers, RefreshCw } from 'lucide-react';
 import { Badge, Button, Card, EmptyState, LoadingSpinner, ProgressBar } from '../ui';
 import { getIpmsPerformanceDashboard } from '../../api/api';
 import { AppShell } from '../layout/AppShell';
@@ -20,6 +20,12 @@ const emptyDashboard: PerformanceDashboardDto = {
   approvedSubmissions: 0,
   pendingVerification: 0,
   pendingApproval: 0,
+  allPeriodsTotalTargets: 0,
+  allPeriodsOutstandingTargets: 0,
+  allPeriodsReturnedSubmissions: 0,
+  allPeriodsPendingVerification: 0,
+  allPeriodsPendingApproval: 0,
+  allPeriodsOpenRfis: null,
 };
 
 function percentage(value: number, denominator: number) {
@@ -52,6 +58,23 @@ function tile(label: string, value: number, denominator: number, onClick: () => 
       <span className="text-xs uppercase tracking-wide text-secondary-500">{label}</span>
       <span className="text-2xl font-semibold text-secondary-900 dark:text-white">{value}</span>
       <span className="text-xs font-normal text-secondary-500">of {denominator} scoped KPI{denominator === 1 ? '' : 's'}</span>
+    </Button>
+  );
+}
+
+function oversightTile(label: string, value: number, description: string, onClick: () => void, disabled = false) {
+  return (
+    <Button
+      key={label}
+      variant="outline"
+      className="min-h-28 flex-col items-start gap-1 rounded-xl border-warning-200 p-4 text-left hover:border-warning-500 dark:border-warning-900"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={`${label}: ${value}. ${description}`}
+    >
+      <span className="text-xs uppercase tracking-wide text-warning-700 dark:text-warning-300">{label}</span>
+      <span className="text-2xl font-semibold text-secondary-900 dark:text-white">{value}</span>
+      <span className="text-xs font-normal text-secondary-500">{description}</span>
     </Button>
   );
 }
@@ -112,6 +135,14 @@ export function IPMSDashboardPage() {
     return `${route}?${parameters.toString()}`;
   };
   const drilldownDisabled = loading || !financialYearId || !reportingPeriodId;
+  const allPeriodsDrilldownDisabled = loading || !financialYearId;
+  const allPeriodsDrilldownPath = (route: '/ipms/targets' | '/ipms/submissions', filter: 'outstanding' | 'returned' | 'submitted' | 'approved') => {
+    const parameters = new URLSearchParams({
+      municipalityFinancialYearPublicId: financialYearId,
+      dashboardFilter: filter,
+    });
+    return `${route}?${parameters.toString()}`;
+  };
 
   return (
     <AppShell title="IPMS Dashboard" subtitle="Individual performance results and workflow progress in the selected governed period">
@@ -169,6 +200,23 @@ export function IPMSDashboardPage() {
         ) : null}
 
         {!error && stats.municipalityFinancialYearPublicId ? <>
+          <section aria-labelledby="ipms-all-periods-outstanding" className="space-y-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-5 w-5 text-warning-600" />
+              <div>
+                <h2 id="ipms-all-periods-outstanding" className="text-lg font-semibold text-secondary-900 dark:text-white">Outstanding across all periods</h2>
+                <p className="text-sm text-secondary-500">Financial-year oversight remains visible independently of the selected reporting period. Every count uses the same authorised scope.</p>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              {oversightTile('KPIs with outstanding periods', stats.allPeriodsOutstandingTargets, `of ${stats.allPeriodsTotalTargets} scoped KPIs`, () => setCurrentPath(allPeriodsDrilldownPath('/ipms/targets', 'outstanding')), allPeriodsDrilldownDisabled)}
+              {oversightTile('Returned submissions', stats.allPeriodsReturnedSubmissions, 'awaiting information or correction', () => setCurrentPath(allPeriodsDrilldownPath('/ipms/submissions', 'returned')), allPeriodsDrilldownDisabled)}
+              {oversightTile('Pending verification', stats.allPeriodsPendingVerification, 'across the financial year', () => setCurrentPath('/workflow/verification'), allPeriodsDrilldownDisabled)}
+              {oversightTile('Pending approval', stats.allPeriodsPendingApproval, 'across the financial year', () => setCurrentPath('/workflow/approval'), allPeriodsDrilldownDisabled)}
+              {stats.allPeriodsOpenRfis != null ? oversightTile('Open RFIs', stats.allPeriodsOpenRfis, 'unresolved across all periods', () => setCurrentPath(`/reports/outstanding-rfi?municipalityFinancialYearPublicId=${encodeURIComponent(financialYearId)}&kind=2`), allPeriodsDrilldownDisabled) : null}
+            </div>
+          </section>
+
           <section aria-labelledby="ipms-performance-results" className="space-y-3">
             <div>
               <h2 id="ipms-performance-results" className="text-lg font-semibold text-secondary-900 dark:text-white">Performance results</h2>

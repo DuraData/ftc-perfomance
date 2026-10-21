@@ -56,8 +56,10 @@ public class OpmsTargetsController : ControllerBase
             return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "Lifecycle must be active, revised, or withdrawn."));
         if (!TargetDashboardFilters.Contains(request.NormalizedDashboardFilter))
             return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "DashboardFilter must be assigned, achieved, at-risk, or outstanding."));
-        if (request.NormalizedDashboardFilter.Length > 0 && !request.ReportingPeriodPublicId.HasValue)
-            return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "ReportingPeriodPublicId is required for an OPMS dashboard drill-down."));
+        if (request.NormalizedDashboardFilter.Length > 0
+            && !request.ReportingPeriodPublicId.HasValue
+            && !request.MunicipalityFinancialYearPublicId.HasValue)
+            return BadRequest(new ApiResponse<PagedResponse<OpmsTargetResponse>>(false, null, "ReportingPeriodPublicId or MunicipalityFinancialYearPublicId is required for an OPMS dashboard drill-down."));
 
         var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_KPI.READ");
         if (!scope.PermissionGranted)
@@ -86,17 +88,36 @@ public class OpmsTargetsController : ControllerBase
                     || item.OpmsTarget.AssignedUserId != null && submissionScope.OwnerUserIds.Contains(item.OpmsTarget.AssignedUserId)
                     || submissionScope.TargetIds.Contains(item.OpmsTargetId)
                     || submissionScope.KpiIds.Contains(item.OpmsTargetId));
-            scopedSubmissions = scopedSubmissions.Where(item => item.ReportingPeriod != null && item.ReportingPeriod.PublicId == request.ReportingPeriodPublicId!.Value);
-            var canonicalSubmissions = PerformanceApiSupport.ProjectCanonicalStatuses(_context, scopedSubmissions);
-            var matchedTargetIds = request.NormalizedDashboardFilter switch
+            scopedSubmissions = request.ReportingPeriodPublicId.HasValue
+                ? scopedSubmissions.Where(item => item.ReportingPeriod != null && item.ReportingPeriod.PublicId == request.ReportingPeriodPublicId.Value)
+                : scopedSubmissions.Where(item => item.ReportingPeriod != null
+                    && item.ReportingPeriod.MunicipalityFinancialYear.PublicId == request.MunicipalityFinancialYearPublicId!.Value);
+            if (request.NormalizedDashboardFilter == "outstanding" && !request.ReportingPeriodPublicId.HasValue)
             {
-                "achieved" => canonicalSubmissions.Where(item => item.Status == "completed" || item.Status == "approved").Select(item => item.Submission.OpmsTargetId).Distinct(),
-                "at-risk" => canonicalSubmissions.Where(item => item.Status == "returned_for_info").Select(item => item.Submission.OpmsTargetId).Distinct(),
-                _ => canonicalSubmissions.Where(item => item.Submission.BaseState == SubmissionBaseStates.Submitted && !item.Submission.IsDisabled).Select(item => item.Submission.OpmsTargetId).Distinct()
-            };
-            query = request.NormalizedDashboardFilter == "outstanding"
-                ? query.Where(item => !item.IsWithdrawn && !matchedTargetIds.Contains(item.Id))
-                : query.Where(item => matchedTargetIds.Contains(item.Id));
+                query = query.Where(item => !item.IsWithdrawn
+                    && _context.PerformancePeriodTargets.Any(periodTarget =>
+                        periodTarget.OpmsTargetId == item.Id
+                        && periodTarget.IsActive
+                        && periodTarget.ReportingPeriod.MunicipalityFinancialYear.PublicId == request.MunicipalityFinancialYearPublicId!.Value
+                        && !scopedSubmissions.Any(submission =>
+                            submission.OpmsTargetId == item.Id
+                            && submission.ReportingPeriodId == periodTarget.ReportingPeriodId
+                            && submission.BaseState == SubmissionBaseStates.Submitted
+                            && !submission.IsDisabled)));
+            }
+            else
+            {
+                var canonicalSubmissions = PerformanceApiSupport.ProjectCanonicalStatuses(_context, scopedSubmissions);
+                var matchedTargetIds = request.NormalizedDashboardFilter switch
+                {
+                    "achieved" => canonicalSubmissions.Where(item => item.Status == "completed" || item.Status == "approved").Select(item => item.Submission.OpmsTargetId).Distinct(),
+                    "at-risk" => canonicalSubmissions.Where(item => item.Status == "returned_for_info").Select(item => item.Submission.OpmsTargetId).Distinct(),
+                    _ => canonicalSubmissions.Where(item => item.Submission.BaseState == SubmissionBaseStates.Submitted && !item.Submission.IsDisabled).Select(item => item.Submission.OpmsTargetId).Distinct()
+                };
+                query = request.NormalizedDashboardFilter == "outstanding"
+                    ? query.Where(item => !item.IsWithdrawn && !matchedTargetIds.Contains(item.Id))
+                    : query.Where(item => matchedTargetIds.Contains(item.Id));
+            }
         }
         if (request.NormalizedSearch.Length > 0)
             query = query.Where(item => item.IndicatorNumber.Contains(request.NormalizedSearch) || (item.RevisedIndicatorNumber != null && item.RevisedIndicatorNumber.Contains(request.NormalizedSearch)) || item.TargetName.Contains(request.NormalizedSearch) || (item.RevisedTargetName != null && item.RevisedTargetName.Contains(request.NormalizedSearch)) || item.KpiDescription.Contains(request.NormalizedSearch) || (item.RevisedKpiDescription != null && item.RevisedKpiDescription.Contains(request.NormalizedSearch)));

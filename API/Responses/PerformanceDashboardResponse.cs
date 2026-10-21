@@ -24,7 +24,13 @@ public sealed record PerformanceDashboardResponse(
     DateTime? ReportingWindowClosesAt = null,
     IReadOnlyCollection<PerformanceDashboardRatingBreakdownResponse>? RatingBreakdown = null,
     IReadOnlyCollection<PerformanceDashboardTeamBreakdownResponse>? TeamBreakdown = null,
-    IReadOnlyCollection<PerformanceDashboardPeriodBreakdownResponse>? PeriodBreakdown = null);
+    IReadOnlyCollection<PerformanceDashboardPeriodBreakdownResponse>? PeriodBreakdown = null,
+    int AllPeriodsTotalTargets = 0,
+    int AllPeriodsOutstandingTargets = 0,
+    int AllPeriodsReturnedSubmissions = 0,
+    int AllPeriodsPendingVerification = 0,
+    int AllPeriodsPendingApproval = 0,
+    int? AllPeriodsOpenRfis = null);
 
 public sealed record PerformanceDashboardRatingBreakdownResponse(
     string Label,

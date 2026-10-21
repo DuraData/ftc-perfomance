@@ -63,6 +63,7 @@ const reportDestinations = [
   { path: '/reports/idp-summary', title: 'IDP summary', description: 'IDP plan, hierarchy, project, KPI and alignment reporting.', icon: Map },
   { path: '/reports/submission-status', title: 'Submission status', description: 'Workflow status and submission registers across reporting periods.', icon: ClipboardCheck },
   { path: '/reports/evidence-register', title: 'Evidence register', description: 'POE metadata, integrity hashes, scan state and retention details.', icon: FileSearch },
+  { path: '/reports/outstanding-rfi', title: 'Outstanding RFIs', description: 'Unresolved requests for information across the selected financial year.', icon: AlertTriangle },
   { path: '/reports/returned-submissions', title: 'Returned submissions', description: 'Submissions returned for information or correction.', icon: RotateCcw },
   { path: '/reports/overdue-submissions', title: 'Overdue submissions', description: 'Open submissions whose governed due date has passed.', icon: AlertTriangle },
 ] as const;
@@ -85,9 +86,11 @@ export function ReportsLanding() {
 
 export function Reports({ initialKind = 1, initialReportType, title = 'Performance Reports', subtitle = 'Tenant-scoped server analytics' }: ReportsProps = {}) {
   const { permissions, pushToast } = useApp();
-  const [kind, setKind] = useState<1 | 2>(initialKind);
+  const routeParameters = typeof window === 'undefined' ? new URLSearchParams() : new URLSearchParams(window.location.search);
+  const routeKind = routeParameters.get('kind') === '2' ? 2 : routeParameters.get('kind') === '1' ? 1 : initialKind;
+  const [kind, setKind] = useState<1 | 2>(routeKind);
   const [periodId, setPeriodId] = useState('');
-  const [yearId, setYearId] = useState('');
+  const [yearId, setYearId] = useState(routeParameters.get('municipalityFinancialYearPublicId') ?? '');
   const [templates, setTemplates] = useState<OfficialReportTemplateDto[]>([]);
   const [templateOptions, setTemplateOptions] = useState<OfficialReportTemplateDto[]>([]);
   const [templatePage, setTemplatePage] = useState(1);

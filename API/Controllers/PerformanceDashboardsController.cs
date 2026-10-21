@@ -90,6 +90,28 @@ public sealed class PerformanceDashboardsController(
                 && targets.Select(target => target.Id).Contains(item.OpmsTargetId));
         var selectedSubmissionRecords = ProjectOpmsSubmissions(selectedSubmissions);
         var yearSubmissionRecords = ProjectOpmsSubmissions(yearSubmissions);
+        var yearSubmissionSummary = await Summarize(yearSubmissionRecords);
+        var allPeriodsTotalTargets = await yearTargets.CountAsync(item => !item.IsWithdrawn);
+        var allPeriodsOutstandingTargets = selectedYear == null
+            ? 0
+            : await yearTargets.CountAsync(target => !target.IsWithdrawn
+                && context.PerformancePeriodTargets.Any(periodTarget =>
+                    periodTarget.OpmsTargetId == target.Id
+                    && periodTarget.IsActive
+                    && periodIds.Contains(periodTarget.ReportingPeriodId)
+                    && !yearSubmissions.Any(submission =>
+                        submission.OpmsTargetId == target.Id
+                        && submission.ReportingPeriodId == periodTarget.ReportingPeriodId
+                        && submission.BaseState == SubmissionBaseStates.Submitted
+                        && !submission.IsDisabled)));
+        var yearScopedSubmissionIds = yearSubmissionRecords.Select(item => item.Id);
+        var allPeriodsOpenRfis = (await accessControl.CheckPermissionAsync(user, "OPMS_RFI.READ"))?.Allowed == true
+            ? await context.PerformanceRfis.AsNoTracking()
+                .Where(item => item.ClosedAt == null
+                    && item.SubmissionWorkflowInstance.SubmissionKind == SubmissionKind.Opms
+                    && yearScopedSubmissionIds.Contains(item.SubmissionWorkflowInstance.SubmissionId))
+                .CountAsync()
+            : (int?)null;
 
         var targetSummary = await targets.GroupBy(_ => 1).Select(group => new
         {
@@ -220,7 +242,13 @@ public sealed class PerformanceDashboardsController(
             selectedPeriodWindow?.Window?.ClosesAt,
             selectedYear == null ? null : ratingBreakdown,
             selectedYear == null ? null : departmentBreakdown,
-            selectedYear == null ? null : periodBreakdown)));
+            selectedYear == null ? null : periodBreakdown,
+            selectedYear == null ? 0 : allPeriodsTotalTargets,
+            selectedYear == null ? 0 : allPeriodsOutstandingTargets,
+            selectedYear == null ? 0 : yearSubmissionSummary.Returned,
+            selectedYear == null ? 0 : yearSubmissionSummary.PendingVerification,
+            selectedYear == null ? 0 : yearSubmissionSummary.PendingApproval,
+            selectedYear == null ? null : allPeriodsOpenRfis)));
     }
 
     [HttpGet("ipms")]
@@ -297,6 +325,28 @@ public sealed class PerformanceDashboardsController(
                 && targets.Select(target => target.Id).Contains(item.IpmsTargetId));
         var selectedSubmissionRecords = ProjectIpmsSubmissions(selectedSubmissions);
         var yearSubmissionRecords = ProjectIpmsSubmissions(yearSubmissions);
+        var yearSubmissionSummary = await Summarize(yearSubmissionRecords);
+        var allPeriodsTotalTargets = await yearTargets.CountAsync(item => !item.IsWithdrawn);
+        var allPeriodsOutstandingTargets = selectedYear == null
+            ? 0
+            : await yearTargets.CountAsync(target => !target.IsWithdrawn
+                && context.PerformancePeriodTargets.Any(periodTarget =>
+                    periodTarget.IpmsTargetId == target.Id
+                    && periodTarget.IsActive
+                    && periodIds.Contains(periodTarget.ReportingPeriodId)
+                    && !yearSubmissions.Any(submission =>
+                        submission.IpmsTargetId == target.Id
+                        && submission.ReportingPeriodId == periodTarget.ReportingPeriodId
+                        && submission.BaseState == SubmissionBaseStates.Submitted
+                        && !submission.IsDisabled)));
+        var yearScopedSubmissionIds = yearSubmissionRecords.Select(item => item.Id);
+        var allPeriodsOpenRfis = (await accessControl.CheckPermissionAsync(user, "IPMS_RFI.READ"))?.Allowed == true
+            ? await context.PerformanceRfis.AsNoTracking()
+                .Where(item => item.ClosedAt == null
+                    && item.SubmissionWorkflowInstance.SubmissionKind == SubmissionKind.Ipms
+                    && yearScopedSubmissionIds.Contains(item.SubmissionWorkflowInstance.SubmissionId))
+                .CountAsync()
+            : (int?)null;
 
         var targetSummary = await targets.GroupBy(_ => 1).Select(group => new
         {
@@ -425,7 +475,13 @@ public sealed class PerformanceDashboardsController(
             selectedPeriodWindow?.Window?.ClosesAt,
             selectedYear == null ? null : ratingBreakdown,
             selectedYear == null ? null : teamBreakdown,
-            selectedYear == null ? null : periodBreakdown)));
+            selectedYear == null ? null : periodBreakdown,
+            selectedYear == null ? 0 : allPeriodsTotalTargets,
+            selectedYear == null ? 0 : allPeriodsOutstandingTargets,
+            selectedYear == null ? 0 : yearSubmissionSummary.Returned,
+            selectedYear == null ? 0 : yearSubmissionSummary.PendingVerification,
+            selectedYear == null ? 0 : yearSubmissionSummary.PendingApproval,
+            selectedYear == null ? null : allPeriodsOpenRfis)));
     }
 
     private static readonly string[] CompletedStatuses = ["completed", "approved"];

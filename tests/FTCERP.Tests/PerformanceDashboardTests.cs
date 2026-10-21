@@ -150,12 +150,13 @@ public sealed class PerformanceDashboardTests
             new ReportingWindow { MunicipalityId = municipality.Id, ReportingPeriodId = q2.Id, SubmissionKind = SubmissionKind.Opms, OpensAt = now.AddDays(30), ClosesAt = now.AddDays(60) },
             workflow, verifyStage, workflowInstance, achievedWorkflowInstance, atRiskWorkflowInstance);
         await context.SaveChangesAsync();
-
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_KPI.READ"))
             .ReturnsAsync(Scope(targets.Select(item => item.Id).ToArray()));
         access.Setup(service => service.GetQueryScopeAsync(user, "OPMS_SUBMISSION.READ"))
             .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
+        access.Setup(service => service.CheckPermissionAsync(user, "OPMS_RFI.READ", null))
+            .ReturnsAsync(new AccessDecisionResult(true, "Granted for dashboard test.", [], [], []));
 
         var result = await Controller(context, access.Object, user.Id).GetOpms();
 
@@ -170,6 +171,9 @@ public sealed class PerformanceDashboardTests
         Assert.Equal(1, response.AtRiskTargets);
         Assert.Equal(1, response.OutstandingTargets);
         Assert.Equal(1, response.PendingVerification);
+        Assert.Equal((4, 4, 1, 1, 0, (int?)0),
+            (response.AllPeriodsTotalTargets, response.AllPeriodsOutstandingTargets, response.AllPeriodsReturnedSubmissions,
+                response.AllPeriodsPendingVerification, response.AllPeriodsPendingApproval, response.AllPeriodsOpenRfis));
         var team = Assert.Single(response.TeamBreakdown!);
         Assert.Equal("Roads", team.DepartmentName);
         Assert.Equal((4, 1, 1), (team.TargetCount, team.AchievedCount, team.AtRiskCount));
@@ -318,12 +322,13 @@ public sealed class PerformanceDashboardTests
             new ReportingWindow { MunicipalityId = municipality.Id, ReportingPeriodId = q2.Id, SubmissionKind = SubmissionKind.Ipms, OpensAt = now.AddDays(30), ClosesAt = now.AddDays(60) },
             workflow, verifyStage, workflowInstance, achievedWorkflowInstance, atRiskWorkflowInstance);
         await context.SaveChangesAsync();
-
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetQueryScopeAsync(user, "IPMS_KPI.READ"))
             .ReturnsAsync(Scope(targets.Select(item => item.Id).ToArray()));
         access.Setup(service => service.GetQueryScopeAsync(user, "IPMS_SUBMISSION.READ"))
             .ReturnsAsync(new AccessQueryScopeResult(true, true, [], [], [], [], [], []));
+        access.Setup(service => service.CheckPermissionAsync(user, "IPMS_RFI.READ", null))
+            .ReturnsAsync(new AccessDecisionResult(true, "Granted for dashboard test.", [], [], []));
 
         var result = await Controller(context, access.Object, user.Id).GetIpms();
 
@@ -338,6 +343,9 @@ public sealed class PerformanceDashboardTests
         Assert.Equal(1, response.AtRiskTargets);
         Assert.Equal(1, response.OutstandingTargets);
         Assert.Equal(1, response.PendingVerification);
+        Assert.Equal((4, 4, 1, 1, 0, (int?)0),
+            (response.AllPeriodsTotalTargets, response.AllPeriodsOutstandingTargets, response.AllPeriodsReturnedSubmissions,
+                response.AllPeriodsPendingVerification, response.AllPeriodsPendingApproval, response.AllPeriodsOpenRfis));
         var team = Assert.Single(response.TeamBreakdown!);
         Assert.Equal("Corporate Services", team.DepartmentName);
         Assert.Equal((4, 1, 1), (team.TargetCount, team.AchievedCount, team.AtRiskCount));

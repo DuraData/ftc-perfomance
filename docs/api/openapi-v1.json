@@ -106645,6 +106645,31 @@
               "$ref": "#/components/schemas/PerformanceDashboardPeriodBreakdownResponse"
             },
             "nullable": true
+          },
+          "allPeriodsTotalTargets": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "allPeriodsOutstandingTargets": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "allPeriodsReturnedSubmissions": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "allPeriodsPendingVerification": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "allPeriodsPendingApproval": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "allPeriodsOpenRfis": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           }
         },
         "additionalProperties": false

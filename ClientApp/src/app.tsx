@@ -295,6 +295,8 @@ function AppContent() {
         return <Reports initialReportType={7} title="Submission Status Reports" subtitle="Workflow status and submission registers" />;
       case '/reports/evidence-register':
         return <Reports initialReportType={14} title="Evidence Register" subtitle="Governed POE metadata, integrity and retention reporting" />;
+      case '/reports/outstanding-rfi':
+        return <Reports initialReportType={13} title="Outstanding RFI Reports" subtitle="Unresolved requests for information across reporting periods" />;
       case '/reports/returned-submissions':
         return <SubmissionExceptionReport mode="returned" />;
       case '/reports/overdue-submissions':

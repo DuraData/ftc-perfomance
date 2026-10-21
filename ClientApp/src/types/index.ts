@@ -1229,6 +1229,12 @@ export interface PerformanceDashboardDto {
   approvedSubmissions: number;
   pendingVerification: number;
   pendingApproval: number;
+  allPeriodsTotalTargets: number;
+  allPeriodsOutstandingTargets: number;
+  allPeriodsReturnedSubmissions: number;
+  allPeriodsPendingVerification: number;
+  allPeriodsPendingApproval: number;
+  allPeriodsOpenRfis?: number | null;
   municipalityFinancialYearPublicId?: string | null;
   financialYearCode?: string | null;
   financialYearName?: string | null;

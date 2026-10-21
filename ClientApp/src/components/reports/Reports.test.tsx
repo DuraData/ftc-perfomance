@@ -44,6 +44,7 @@ vi.mock('../../context/AppContext', () => ({
 describe('Reports', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.history.replaceState({}, '', '/reports');
     app.permissions = ['OPMS_REPORT.READ', 'OPMS_REPORT.EXPORT', 'OPMS_REPORT.GENERATE', ...liveReportPermissions];
     api.getReportingPeriodMastersPage.mockResolvedValue({
       success: true,
@@ -320,6 +321,24 @@ describe('Reports', () => {
     expect(await screen.findByLabelText('Approved template')).toHaveValue('template-evidence');
   });
 
+  it('hydrates outstanding-RFI report scope from a dashboard drill-down URL', async () => {
+    window.history.replaceState({}, '', '/reports/outstanding-rfi?municipalityFinancialYearPublicId=year-1&kind=2');
+    app.permissions = ['IPMS_REPORT.READ'];
+    api.getOfficialReportTemplatesPage.mockResolvedValue({
+      success: true,
+      data: { items: [
+        { publicId: 'template-rfi', templateFamilyPublicId: 'family-rfi', submissionKind: 2, reportType: 'OutstandingRfi', code: 'OUTSTANDING_RFI', name: 'Outstanding RFI report', format: 'Pdf', versionNumber: 1, headingTemplate: '{FinancialYear}', columns: [], isCurrent: true, isActive: true, effectiveFrom: '2026-07-01', approvalReference: 'Council-RFI', reason: 'Approved', createdAt: '2026-07-01', rowVersion: 'AQ==' },
+      ], page: 1, pageSize: 25, totalCount: 1, totalPages: 1 },
+    });
+
+    render(<Reports initialReportType={13} title="Outstanding RFI Reports" />);
+
+    expect(screen.getByLabelText('Performance framework')).toHaveValue('2');
+    expect(screen.getByLabelText('Financial year', { selector: 'select' })).toHaveValue('year-1');
+    await waitFor(() => expect(api.getOfficialReportTemplatesPage).toHaveBeenCalledWith(2, false, 'year-1', expect.objectContaining({ pageSize: 100 })));
+    expect(await screen.findByLabelText('Approved template')).toHaveValue('template-rfi');
+  });
+
   it('does not substitute an unrelated template when the route report type is unavailable', async () => {
     render(<Reports initialReportType={7} title="Submission Status Reports" />);
 
@@ -328,7 +347,9 @@ describe('Reports', () => {
 
   it('presents every governed report destination from the report landing page', () => {
     render(<ReportsLanding />);
-    expect(screen.getAllByRole('button')).toHaveLength(7);
+    expect(screen.getAllByRole('button')).toHaveLength(8);
+    fireEvent.click(screen.getByRole('button', { name: /Outstanding RFIs/ }));
+    expect(app.setCurrentPath).toHaveBeenCalledWith('/reports/outstanding-rfi');
     fireEvent.click(screen.getByRole('button', { name: /Overdue submissions/ }));
     expect(app.setCurrentPath).toHaveBeenCalledWith('/reports/overdue-submissions');
   });

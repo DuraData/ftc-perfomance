@@ -80,8 +80,10 @@ public class OpmsSubmissionsController : ControllerBase
             return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "SortBy must be createdAt, status, quarter, or indicatorNumber."));
         if (!SubmissionDashboardFilters.Contains(request.NormalizedDashboardFilter))
             return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "DashboardFilter must be draft, submitted, returned, approved, or overdue."));
-        if (request.NormalizedDashboardFilter.Length > 0 && !request.ReportingPeriodPublicId.HasValue)
-            return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "ReportingPeriodPublicId is required for an OPMS dashboard drill-down."));
+        if (request.NormalizedDashboardFilter.Length > 0
+            && !request.ReportingPeriodPublicId.HasValue
+            && !request.MunicipalityFinancialYearPublicId.HasValue)
+            return BadRequest(new ApiResponse<PagedResponse<OpmsSubmissionResponse>>(false, null, "ReportingPeriodPublicId or MunicipalityFinancialYearPublicId is required for an OPMS dashboard drill-down."));
 
         var scope = await _accessControlService.GetQueryScopeAsync(user, "OPMS_SUBMISSION.READ");
         if (!scope.PermissionGranted)

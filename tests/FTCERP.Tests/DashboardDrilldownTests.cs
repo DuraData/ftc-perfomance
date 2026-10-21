@@ -26,7 +26,12 @@ public sealed class DashboardDrilldownTests
             MunicipalityFinancialYear = municipalityYear, Code = "Q1", Name = "Quarter 1", PeriodType = ReportingPeriodType.Quarter1,
             Sequence = 1, StartDate = financialYear.StartDate, EndDate = new(2026, 9, 30)
         };
-        context.AddRange(user, municipality, financialYear, municipalityYear, q1);
+        var q2 = new ReportingPeriod
+        {
+            MunicipalityFinancialYear = municipalityYear, Code = "Q2", Name = "Quarter 2", PeriodType = ReportingPeriodType.Quarter2,
+            Sequence = 2, StartDate = new(2026, 10, 1), EndDate = new(2026, 12, 31)
+        };
+        context.AddRange(user, municipality, financialYear, municipalityYear, q1, q2);
         await context.SaveChangesAsync();
 
         var achieved = Target("drill-achieved", "IPMS-ACHIEVED");
@@ -40,7 +45,10 @@ public sealed class DashboardDrilldownTests
         context.PerformancePeriodTargets.AddRange(
             PeriodTarget(municipality.Id, q1.Id, achieved.Id, user.Id),
             PeriodTarget(municipality.Id, q1.Id, atRisk.Id, user.Id),
-            PeriodTarget(municipality.Id, q1.Id, outstanding.Id, user.Id));
+            PeriodTarget(municipality.Id, q1.Id, outstanding.Id, user.Id),
+            PeriodTarget(municipality.Id, q2.Id, achieved.Id, user.Id),
+            PeriodTarget(municipality.Id, q2.Id, atRisk.Id, user.Id),
+            PeriodTarget(municipality.Id, q2.Id, outstanding.Id, user.Id));
         context.IpmsSubmissions.AddRange(
             new IpmsSubmission
             {
@@ -56,6 +64,11 @@ public sealed class DashboardDrilldownTests
             {
                 Id = "drill-draft", MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, IpmsTargetId = outstanding.Id,
                 Quarter = "Q1", Status = "completed", BaseState = SubmissionBaseStates.InProgress, DueDate = DateTime.UtcNow.AddDays(-1)
+            },
+            new IpmsSubmission
+            {
+                Id = "drill-q2-completed", MunicipalityId = municipality.Id, ReportingPeriodId = q2.Id, IpmsTargetId = achieved.Id,
+                Quarter = "Q2", Status = "completed", BaseState = SubmissionBaseStates.Submitted
             });
         await context.SaveChangesAsync();
         await SeedCanonicalWorkflowAsync(context, municipality, municipalityYear, SubmissionKind.Ipms,
@@ -106,6 +119,10 @@ public sealed class DashboardDrilldownTests
         var outstandingPage = Assert.IsType<ApiResponse<PagedResponse<IpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(outstandingResult.Result).Value).Data!;
         Assert.Equal(outstanding.PublicId, Assert.Single(outstandingPage.Items).PublicId);
 
+        var allPeriodsOutstandingResult = await targets.GetTargetsPage(AllPeriodsQuery(municipalityYear.PublicId, "outstanding"));
+        var allPeriodsOutstandingPage = Assert.IsType<ApiResponse<PagedResponse<IpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(allPeriodsOutstandingResult.Result).Value).Data!;
+        Assert.Equal(new[] { atRisk.PublicId, outstanding.PublicId }.Order().ToArray(), allPeriodsOutstandingPage.Items.Select(item => item.PublicId).Order().ToArray());
+
         var approvedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "approved"));
         var approvedPage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(approvedResult.Result).Value).Data!;
         var approvedSubmission = Assert.Single(approvedPage.Items);
@@ -115,6 +132,10 @@ public sealed class DashboardDrilldownTests
         var returnedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "returned"));
         var returnedPage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(returnedResult.Result).Value).Data!;
         Assert.Equal("returned_for_info", Assert.Single(returnedPage.Items).Status);
+
+        var allPeriodsReturnedResult = await submissions.GetSubmissionsPage(AllPeriodsQuery(municipalityYear.PublicId, "returned"));
+        var allPeriodsReturnedPage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(allPeriodsReturnedResult.Result).Value).Data!;
+        Assert.Equal("returned_for_info", Assert.Single(allPeriodsReturnedPage.Items).Status);
 
         var overdueResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "overdue"));
         var overduePage = Assert.IsType<ApiResponse<PagedResponse<IpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(overdueResult.Result).Value).Data!;
@@ -174,7 +195,12 @@ public sealed class DashboardDrilldownTests
             MunicipalityFinancialYear = municipalityYear, Code = "Q1", Name = "Quarter 1", PeriodType = ReportingPeriodType.Quarter1,
             Sequence = 1, StartDate = financialYear.StartDate, EndDate = new(2026, 9, 30)
         };
-        context.AddRange(user, municipality, financialYear, municipalityYear, q1);
+        var q2 = new ReportingPeriod
+        {
+            MunicipalityFinancialYear = municipalityYear, Code = "Q2", Name = "Quarter 2", PeriodType = ReportingPeriodType.Quarter2,
+            Sequence = 2, StartDate = new(2026, 10, 1), EndDate = new(2026, 12, 31)
+        };
+        context.AddRange(user, municipality, financialYear, municipalityYear, q1, q2);
         await context.SaveChangesAsync();
 
         var achieved = OpmsTarget("opms-drill-achieved", "OPMS-ACHIEVED", municipality.Id);
@@ -185,7 +211,10 @@ public sealed class DashboardDrilldownTests
         context.PerformancePeriodTargets.AddRange(
             OpmsPeriodTarget(municipality.Id, q1.Id, achieved.Id, user.Id),
             OpmsPeriodTarget(municipality.Id, q1.Id, atRisk.Id, user.Id),
-            OpmsPeriodTarget(municipality.Id, q1.Id, outstanding.Id, user.Id));
+            OpmsPeriodTarget(municipality.Id, q1.Id, outstanding.Id, user.Id),
+            OpmsPeriodTarget(municipality.Id, q2.Id, achieved.Id, user.Id),
+            OpmsPeriodTarget(municipality.Id, q2.Id, atRisk.Id, user.Id),
+            OpmsPeriodTarget(municipality.Id, q2.Id, outstanding.Id, user.Id));
         context.OpmsSubmissions.AddRange(
             new OpmsSubmission
             {
@@ -201,6 +230,11 @@ public sealed class DashboardDrilldownTests
             {
                 Id = "opms-drill-draft", MunicipalityId = municipality.Id, ReportingPeriodId = q1.Id, OpmsTargetId = outstanding.Id,
                 Quarter = "Q1", Status = "completed", BaseState = SubmissionBaseStates.InProgress, DueDate = DateTime.UtcNow.AddDays(-1)
+            },
+            new OpmsSubmission
+            {
+                Id = "opms-drill-q2-completed", MunicipalityId = municipality.Id, ReportingPeriodId = q2.Id, OpmsTargetId = achieved.Id,
+                Quarter = "Q2", Status = "completed", BaseState = SubmissionBaseStates.Submitted
             });
         await context.SaveChangesAsync();
         await SeedCanonicalWorkflowAsync(context, municipality, municipalityYear, SubmissionKind.Opms,
@@ -251,6 +285,10 @@ public sealed class DashboardDrilldownTests
         var outstandingPage = Assert.IsType<ApiResponse<PagedResponse<OpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(outstandingResult.Result).Value).Data!;
         Assert.Equal(outstanding.PublicId, Assert.Single(outstandingPage.Items).PublicId);
 
+        var allPeriodsOutstandingResult = await targets.GetTargetsPage(AllPeriodsQuery(municipalityYear.PublicId, "outstanding"));
+        var allPeriodsOutstandingPage = Assert.IsType<ApiResponse<PagedResponse<OpmsTargetResponse>>>(Assert.IsType<OkObjectResult>(allPeriodsOutstandingResult.Result).Value).Data!;
+        Assert.Equal(new[] { atRisk.PublicId, outstanding.PublicId }.Order().ToArray(), allPeriodsOutstandingPage.Items.Select(item => item.PublicId).Order().ToArray());
+
         var approvedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "approved"));
         var approvedPage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(approvedResult.Result).Value).Data!;
         var approvedSubmission = Assert.Single(approvedPage.Items);
@@ -260,6 +298,10 @@ public sealed class DashboardDrilldownTests
         var returnedResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "returned"));
         var returnedPage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(returnedResult.Result).Value).Data!;
         Assert.Equal("returned_for_info", Assert.Single(returnedPage.Items).Status);
+
+        var allPeriodsReturnedResult = await submissions.GetSubmissionsPage(AllPeriodsQuery(municipalityYear.PublicId, "returned"));
+        var allPeriodsReturnedPage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(allPeriodsReturnedResult.Result).Value).Data!;
+        Assert.Equal("returned_for_info", Assert.Single(allPeriodsReturnedPage.Items).Status);
 
         var overdueResult = await submissions.GetSubmissionsPage(Query(municipalityYear.PublicId, q1.PublicId, "overdue"));
         var overduePage = Assert.IsType<ApiResponse<PagedResponse<OpmsSubmissionResponse>>>(Assert.IsType<OkObjectResult>(overdueResult.Result).Value).Data!;
@@ -309,6 +351,14 @@ public sealed class DashboardDrilldownTests
         PageSize = 25,
         MunicipalityFinancialYearPublicId = year,
         ReportingPeriodPublicId = period,
+        DashboardFilter = filter
+    };
+
+    private static PagedQueryRequest AllPeriodsQuery(Guid year, string filter) => new()
+    {
+        Page = 1,
+        PageSize = 25,
+        MunicipalityFinancialYearPublicId = year,
         DashboardFilter = filter
     };
 

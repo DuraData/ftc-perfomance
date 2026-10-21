@@ -31,6 +31,12 @@ const dashboard: PerformanceDashboardDto = {
   approvedSubmissions: 1,
   pendingVerification: 1,
   pendingApproval: 2,
+  allPeriodsTotalTargets: 4,
+  allPeriodsOutstandingTargets: 3,
+  allPeriodsReturnedSubmissions: 2,
+  allPeriodsPendingVerification: 3,
+  allPeriodsPendingApproval: 2,
+  allPeriodsOpenRfis: 1,
   municipalityFinancialYearPublicId: 'year-1',
   financialYearCode: '2026/27',
   financialYearName: '2026/2027 Financial Year',
@@ -58,7 +64,10 @@ describe('OPMS dashboard', () => {
     render(<OPMSDashboardPage />);
 
     expect(await screen.findByRole('heading', { name: 'Performance results' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Outstanding across all periods' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Workflow progress' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'KPIs with outstanding periods: 3. of 4 scoped KPIs' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open RFIs: 1. unresolved across all periods' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Achieved KPIs: 1 of 4' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Outstanding KPIs: 1 of 4' })).toBeInTheDocument();
     expect(screen.getByText('Achieved')).toBeInTheDocument();
@@ -78,6 +87,19 @@ describe('OPMS dashboard', () => {
       fireEvent.click(button);
       expect(setCurrentPath).toHaveBeenCalledWith('/opms/targets?municipalityFinancialYearPublicId=year-1&reportingPeriodPublicId=period-1&dashboardFilter=achieved');
     });
+
+    fireEvent.click(screen.getByRole('button', { name: 'KPIs with outstanding periods: 3. of 4 scoped KPIs' }));
+    expect(setCurrentPath).toHaveBeenCalledWith('/opms/targets?municipalityFinancialYearPublicId=year-1&dashboardFilter=outstanding');
+    fireEvent.click(screen.getByRole('button', { name: 'Open RFIs: 1. unresolved across all periods' }));
+    expect(setCurrentPath).toHaveBeenCalledWith('/reports/outstanding-rfi?municipalityFinancialYearPublicId=year-1&kind=1');
+  });
+
+  it('does not disclose the RFI aggregate when the API omits it for the current role', async () => {
+    api.getOpmsPerformanceDashboard.mockResolvedValue({ success: true, data: { ...dashboard, allPeriodsOpenRfis: null } });
+    render(<OPMSDashboardPage />);
+
+    await screen.findByRole('heading', { name: 'Outstanding across all periods' });
+    expect(screen.queryByRole('button', { name: /Open RFIs/ })).not.toBeInTheDocument();
   });
 
   it('reloads the exact authorised aggregate population when a period is selected', async () => {

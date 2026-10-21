@@ -80,6 +80,7 @@ const exactApplicationPaths = [
   '/reports/idp-summary',
   '/reports/submission-status',
   '/reports/evidence-register',
+  '/reports/outstanding-rfi',
   '/reports/returned-submissions',
   '/reports/overdue-submissions',
   '/idp/dashboard',

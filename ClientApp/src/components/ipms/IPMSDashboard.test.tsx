@@ -31,6 +31,12 @@ const dashboard: PerformanceDashboardDto = {
   approvedSubmissions: 1,
   pendingVerification: 1,
   pendingApproval: 2,
+  allPeriodsTotalTargets: 4,
+  allPeriodsOutstandingTargets: 3,
+  allPeriodsReturnedSubmissions: 2,
+  allPeriodsPendingVerification: 3,
+  allPeriodsPendingApproval: 2,
+  allPeriodsOpenRfis: 1,
   municipalityFinancialYearPublicId: 'year-1',
   financialYearCode: '2026/27',
   financialYearName: '2026/2027 Financial Year',
@@ -58,14 +64,17 @@ describe('IPMS dashboard', () => {
     render(<IPMSDashboardPage />);
 
     expect(await screen.findByRole('heading', { name: 'Performance results' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Outstanding across all periods' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Workflow progress' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'KPIs with outstanding periods: 3. of 4 scoped KPIs' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open RFIs: 1. unresolved across all periods' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Achieved KPIs: 1 of 4' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Outstanding KPIs: 1 of 4' })).toBeInTheDocument();
     expect(screen.getByText('Fully effective')).toBeInTheDocument();
     expect(screen.getByText('Corporate Services')).toBeInTheDocument();
     expect(screen.getByText('1 of 4 achieved')).toBeInTheDocument();
-    expect(screen.getByText('Pending verification')).toBeInTheDocument();
-    expect(screen.getByText('Pending approval')).toBeInTheDocument();
+    expect(screen.getAllByText('Pending verification')).toHaveLength(2);
+    expect(screen.getAllByText('Pending approval')).toHaveLength(2);
     expect(screen.queryByText(/derived from target scores/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/summary available/i)).not.toBeInTheDocument();
 
@@ -75,6 +84,19 @@ describe('IPMS dashboard', () => {
       fireEvent.click(button);
       expect(setCurrentPath).toHaveBeenCalledWith('/ipms/targets?municipalityFinancialYearPublicId=year-1&reportingPeriodPublicId=period-1&dashboardFilter=achieved');
     });
+
+    fireEvent.click(screen.getByRole('button', { name: 'KPIs with outstanding periods: 3. of 4 scoped KPIs' }));
+    expect(setCurrentPath).toHaveBeenCalledWith('/ipms/targets?municipalityFinancialYearPublicId=year-1&dashboardFilter=outstanding');
+    fireEvent.click(screen.getByRole('button', { name: 'Open RFIs: 1. unresolved across all periods' }));
+    expect(setCurrentPath).toHaveBeenCalledWith('/reports/outstanding-rfi?municipalityFinancialYearPublicId=year-1&kind=2');
+  });
+
+  it('does not disclose the RFI aggregate when the API omits it for the current role', async () => {
+    api.getIpmsPerformanceDashboard.mockResolvedValue({ success: true, data: { ...dashboard, allPeriodsOpenRfis: null } });
+    render(<IPMSDashboardPage />);
+
+    await screen.findByRole('heading', { name: 'Outstanding across all periods' });
+    expect(screen.queryByRole('button', { name: /Open RFIs/ })).not.toBeInTheDocument();
   });
 
   it('reloads the exact authorised aggregate population when a period is selected', async () => {
