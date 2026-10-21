@@ -19,6 +19,12 @@ const app = vi.hoisted(() => ({
         { label: 'Queue', path: '/operations/queue', icon: 'workflow', isDivider: false, code: 'NAV.OPERATIONS.QUEUE' },
       ],
     },
+    {
+      label: 'IDP', icon: 'map', isDivider: false, code: 'NAV.IDP',
+      children: [
+        { label: 'IDP Plans', path: '/idp/plans', icon: 'map', isDivider: false, code: 'NAV.IDP.PLANS' },
+      ],
+    },
   ],
   logout: vi.fn(),
 }));
@@ -56,5 +62,15 @@ describe('Sidebar navigation semantics', () => {
     expect(screen.getByRole('button', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: 'Operations' })).not.toHaveAttribute('aria-expanded');
     expect(screen.getByRole('button', { name: 'Expand navigation' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('marks the canonical navigation destination current for a registered compatibility route', () => {
+    app.currentPath = '/idp/overview';
+    app.expandedSidebarGroups = ['IDP'];
+
+    render(<Sidebar />);
+
+    const submenu = screen.getByRole('group', { name: 'IDP submenu' });
+    expect(within(submenu).getByRole('button', { name: 'IDP Plans' })).toHaveAttribute('aria-current', 'page');
   });
 });

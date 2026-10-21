@@ -19,6 +19,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { canonicalNavigationPath, normalizeRoutePath } from '../../routing/routeAliases';
 import type { MenuItem } from '../../types';
 
 interface SidebarProps {
@@ -66,6 +67,7 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose, mob
     logout,
   } = useApp();
   const compact = sidebarCollapsed && !mobileOpen;
+  const activeNavigationPath = canonicalNavigationPath(currentPath);
 
   useEffect(() => {
     if (currentPath.startsWith('/admin/') || currentPath.startsWith('/system-administration/')) {
@@ -99,8 +101,9 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose, mob
 
   const isPathActive = (path?: string) => {
     if (!path) return false;
-    if (currentPath === path) return true;
-    if (path !== '/' && currentPath.startsWith(path)) return true;
+    const normalizedPath = normalizeRoutePath(path);
+    if (activeNavigationPath === normalizedPath) return true;
+    if (normalizedPath !== '/' && activeNavigationPath.startsWith(`${normalizedPath}/`)) return true;
     return false;
   };
 

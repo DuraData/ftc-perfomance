@@ -22,6 +22,37 @@ const configurationMenu: MenuItem[] = [
   { label: 'Workflow Governance', path: '/admin/approval-setup', isDivider: false },
 ];
 
+const canonicalRouteMenu: MenuItem[] = [
+  {
+    label: 'Organisation',
+    isDivider: false,
+    children: [
+      { label: 'Employees', path: '/hr/employees', isDivider: false },
+      { label: 'Departments', path: '/hr/departments', isDivider: false },
+      { label: 'Positions', path: '/hr/positions', isDivider: false },
+    ],
+  },
+  {
+    label: 'IDP',
+    isDivider: false,
+    children: [
+      { label: 'Plans', path: '/idp/plans', isDivider: false },
+      { label: 'Hierarchy', path: '/idp/hierarchy', isDivider: false },
+      { label: 'Reports', path: '/idp/reports', isDivider: false },
+    ],
+  },
+  {
+    label: 'Administration',
+    isDivider: false,
+    children: [
+      { label: 'Users', path: '/system-administration/users', isDivider: false },
+      { label: 'Roles', path: '/system-administration/roles', isDivider: false },
+      { label: 'Permissions', path: '/system-administration/permissions', isDivider: false },
+      { label: 'Audit Logs', path: '/system-administration/audit-logs', isDivider: false },
+    ],
+  },
+];
+
 describe('AccessControl helpers', () => {
   it('derives route access from the backend-filtered navigation tree', () => {
     expect(canAccessPath('/dashboard', menu)).toBe(true);
@@ -67,6 +98,34 @@ describe('AccessControl helpers', () => {
   it('maps the requirements workflow-configuration route to the governed navigation entry', () => {
     expect(canAccessPath('/configuration/workflow', configurationMenu)).toBe(true);
     expect(canAccessPath('/configuration/workflow', workflowMenu)).toBe(false);
+  });
+
+  it.each([
+    ['/hr/contacts', '/hr/employees'],
+    ['/hr/resumes', '/hr/employees'],
+    ['/admin/organisations', '/hr/departments'],
+    ['/admin/occupations', '/hr/positions'],
+    ['/idp/overview', '/idp/plans'],
+    ['/idp/strategic-objectives', '/idp/hierarchy'],
+    ['/idp/projects', '/idp/hierarchy'],
+    ['/idp/kpis', '/idp/hierarchy'],
+    ['/reports/idp-summary', '/idp/reports'],
+    ['/admin/users', '/system-administration/users'],
+    ['/admin/roles', '/system-administration/roles'],
+    ['/admin/permissions', '/system-administration/permissions'],
+    ['/admin/audit', '/system-administration/audit-logs'],
+  ] as const)('maps compatibility route %s only through canonical navigation %s', (alias, canonical) => {
+    const authorizedItem: MenuItem[] = [{ label: 'Authorized', path: canonical, isDivider: false }];
+    expect(canAccessPath(alias, authorizedItem)).toBe(true);
+    expect(canAccessPath(alias, [{ label: 'Unrelated', path: '/dashboard', isDivider: false }])).toBe(false);
+  });
+
+  it('admits the complete compatibility-route matrix through a canonical filtered menu', () => {
+    for (const path of [
+      '/hr/contacts', '/hr/resumes', '/admin/organisations', '/admin/occupations',
+      '/idp/overview', '/idp/strategic-objectives', '/idp/projects', '/idp/kpis', '/reports/idp-summary',
+      '/admin/users', '/admin/roles', '/admin/permissions', '/admin/audit',
+    ]) expect(canAccessPath(path, canonicalRouteMenu)).toBe(true);
   });
 
   it('limits mandatory account setup to the security settings route', () => {

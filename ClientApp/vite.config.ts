@@ -24,6 +24,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './vitest.setup.ts',
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    maxWorkers: 2,
     testTimeout: 15_000,
     hookTimeout: 15_000,
   },

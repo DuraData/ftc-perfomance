@@ -4,20 +4,16 @@ import { FileQuestion, ShieldAlert } from 'lucide-react';
 import { AppShell } from '../layout/AppShell';
 import { Button, Card } from '../ui';
 import { useApp } from '../../context/AppContext';
+import { canonicalNavigationPath, normalizeRoutePath } from '../../routing/routeAliases';
 import type { MenuItem } from '../../types';
 
 export function hasPermissionCode(permissionCodes: string[], granted: string[]) {
   return permissionCodes.some(code => granted.some(grantedCode => grantedCode.toLowerCase() === code.toLowerCase()));
 }
 
-function normalizePath(path: string) {
-  const normalized = path.split(/[?#]/, 1)[0].replace(/\/+$/, '');
-  return normalized || '/';
-}
-
 function collectAuthorizedPaths(items: MenuItem[]): string[] {
   return items.flatMap(item => [
-    ...(item.path ? [normalizePath(item.path)] : []),
+    ...(item.path ? [normalizeRoutePath(item.path)] : []),
     ...collectAuthorizedPaths(item.children ?? []),
   ]);
 }
@@ -39,21 +35,9 @@ const mutationRoutePermissions: Array<{ matches: (path: string) => boolean; perm
   { matches: path => /^\/ipms\/library\/[^/]+\/edit$/.test(path), permissions: ['IPMS_TARGET_TEMPLATE.UPDATE'] },
 ];
 
-const routeAccessParents: Record<string, string> = {
-  '/configuration/workflow': '/admin/approval-setup',
-  '/workflow/my-drafts': '/workflow/my-queue',
-  '/workflow/pending-submission': '/workflow/my-queue',
-  '/workflow/returned-submissions': '/workflow/my-queue',
-  '/workflow/under-verification': '/workflow/my-queue',
-  '/workflow/under-review': '/workflow/my-queue',
-  '/workflow/under-approval': '/workflow/my-queue',
-  '/workflow/internal-audit-returned': '/workflow/my-queue',
-  '/workflow/approved-closed': '/workflow/my-queue',
-};
-
 export function canAccessPath(path: string, menuItems: MenuItem[], grantedPermissions: string[] = []) {
-  const requested = normalizePath(path);
-  const accessPath = routeAccessParents[requested] ?? requested;
+  const requested = normalizeRoutePath(path);
+  const accessPath = canonicalNavigationPath(requested);
   const hasAuthorizedParent = collectAuthorizedPaths(menuItems).some(authorized =>
     accessPath === authorized || accessPath.startsWith(`${authorized}/`));
 
