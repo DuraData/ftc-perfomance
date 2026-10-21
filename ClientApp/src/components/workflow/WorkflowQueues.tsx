@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckSquare, Clock, Eye, FileText, RotateCcw, Users } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { getIpmsSubmission, getOpmsSubmission, getWorkflowQueue } from '../../api/api';
 import { useApp } from '../../context/AppContext';
 import { useSecurity } from '../../context/SecurityContext';
@@ -20,14 +20,26 @@ const emptyCounts: WorkflowQueueCountsDto = {
 
 type SubmissionDetail = OPMSSubmission | IPMSSubmission;
 
-function QueueCard({ title, count, icon, color, onClick }: { title: string; count: number; icon: React.ReactNode; color: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className="flex items-center gap-3 rounded-lg border border-secondary-200 bg-white p-3 text-left transition-all hover:border-secondary-300 hover:shadow dark:border-secondary-700 dark:bg-secondary-900">
-      <div className={`rounded-lg p-2 ${color}`}>{icon}</div>
-      <div className="flex-1"><p className="text-xl font-bold text-secondary-900 dark:text-white">{count}</p><p className="text-xs text-secondary-500">{title}</p></div>
-    </button>
-  );
-}
+type QueueRoute = { queue: WorkflowQueueName; title: string; subtitle: string };
+
+const governedQueueRoutes: Record<string, QueueRoute> = {
+  '/workflow/verification': { queue: 'verification', title: 'Verification Queue', subtitle: 'Verify authorised OPMS and IPMS submissions' },
+  '/workflow/approval': { queue: 'approval', title: 'Approval Queue', subtitle: 'Approve verified OPMS and IPMS submissions' },
+  '/workflow/pms-review': { queue: 'pms', title: 'PMS Review Queue', subtitle: 'Complete authorised performance-management reviews' },
+  '/workflow/auditor-review': { queue: 'auditor', title: 'Internal Audit Queue', subtitle: 'Complete authorised evidence-based internal audit reviews' },
+};
+
+const personalQueueRoutes: Record<string, QueueRoute> = {
+  '/workflow/my-queue': { queue: 'my-submissions', title: 'My Queue', subtitle: 'Your submissions and workflow statuses' },
+  '/workflow/my-drafts': { queue: 'my-drafts', title: 'My Drafts', subtitle: 'Your draft submissions awaiting completion' },
+  '/workflow/pending-submission': { queue: 'pending-submission', title: 'Pending Submission', subtitle: 'Your completed work awaiting submission' },
+  '/workflow/returned-submissions': { queue: 'my-returned', title: 'Returned Submissions', subtitle: 'Your submissions returned for correction' },
+  '/workflow/under-verification': { queue: 'under-verification', title: 'Under Verification', subtitle: 'Your submissions currently awaiting verification' },
+  '/workflow/under-review': { queue: 'under-review', title: 'Under Review', subtitle: 'Your submissions currently awaiting PMS review' },
+  '/workflow/under-approval': { queue: 'under-approval', title: 'Under Approval', subtitle: 'Your submissions currently awaiting approval' },
+  '/workflow/internal-audit-returned': { queue: 'internal-audit-returned', title: 'Internal Audit Returned', subtitle: 'Your submissions returned by Internal Audit' },
+  '/workflow/approved-closed': { queue: 'approved-closed', title: 'Approved / Closed', subtitle: 'Your completed and approved submissions' },
+};
 
 function SubmissionDetailModal({ submission, kind, isOpen, onClose, showAudit = false, initialTab = 'details' }: { submission: SubmissionDetail | null; kind: 'opms' | 'ipms' | null; isOpen: boolean; onClose: () => void; showAudit?: boolean; initialTab?: 'details' | 'verification' | 'approval' | 'audit' }) {
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -116,37 +128,35 @@ async function loadSubmissionDetail(item: WorkflowQueueItemDto): Promise<Submiss
 export function WorkflowQueues() {
   const { currentPath, pushToast } = useApp();
   const security = useSecurity();
-  const routeQueue: Record<string, WorkflowQueueName> = {
-    '/workflow/verification': 'verification', '/workflow/approval': 'approval',
-    '/workflow/pms-review': 'pms', '/workflow/auditor-review': 'auditor',
-  };
-  const [selectedQueue, setSelectedQueue] = useState<WorkflowQueueName | null>(routeQueue[currentPath] ?? null);
+  const route = governedQueueRoutes[currentPath] ?? governedQueueRoutes['/workflow/verification'];
+  const queue = route.queue;
   const [selectedItem, setSelectedItem] = useState<WorkflowQueueItemDto | null>(null);
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
   const [items, setItems] = useState<WorkflowQueueItemDto[]>([]);
-  const [counts, setCounts] = useState(emptyCounts);
   const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  useEffect(() => { setPage(1); }, [queue]);
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true); setLoadError(null);
-    void getWorkflowQueue(selectedQueue ?? 'all', page).then(result => {
+    void getWorkflowQueue(queue, page).then(result => {
       if (cancelled) return;
       if (!result.success || !result.data) {
         const message = result.message ?? 'Failed to load the workflow queue.';
-        setLoadError(message); pushToast('error', message); setItems([]); return;
+        setLoadError(message); pushToast('error', message); setItems([]); setTotalCount(0); return;
       }
-      setCounts(result.data.counts); setItems(result.data.page.items); setTotalPages(result.data.page.totalPages);
+      setItems(result.data.page.items); setTotalCount(result.data.page.totalCount); setTotalPages(result.data.page.totalPages);
     }).catch(() => {
       if (cancelled) return;
       const message = 'The workflow service is unavailable.';
-      setLoadError(message); pushToast('error', message); setItems([]);
+      setLoadError(message); pushToast('error', message); setItems([]); setTotalCount(0);
     }).finally(() => { if (!cancelled) setIsLoading(false); });
     return () => { cancelled = true; };
-  }, [page, pushToast, selectedQueue]);
+  }, [page, pushToast, queue]);
 
   const openSubmission = async (item: WorkflowQueueItemDto) => {
     setSelectedItem(item);
@@ -154,15 +164,6 @@ export function WorkflowQueues() {
     if (!detail) { pushToast('error', 'The selected submission is no longer available.'); setSelectedItem(null); return; }
     setSelectedSubmission(detail);
   };
-  const queues = [
-    { id: 'my-submissions' as const, title: 'My Submissions', count: counts.mySubmissions, icon: <FileText className="h-5 w-5 text-white" />, color: 'bg-blue-500' },
-    { id: 'verification' as const, title: 'Pending Verification', count: counts.verification, icon: <Users className="h-5 w-5 text-white" />, color: 'bg-amber-500' },
-    { id: 'approval' as const, title: 'Pending Approval', count: counts.approval, icon: <CheckSquare className="h-5 w-5 text-white" />, color: 'bg-orange-500' },
-    { id: 'pms' as const, title: 'PMS Review', count: counts.pms, icon: <Clock className="h-5 w-5 text-white" />, color: 'bg-primary-500' },
-    { id: 'auditor' as const, title: 'Auditor Queue', count: counts.auditor, icon: <Eye className="h-5 w-5 text-white" />, color: 'bg-violet-500' },
-    { id: 'returned' as const, title: 'Returned Items', count: counts.returned, icon: <RotateCcw className="h-5 w-5 text-white" />, color: 'bg-rose-500' },
-  ];
-  const currentQueue = queues.find(queue => queue.id === selectedQueue);
   const columns = [
     { id: 'target', header: 'Target', accessor: (row: WorkflowQueueItemDto) => <div><p className="font-medium text-secondary-900 dark:text-white">{row.kind === 'ipms' ? '[IPMS] ' : ''}{row.targetName}</p><p className="text-[10px] text-secondary-500">{row.indicatorNumber}</p></div> },
     { id: 'quarter', header: 'Qtr', accessor: (row: WorkflowQueueItemDto) => row.quarter },
@@ -170,29 +171,23 @@ export function WorkflowQueues() {
     { id: 'submitter', header: 'Submitter', accessor: (row: WorkflowQueueItemDto) => security.canReadField(row.kind === 'opms' ? 'OPMS_SUBMISSION' : 'IPMS_SUBMISSION', 'SubmitterIdentity') ? row.submittedByName ?? '-' : 'Restricted' },
     { id: 'status', header: 'Status', accessor: (row: WorkflowQueueItemDto) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : 'warning'}>{statusLabels[row.status]}</Badge> },
   ];
-  return <AppShell title="Workflow Queues" subtitle="Manage authorised OPMS and IPMS work items"><div className="space-y-4">
+  return <AppShell title={route.title} subtitle={route.subtitle}><div className="space-y-4">
     {isLoading && <Card><p className="py-6 text-center text-sm text-secondary-500">Loading authorised workflow items…</p></Card>}
     {!isLoading && loadError && <EmptyState icon={<FileText className="h-6 w-6" />} title="Workflow queue unavailable" description={loadError} />}
-    {!isLoading && !loadError && <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">{queues.map(queue => <QueueCard key={queue.id} {...queue} onClick={() => { setPage(1); setSelectedQueue(queue.id === selectedQueue ? null : queue.id); }} />)}</div>}
-    {selectedQueue && currentQueue && !loadError && <Card>
-      <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold text-secondary-900 dark:text-white">{currentQueue.title}</h3><Button variant="ghost" size="sm" onClick={() => { setPage(1); setSelectedQueue(null); }}>Close</Button></div>
-      <DataTable tableLabel={`${currentQueue.title} submissions`} data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} getRowActionLabel={(row) => `Open ${row.kind.toUpperCase()} submission for ${row.targetName}`} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.publicId}`} />
+    {!isLoading && !loadError && <Card>
+      <div className="mb-3 flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-secondary-900 dark:text-white">{route.title}</h2><span className="text-xs text-secondary-500">{totalCount} authorised item{totalCount === 1 ? '' : 's'}</span></div>
+      <DataTable tableLabel={`${route.title} submissions`} data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} getRowActionLabel={(row) => `Open ${row.kind.toUpperCase()} submission for ${row.targetName}`} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.publicId}`} />
       <QueuePagination page={page} totalPages={totalPages} onChange={setPage} />
     </Card>}
-    <SubmissionDetailModal submission={selectedSubmission} kind={selectedItem?.kind ?? null} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedItem(null); }} showAudit={selectedQueue === 'auditor' && selectedItem?.kind === 'opms'} initialTab={selectedQueue === 'verification' ? 'verification' : selectedQueue === 'approval' ? 'approval' : selectedQueue === 'auditor' ? 'audit' : 'details'} />
+    <SubmissionDetailModal submission={selectedSubmission} kind={selectedItem?.kind ?? null} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedItem(null); }} showAudit={queue === 'auditor' && selectedItem?.kind === 'opms'} initialTab={queue === 'verification' ? 'verification' : queue === 'approval' ? 'approval' : queue === 'auditor' ? 'audit' : 'details'} />
   </div></AppShell>;
 }
 
 export function MyWorkQueue() {
   const { currentPath, pushToast } = useApp();
   const security = useSecurity();
-  const routeQueue: Record<string, WorkflowQueueName> = {
-    '/workflow/my-drafts': 'my-drafts', '/workflow/pending-submission': 'pending-submission',
-    '/workflow/returned-submissions': 'my-returned', '/workflow/under-verification': 'under-verification',
-    '/workflow/under-review': 'under-review', '/workflow/under-approval': 'under-approval',
-    '/workflow/internal-audit-returned': 'internal-audit-returned', '/workflow/approved-closed': 'approved-closed',
-  };
-  const queue = routeQueue[currentPath] ?? 'my-submissions';
+  const route = personalQueueRoutes[currentPath] ?? personalQueueRoutes['/workflow/my-queue'];
+  const queue = route.queue;
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
   const [selectedKind, setSelectedKind] = useState<'opms' | 'ipms' | null>(null);
   const [items, setItems] = useState<WorkflowQueueItemDto[]>([]);
@@ -240,9 +235,9 @@ export function MyWorkQueue() {
     } },
     { id: 'status', header: 'Status', accessor: (row: WorkflowQueueItemDto) => <Badge size="sm" variant={row.status === 'approved' ? 'success' : row.status === 'draft' ? 'default' : 'warning'}>{statusLabels[row.status]}</Badge> },
   ];
-  return <AppShell title="My Work Queue" subtitle="Your submissions and workflow statuses"><div className="space-y-4">
+  return <AppShell title={route.title} subtitle={route.subtitle}><div className="space-y-4">
     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{summary.map(item => <Card key={item.label} className="p-3"><p className="text-lg font-bold text-secondary-900 dark:text-white">{item.value}</p><p className="text-xs text-secondary-500">{item.label}</p></Card>)}</div>
-    {loadError ? <EmptyState icon={<FileText className="h-6 w-6" />} title="Work queue unavailable" description={loadError} /> : <Card><DataTable tableLabel="My work queue submissions" data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} getRowActionLabel={(row) => `Open ${row.kind.toUpperCase()} submission for ${row.targetName}`} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.publicId}`} /><QueuePagination page={page} totalPages={totalPages} onChange={setPage} /></Card>}
+    {loadError ? <EmptyState icon={<FileText className="h-6 w-6" />} title="Work queue unavailable" description={loadError} /> : <Card><DataTable tableLabel={`${route.title} submissions`} data={items} columns={columns} onRowClick={(row) => { void openSubmission(row); }} getRowActionLabel={(row) => `Open ${row.kind.toUpperCase()} submission for ${row.targetName}`} emptyMessage="No items" getRowId={(row) => `${row.kind}-${row.publicId}`} /><QueuePagination page={page} totalPages={totalPages} onChange={setPage} /></Card>}
     <SubmissionDetailModal submission={selectedSubmission} kind={selectedKind} isOpen={!!selectedSubmission} onClose={() => { setSelectedSubmission(null); setSelectedKind(null); }} />
   </div></AppShell>;
 }

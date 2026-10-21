@@ -22,7 +22,7 @@ const securityMocks = vi.hoisted(() => ({ canReadField: vi.fn() }));
 vi.mock('../../api/api', () => apiMocks);
 vi.mock('../../context/AppContext', () => ({ useApp: () => appMocks }));
 vi.mock('../../context/SecurityContext', () => ({ useSecurity: () => securityMocks }));
-vi.mock('../layout/AppShell', () => ({ AppShell: ({ children }: { children: ReactNode }) => <>{children}</> }));
+vi.mock('../layout/AppShell', () => ({ AppShell: ({ children, title }: { children: ReactNode; title: string }) => <main aria-label={title}>{children}</main> }));
 
 describe('WorkflowQueues', () => {
   beforeEach(() => {
@@ -58,8 +58,9 @@ describe('WorkflowQueues', () => {
 
     expect(await screen.findByText('Live Water KPI')).toBeInTheDocument();
     expect(screen.getByText('LIVE-001')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /1\s+Pending Verification/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /0\s+Pending Approval/i })).toBeInTheDocument();
+    expect(screen.getByRole('main', { name: 'Verification Queue' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Verification Queue submissions' })).toBeInTheDocument();
+    expect(screen.getByText('1 authorised item')).toBeInTheDocument();
     expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1);
 
     apiMocks.getOpmsSubmission.mockResolvedValue({ success: false });
@@ -87,6 +88,57 @@ describe('WorkflowQueues', () => {
     expect(await screen.findByText('Returned Submissions')).toBeInTheDocument();
     expect(screen.getByText('1')).toBeInTheDocument();
     expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('my-returned', 1);
+  });
+
+  it.each([
+    ['/workflow/verification', 'verification', 'Verification Queue'],
+    ['/workflow/approval', 'approval', 'Approval Queue'],
+    ['/workflow/pms-review', 'pms', 'PMS Review Queue'],
+    ['/workflow/auditor-review', 'auditor', 'Internal Audit Queue'],
+  ] as const)('binds %s to its exact governed queue and shell identity', async (path, queue, title) => {
+    appMocks.currentPath = path;
+    apiMocks.getWorkflowQueue.mockResolvedValue(emptyQueueResponse(queue));
+
+    render(<WorkflowQueues />);
+
+    expect(await screen.findByRole('main', { name: title })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: `${title} submissions` })).toBeInTheDocument();
+    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith(queue, 1);
+  });
+
+  it.each([
+    ['/workflow/my-queue', 'my-submissions', 'My Queue'],
+    ['/workflow/my-drafts', 'my-drafts', 'My Drafts'],
+    ['/workflow/pending-submission', 'pending-submission', 'Pending Submission'],
+    ['/workflow/returned-submissions', 'my-returned', 'Returned Submissions'],
+    ['/workflow/under-verification', 'under-verification', 'Under Verification'],
+    ['/workflow/under-review', 'under-review', 'Under Review'],
+    ['/workflow/under-approval', 'under-approval', 'Under Approval'],
+    ['/workflow/internal-audit-returned', 'internal-audit-returned', 'Internal Audit Returned'],
+    ['/workflow/approved-closed', 'approved-closed', 'Approved / Closed'],
+  ] as const)('binds %s to its exact personal queue and shell identity', async (path, queue, title) => {
+    appMocks.currentPath = path;
+    apiMocks.getWorkflowQueue.mockResolvedValue(emptyQueueResponse(queue));
+
+    render(<MyWorkQueue />);
+
+    expect(await screen.findByRole('main', { name: title })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: `${title} submissions` })).toBeInTheDocument();
+    expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith(queue, 1);
+  });
+
+  it('rebinds the governed queue when navigation changes between workflow routes', async () => {
+    apiMocks.getWorkflowQueue.mockImplementation((queue: string) => Promise.resolve(emptyQueueResponse(queue)));
+    const { rerender } = render(<WorkflowQueues />);
+    await waitFor(() => expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('verification', 1));
+
+    appMocks.currentPath = '/workflow/approval';
+    rerender(<WorkflowQueues />);
+
+    expect(await screen.findByRole('main', { name: 'Approval Queue' })).toBeInTheDocument();
+    await waitFor(() => expect(apiMocks.getWorkflowQueue).toHaveBeenCalledWith('approval', 1));
+    expect(screen.getByRole('table', { name: 'Approval Queue submissions' })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Verification Queue submissions' })).not.toBeInTheDocument();
   });
 
   it('opens an OPMS queue record at the governed KPI workflow and reporting-period deep link', async () => {
@@ -156,5 +208,16 @@ function emptyCountsForTest() {
     mySubmissions: 0, verification: 0, approval: 0, pms: 0, auditor: 0, returned: 0,
     myDrafts: 0, pendingSubmission: 0, myReturned: 0, underVerification: 0, underReview: 0,
     underApproval: 0, internalAuditReturned: 0, approvedClosed: 0,
+  };
+}
+
+function emptyQueueResponse(queue: string) {
+  return {
+    success: true,
+    data: {
+      queue,
+      counts: emptyCountsForTest(),
+      page: { items: [], page: 1, pageSize: 25, totalCount: 0, totalPages: 0 },
+    },
   };
 }
