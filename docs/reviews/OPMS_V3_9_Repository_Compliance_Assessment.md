@@ -5668,6 +5668,10 @@ A fresh read-only host audit on **2026-10-22** confirmed that the required `MSSQ
 
 A non-elevated diagnostic console start was also attempted using the installed `sqlservr.exe` binary. It exited with code 254 because the protected instance parameter registry key could not be read, leaving the service stopped and performing no OPMS database migration, creation, deletion or cleanup. This strengthens the classification of exact-instance execution as a host-authorization dependency rather than an application-code or provider-compatibility defect. The existing environment-gated test, migration, cutover, performance and recovery harnesses remain ready for the approved instance once an elevated operator starts it. Supplemental SQL Server Express LocalDB evidence remains recorded in section 11.509 and continues to prove that no application-code change is required to run the current model on SQL Server.
 
+### 11.520 Dual-verdict compliance governance
+
+The single-report governance regression previously required the obsolete combined phrase `NOT FULLY COMPLIANT — NOT PRODUCTION READY`, which prevented the assessment from adopting the completion prompt's mandated separation between software implementation compliance and production acceptance. The regression now independently requires both authoritative statements: `SOFTWARE IMPLEMENTATION: SUBSTANTIALLY COMPLIANT — EXTERNAL ACCEPTANCE REMAINS` and `PRODUCTION ACCEPTANCE: NOT PRODUCTION READY`. This prevents a future report edit from converting completed repository implementation into a production-readiness claim or, conversely, obscuring completed implementation behind deployment-only evidence gaps. The focused Release test passes **1/1** after the correction.
+
 
 ### 12.1 Final verdict
 

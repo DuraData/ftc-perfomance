@@ -28,7 +28,12 @@ public sealed class SingleComplianceReportGovernanceTests
 
         var reportPath = Path.Combine(root.FullName, AuthoritativeReport.Replace('/', Path.DirectorySeparatorChar));
         File.Exists(reportPath).Should().BeTrue("the authoritative compliance report must remain tracked");
-        File.ReadAllText(reportPath).Should().Contain("NOT FULLY COMPLIANT — NOT PRODUCTION READY.");
+        var report = File.ReadAllText(reportPath);
+        report.Should()
+            .Contain("SOFTWARE IMPLEMENTATION: SUBSTANTIALLY COMPLIANT — EXTERNAL ACCEPTANCE REMAINS.",
+                "the report must state the evidence-based software implementation verdict")
+            .And.Contain("PRODUCTION ACCEPTANCE: NOT PRODUCTION READY.",
+                "external acceptance must remain visibly separate from repository implementation status");
     }
 
     private static string[] GetTrackedMarkdownFiles(DirectoryInfo root)
