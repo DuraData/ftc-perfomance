@@ -35,7 +35,7 @@ function Invoke-OpmsSqlcmd {
     $previousPassword = $env:SQLCMDPASSWORD
     try {
         $env:SQLCMDPASSWORD = $Password
-        $arguments = @('-b', '-S', $Server, '-d', $Database, '-U', $User, '-Q', $Query)
+        $arguments = @('-b', '-C', '-S', $Server, '-d', $Database, '-U', $User, '-Q', $Query)
         if ($Delimited) { $arguments += @('-h', '-1', '-W', '-s', '|') }
         $output = & sqlcmd @arguments 2>&1
         if ($LASTEXITCODE -ne 0) { throw "sqlcmd failed with exit code $LASTEXITCODE. $($output -join [Environment]::NewLine)" }
@@ -66,19 +66,11 @@ if ([string]::IsNullOrWhiteSpace($connectionString)) {
     throw "Environment variable '$ConnectionStringEnvironmentVariable' must contain the local SQL Server recovery-drill connection string."
 }
 
-$builder = [System.Data.Common.DbConnectionStringBuilder]::new()
-$builder.ConnectionString = $connectionString
-function Get-ConnectionValue([string[]]$Keys) {
-    foreach ($key in $Keys) {
-        if ($builder.ContainsKey($key)) { return [string]$builder[$key] }
-    }
-    return ''
-}
-
-$server = Get-ConnectionValue @('Server', 'Data Source')
-$database = Get-ConnectionValue @('Database', 'Initial Catalog')
-$user = Get-ConnectionValue @('User Id', 'UID')
-$password = Get-ConnectionValue @('Password', 'PWD')
+$builder = [System.Data.SqlClient.SqlConnectionStringBuilder]::new($connectionString)
+$server = $builder.DataSource
+$database = $builder.InitialCatalog
+$user = $builder.UserID
+$password = $builder.Password
 $allowedServers = @('localhost\SQLEXPRESS', '.\SQLEXPRESS', '(local)\SQLEXPRESS')
 $allowedDatabases = @('OPMS_Development', 'OPMS_IntegrationTests')
 
@@ -110,7 +102,7 @@ $failure = $null
 try {
     $backupLiteral = ConvertTo-SqlLiteral $backupPath
     $sourceIdentifier = ConvertTo-SqlIdentifier $database
-    Invoke-OpmsSqlcmd -Server $server -Database master -User $user -Password $password -Query "BACKUP DATABASE [$sourceIdentifier] TO DISK = N'$backupLiteral' WITH COPY_ONLY, INIT, CHECKSUM, COMPRESSION, STATS = 10;" | Out-Null
+    Invoke-OpmsSqlcmd -Server $server -Database master -User $user -Password $password -Query "BACKUP DATABASE [$sourceIdentifier] TO DISK = N'$backupLiteral' WITH COPY_ONLY, INIT, CHECKSUM, STATS = 10;" | Out-Null
     Invoke-OpmsSqlcmd -Server $server -Database master -User $user -Password $password -Query "RESTORE VERIFYONLY FROM DISK = N'$backupLiteral' WITH CHECKSUM;" | Out-Null
     $backupVerified = $true
 
