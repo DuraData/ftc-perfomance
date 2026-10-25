@@ -301,7 +301,17 @@ public static class DbInitializer
         var executiveUnit = await context.Units.IgnoreQueryFilters().FirstAsync(u => u.MunicipalityId == null && u.Code == "OMM-EXEC");
 
         var defaultUser = await userManager.FindByEmailAsync(adminEmail);
-        if (defaultUser != null) return;
+        var requirePasswordChange = configuration.GetValue("SeedData:DemoAccountsRequirePasswordChange", true);
+        if (defaultUser != null)
+        {
+            if (!requirePasswordChange && (defaultUser.MustChangePassword || defaultUser.TwoFactorEnabled))
+            {
+                defaultUser.MustChangePassword = false;
+                defaultUser.TwoFactorEnabled = false;
+                await userManager.UpdateAsync(defaultUser);
+            }
+            return;
+        }
 
         var adminPassword = GetRequiredSeedSecret(configuration, "Admin:Password");
         defaultUser = new ApplicationUser
@@ -315,7 +325,7 @@ public static class DbInitializer
             UnitId = executiveUnit.Id,
             Position = "Super Administrator",
             IsActive = true,
-            MustChangePassword = true,
+            MustChangePassword = requirePasswordChange,
             EmailConfirmed = true
         };
 
@@ -330,6 +340,7 @@ public static class DbInitializer
     private static async Task SeedDemoUsersAsync(ApplicationDbContext context, UserManager<ApplicationUser> userManager, IConfiguration configuration)
     {
         var defaultPassword = GetRequiredSeedSecret(configuration, "DemoUsers:DefaultPassword");
+        var requirePasswordChange = configuration.GetValue("SeedData:DemoAccountsRequirePasswordChange", true);
         var departments = await context.Departments.IgnoreQueryFilters().AsNoTracking()
             .Where(d => d.MunicipalityId == null)
             .ToDictionaryAsync(d => d.Code, StringComparer.OrdinalIgnoreCase);
@@ -341,7 +352,16 @@ public static class DbInitializer
         foreach (var seed in GetDemoUserSeeds())
         {
             var user = await userManager.FindByEmailAsync(seed.Email) ?? await userManager.FindByNameAsync(seed.UserName);
-            if (user != null) continue;
+            if (user != null)
+            {
+                if (!requirePasswordChange && (user.MustChangePassword || user.TwoFactorEnabled))
+                {
+                    user.MustChangePassword = false;
+                    user.TwoFactorEnabled = false;
+                    await userManager.UpdateAsync(user);
+                }
+                continue;
+            }
             var department = departments[seed.DepartmentCode];
             var unit = seed.UnitCode != null && units.TryGetValue(seed.UnitCode, out var foundUnit) ? foundUnit : null;
 
@@ -357,7 +377,7 @@ public static class DbInitializer
             user.UnitId = unit?.Id;
             user.Position = seed.Position;
             user.IsActive = true;
-            user.MustChangePassword = true;
+            user.MustChangePassword = requirePasswordChange;
             user.EmailConfirmed = true;
 
             var createResult = await userManager.CreateAsync(user, defaultPassword);

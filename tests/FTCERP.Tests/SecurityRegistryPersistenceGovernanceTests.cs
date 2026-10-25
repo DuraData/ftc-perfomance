@@ -390,7 +390,7 @@ public class SecurityRegistryPersistenceGovernanceTests
         SecurityNavigationItem navigation => new
         {
             navigation.Code, navigation.Name, ParentPublicId = navigation.Parent?.PublicId, navigation.Route,
-            navigation.IconKey, navigation.DisplayOrder, navigation.RequiredPermissionCode, navigation.IsActive
+            navigation.MatchMode, navigation.IconKey, navigation.DisplayOrder, navigation.RequiredPermissionCode, navigation.IsActive
         },
         _ => throw new ArgumentOutOfRangeException(nameof(entity))
     };

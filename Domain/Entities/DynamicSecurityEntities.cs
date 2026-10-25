@@ -28,6 +28,13 @@ public enum SecurityOperation
     Execute = 7
 }
 
+public enum NavigationMatchMode
+{
+    Exact = 1,
+    Prefix = 2,
+    Pattern = 3
+}
+
 public class Municipality
 {
     public long Id { get; set; }
@@ -75,6 +82,7 @@ public class SecurityNavigationItem
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? Route { get; set; }
+    public NavigationMatchMode MatchMode { get; set; } = NavigationMatchMode.Prefix;
     public string? IconKey { get; set; }
     public int DisplayOrder { get; set; }
     public string? RequiredPermissionCode { get; set; }

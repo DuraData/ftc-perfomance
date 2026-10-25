@@ -538,6 +538,7 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         ConfigureRowVersion(builder.Entity<SecurityResource>().Property(item => item.RowVersion));
         builder.Entity<SecurityNavigationItem>().HasIndex(item => item.Code).IsUnique();
         builder.Entity<SecurityNavigationItem>().HasIndex(item => item.PublicId).IsUnique();
+        builder.Entity<SecurityNavigationItem>().HasIndex(item => new { item.Route, item.MatchMode });
         ConfigureRowVersion(builder.Entity<SecurityNavigationItem>().Property(item => item.RowVersion));
         builder.Entity<SecurityNavigationItem>().HasOne(item => item.Parent).WithMany(item => item.Children).HasForeignKey(item => item.ParentId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<SecurityActionDefinition>().HasIndex(item => item.Code).IsUnique();
@@ -3706,12 +3707,12 @@ public partial class ApplicationDbContext : IdentityDbContext<ApplicationUser, A
         {
             var snapshotFields = new[]
             {
-                nameof(SecurityNavigationItem.Code), nameof(SecurityNavigationItem.Name), nameof(SecurityNavigationItem.Route),
+                nameof(SecurityNavigationItem.Code), nameof(SecurityNavigationItem.Name), nameof(SecurityNavigationItem.Route), nameof(SecurityNavigationItem.MatchMode),
                 nameof(SecurityNavigationItem.IconKey), nameof(SecurityNavigationItem.DisplayOrder),
                 nameof(SecurityNavigationItem.RequiredPermissionCode), nameof(SecurityNavigationItem.IsActive)
             };
             EnsureOnlyProperties(entry,
-                [nameof(SecurityNavigationItem.ParentId), nameof(SecurityNavigationItem.Name), nameof(SecurityNavigationItem.Route),
+                [nameof(SecurityNavigationItem.ParentId), nameof(SecurityNavigationItem.Name), nameof(SecurityNavigationItem.Route), nameof(SecurityNavigationItem.MatchMode),
                     nameof(SecurityNavigationItem.IconKey), nameof(SecurityNavigationItem.DisplayOrder),
                     nameof(SecurityNavigationItem.RequiredPermissionCode), nameof(SecurityNavigationItem.IsActive),
                     nameof(SecurityNavigationItem.RowVersion)],

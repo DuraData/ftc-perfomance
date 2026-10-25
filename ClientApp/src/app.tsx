@@ -97,6 +97,9 @@ function AppContent() {
   }
 
   const renderPage = () => {
+    if (currentPath.startsWith('/opms/submissions/') || currentPath.startsWith('/poe/')) {
+      return <OPMSSubmissionsList />;
+    }
     if (currentPath === '/opms/targets/new') {
       return <OPMSTargetFormPage />;
     }
@@ -158,6 +161,8 @@ function AppContent() {
       case '/opms/revisions':
         return <SdbipRevisionManagement />;
       case '/opms/submissions':
+        return <OPMSSubmissionsList />;
+      case '/poe':
         return <OPMSSubmissionsList />;
       case '/opms/vote-numbers':
         return <TenantReferenceAdministration kind="vote-numbers" />;

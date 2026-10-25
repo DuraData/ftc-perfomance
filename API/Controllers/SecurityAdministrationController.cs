@@ -629,8 +629,12 @@ public sealed class SecurityAdministrationController : ControllerBase
         if (_tenantContext.MunicipalityId is not > 0) return Conflict(new ApiResponse<SecurityNavigationDto>(false, null, "Select a municipality context to record the registry audit."));
         var validation = ValidateNavigationInput(request.Code, request.Name, request.Route, request.DisplayOrder, request.Reason);
         if (validation != null) return BadRequest(new ApiResponse<SecurityNavigationDto>(false, null, validation));
+        if (!Enum.TryParse<NavigationMatchMode>(request.MatchMode, true, out var matchMode) || !Enum.IsDefined(matchMode))
+            return BadRequest(new ApiResponse<SecurityNavigationDto>(false, null, "Navigation match mode must be Exact, Prefix or Pattern."));
         var code = request.Code.Trim().ToUpperInvariant();
         if (await _context.SecurityNavigationItems.AnyAsync(item => item.Code == code)) return Conflict(new ApiResponse<SecurityNavigationDto>(false, null, "Navigation code already exists."));
+        var route = NormalizeRoute(request.Route);
+        if (await HasDuplicateActiveNavigationRouteAsync(route)) return Conflict(new ApiResponse<SecurityNavigationDto>(false, null, "An active navigation item already owns this route."));
         var parent = await ResolveNavigationParentAsync(request.ParentPublicId);
         if (request.ParentPublicId.HasValue && parent == null) return BadRequest(new ApiResponse<SecurityNavigationDto>(false, null, "Parent navigation item was not found or is inactive."));
         if (!await IsRegisteredPermissionAsync(request.RequiredPermissionCode)) return BadRequest(new ApiResponse<SecurityNavigationDto>(false, null, "Required permission code is not active or registered."));
@@ -639,7 +643,8 @@ public sealed class SecurityAdministrationController : ControllerBase
         {
             Code = code,
             Name = request.Name.Trim(),
-            Route = NormalizeRoute(request.Route),
+            Route = route,
+            MatchMode = matchMode,
             IconKey = NullIfWhiteSpace(request.IconKey),
             DisplayOrder = request.DisplayOrder,
             RequiredPermissionCode = NullIfWhiteSpace(request.RequiredPermissionCode)?.ToUpperInvariant(),
@@ -648,7 +653,7 @@ public sealed class SecurityAdministrationController : ControllerBase
             IsActive = true
         };
         _context.SecurityNavigationItems.Add(entity);
-        _context.AuditTrails.Add(NewNavigationAudit(actor, entity, "Create", null, new { entity.Code, entity.Name, request.ParentPublicId, entity.Route, entity.IconKey, entity.DisplayOrder, entity.RequiredPermissionCode, entity.IsActive }, request.Reason));
+        _context.AuditTrails.Add(NewNavigationAudit(actor, entity, "Create", null, new { entity.Code, entity.Name, request.ParentPublicId, entity.Route, entity.MatchMode, entity.IconKey, entity.DisplayOrder, entity.RequiredPermissionCode, entity.IsActive }, request.Reason));
         await _context.SaveChangesAsync();
         return Ok(new ApiResponse<SecurityNavigationDto>(true, ToNavigationDto(entity)));
     }
@@ -665,6 +670,8 @@ public sealed class SecurityAdministrationController : ControllerBase
         if (entity == null) return NotFound(new ApiResponse<SecurityNavigationDto>(false, null, "Navigation item not found."));
         var validation = ValidateNavigationInput(entity.Code, request.Name, request.Route, request.DisplayOrder, request.Reason);
         if (validation != null) return BadRequest(new ApiResponse<SecurityNavigationDto>(false, null, validation));
+        if (!Enum.TryParse<NavigationMatchMode>(request.MatchMode, true, out var matchMode) || !Enum.IsDefined(matchMode))
+            return BadRequest(new ApiResponse<SecurityNavigationDto>(false, null, "Navigation match mode must be Exact, Prefix or Pattern."));
         byte[] rowVersion;
         try { rowVersion = Convert.FromBase64String(request.RowVersion); }
         catch (FormatException) { return BadRequest(new ApiResponse<SecurityNavigationDto>(false, null, "RowVersion is invalid.")); }
@@ -673,18 +680,21 @@ public sealed class SecurityAdministrationController : ControllerBase
         if (parent?.Id == entity.Id || (parent != null && await WouldCreateNavigationCycleAsync(entity.Id, parent))) return BadRequest(new ApiResponse<SecurityNavigationDto>(false, null, "Navigation hierarchy cannot contain a cycle."));
         if (!request.IsActive && await _context.SecurityNavigationItems.AnyAsync(item => item.ParentId == entity.Id && item.IsActive)) return Conflict(new ApiResponse<SecurityNavigationDto>(false, null, "Deactivate or move active child items first."));
         if (!await IsRegisteredPermissionAsync(request.RequiredPermissionCode)) return BadRequest(new ApiResponse<SecurityNavigationDto>(false, null, "Required permission code is not active or registered."));
+        var route = NormalizeRoute(request.Route);
+        if (request.IsActive && await HasDuplicateActiveNavigationRouteAsync(route, entity.Id)) return Conflict(new ApiResponse<SecurityNavigationDto>(false, null, "An active navigation item already owns this route."));
 
         _context.Entry(entity).Property(item => item.RowVersion).OriginalValue = rowVersion;
-        var oldValue = new { entity.Code, entity.Name, ParentPublicId = entity.Parent?.PublicId, entity.Route, entity.IconKey, entity.DisplayOrder, entity.RequiredPermissionCode, entity.IsActive };
+        var oldValue = new { entity.Code, entity.Name, ParentPublicId = entity.Parent?.PublicId, entity.Route, entity.MatchMode, entity.IconKey, entity.DisplayOrder, entity.RequiredPermissionCode, entity.IsActive };
         entity.Name = request.Name.Trim();
-        entity.Route = NormalizeRoute(request.Route);
+        entity.Route = route;
+        entity.MatchMode = matchMode;
         entity.IconKey = NullIfWhiteSpace(request.IconKey);
         entity.DisplayOrder = request.DisplayOrder;
         entity.RequiredPermissionCode = NullIfWhiteSpace(request.RequiredPermissionCode)?.ToUpperInvariant();
         entity.Parent = parent;
         entity.ParentId = parent?.Id;
         entity.IsActive = request.IsActive;
-        var newValue = new { entity.Code, entity.Name, ParentPublicId = parent?.PublicId, entity.Route, entity.IconKey, entity.DisplayOrder, entity.RequiredPermissionCode, entity.IsActive };
+        var newValue = new { entity.Code, entity.Name, ParentPublicId = parent?.PublicId, entity.Route, entity.MatchMode, entity.IconKey, entity.DisplayOrder, entity.RequiredPermissionCode, entity.IsActive };
         _context.AuditTrails.Add(NewNavigationAudit(actor, entity, "Update", oldValue, newValue, request.Reason));
         try { await _context.SaveChangesAsync(); }
         catch (DbUpdateConcurrencyException) { return Conflict(new ApiResponse<SecurityNavigationDto>(false, null, "The navigation item changed since it was loaded. Refresh and try again.")); }
@@ -950,7 +960,7 @@ public sealed class SecurityAdministrationController : ControllerBase
     }
 
     private static SecurityRoleDto ToRoleDto(ApplicationRole item) => new(item.PublicId, item.RoleCode, item.Name ?? item.RoleCode, item.Description, item.Municipality?.PublicId, item.IsSystemRole, item.IsActive, item.EffectiveFrom, item.EffectiveTo, Convert.ToBase64String(item.RowVersion));
-    private static SecurityNavigationDto ToNavigationDto(SecurityNavigationItem item) => new(item.PublicId, item.Code, item.Parent?.PublicId, item.Name, item.Route, item.IconKey, item.DisplayOrder, item.RequiredPermissionCode, item.IsActive, Convert.ToBase64String(item.RowVersion), item.Parent?.Code, item.Parent?.Name);
+    private static SecurityNavigationDto ToNavigationDto(SecurityNavigationItem item) => new(item.PublicId, item.Code, item.Parent?.PublicId, item.Name, item.Route, item.MatchMode.ToString(), item.IconKey, item.DisplayOrder, item.RequiredPermissionCode, item.IsActive, Convert.ToBase64String(item.RowVersion), item.Parent?.Code, item.Parent?.Name);
 
     private async Task<bool> CanManageGlobalRegistryAsync(ApplicationUser actor)
     {
@@ -979,6 +989,14 @@ public sealed class SecurityAdministrationController : ControllerBase
         ? Task.FromResult(true)
         : _context.Permissions.AnyAsync(item => item.Code == permissionCode.Trim().ToUpperInvariant() && item.IsActive);
 
+    private Task<bool> HasDuplicateActiveNavigationRouteAsync(string? route, int? excludedId = null)
+    {
+        if (route == null) return Task.FromResult(false);
+        var normalized = route.ToLowerInvariant();
+        return _context.SecurityNavigationItems.AnyAsync(item => item.IsActive && item.Route != null
+            && item.Route.ToLower() == normalized && (!excludedId.HasValue || item.Id != excludedId.Value));
+    }
+
     private AuditTrail NewNavigationAudit(ApplicationUser actor, SecurityNavigationItem item, string action, object? oldValue, object newValue, string reason) => new()
     {
         EntityName = nameof(SecurityNavigationItem), EntityId = item.PublicId.ToString(), Action = action,
@@ -993,11 +1011,19 @@ public sealed class SecurityAdministrationController : ControllerBase
         if (name.Trim().Length is < 2 or > 120) return "Navigation name must be 2-120 characters.";
         if (displayOrder is < 0 or > 100000) return "Display order must be between 0 and 100000.";
         if (!string.IsNullOrWhiteSpace(route) && (!route.Trim().StartsWith('/') || route.Trim().StartsWith("//", StringComparison.Ordinal))) return "Route must be an application-relative path beginning with one slash.";
+        if (route?.Trim().Length > 400) return "Route must not exceed 400 characters.";
+        if (NormalizeRoute(route) == "/") return "The root route cannot own navigation because it would match every application page.";
         if (reason.Trim().Length is < 5 or > 500) return "An audit reason of 5-500 characters is required.";
         return null;
     }
 
-    private static string? NormalizeRoute(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private static string? NormalizeRoute(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var path = value.Trim().Split('?', '#')[0];
+        path = Regex.Replace(path, "/{2,}", "/").TrimEnd('/');
+        return (path.Length == 0 ? "/" : path).ToLowerInvariant();
+    }
     private static string? NullIfWhiteSpace(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static SecurityResourceDto ToResourceDto(SecurityResource item) => new(item.PublicId, item.Code, item.Name, item.ResourceType, item.Description,
@@ -1150,7 +1176,7 @@ public sealed record ExpectedUserRoleAssignment(Guid AssignmentPublicId, string 
 public sealed record UpdateUserRoleAssignment(Guid RolePublicId, Guid? MunicipalityPublicId, Guid? DepartmentPublicId, Guid? UnitPublicId, DateTime? EffectiveFrom, DateTime? EffectiveTo);
 public sealed record UpdateUserRoleSecurityRequest(ExpectedUserRoleAssignment[] ExpectedAssignments, UpdateUserRoleAssignment[] Assignments, string Reason);
 public sealed record SecurityActionDto(Guid PublicId, string Code, string Name, string ResourceCode, string? Description, bool IsActive, string RowVersion);
-public sealed record SecurityNavigationDto(Guid PublicId, string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion, string? ParentCode = null, string? ParentName = null);
+public sealed record SecurityNavigationDto(Guid PublicId, string Code, Guid? ParentPublicId, string Name, string? Route, string MatchMode, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion, string? ParentCode = null, string? ParentName = null);
 public sealed record SecurityMemberDto(Guid PublicId, string ResourceCode, string MemberCode, string DisplayName, bool IsSensitive, bool IsSystemManaged, bool IsActive, string RowVersion);
 public sealed record SecurityPermissionDefinitionDto(string Code, string? Description, string Kind, string? ResourceCode, string? Operation, string? MemberCode, string? NavigationCode, string? ActionCode);
 public sealed record RoleSecurityPermissionDto(string PermissionCode, string Kind, string? ResourceCode, string? MemberCode, string? NavigationCode, string? ActionCode, string State, string? ScopeType, string RowVersion);
@@ -1160,8 +1186,8 @@ public sealed record UpdateRoleSecurityItem(string PermissionCode, string State,
 public sealed record EffectiveSecurityDto(Guid UserPublicId, string[] Roles, string[] Permissions, string[] Scopes, string[] Assignments);
 public sealed record CreateSecurityRoleRequest(string RoleCode, string Name, string? Description, DateTime? EffectiveFrom, DateTime? EffectiveTo, string Reason);
 public sealed record UpdateSecurityRoleRequest(string Name, string? Description, bool IsActive, DateTime EffectiveFrom, DateTime? EffectiveTo, string RowVersion, string Reason);
-public sealed record CreateSecurityNavigationRequest(string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, string Reason);
-public sealed record UpdateSecurityNavigationRequest(Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion, string Reason);
+public sealed record CreateSecurityNavigationRequest(string Code, Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, string Reason, string MatchMode = "Prefix");
+public sealed record UpdateSecurityNavigationRequest(Guid? ParentPublicId, string Name, string? Route, string? IconKey, int DisplayOrder, string? RequiredPermissionCode, bool IsActive, string RowVersion, string Reason, string MatchMode = "Prefix");
 public sealed record CreateSecurityResourceRequest(string Code, string Name, string ResourceType, string? Description, bool SupportsCreate, bool SupportsRead, bool SupportsUpdate, bool SupportsDelete, bool SupportsExport, bool SupportsImport, bool SupportsFieldSecurity, bool SupportsRecordCriteria, string Reason);
 public sealed record UpdateSecurityResourceRequest(string Name, string ResourceType, string? Description, bool SupportsCreate, bool SupportsRead, bool SupportsUpdate, bool SupportsDelete, bool SupportsExport, bool SupportsImport, bool SupportsFieldSecurity, bool SupportsRecordCriteria, bool IsActive, string RowVersion, string Reason);
 public sealed record CreateSecurityActionRequest(string Code, string Name, string ResourceCode, string? Description, string Reason);

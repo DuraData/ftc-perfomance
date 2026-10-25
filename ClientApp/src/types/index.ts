@@ -1386,6 +1386,8 @@ export interface UserProfile {
   mustChangePassword: boolean;
 }
 
+export type NavigationMatchMode = 'Exact' | 'Prefix' | 'Pattern';
+
 export interface MenuItem {
   label: string;
   path?: string;
@@ -1393,6 +1395,7 @@ export interface MenuItem {
   children?: MenuItem[];
   isDivider: boolean;
   code?: string;
+  matchMode?: NavigationMatchMode;
 }
 
 export interface LoginResponse {
@@ -2403,6 +2406,7 @@ export interface SecurityNavigationItemDto {
   parentName?: string | null;
   name: string;
   route?: string | null;
+  matchMode: NavigationMatchMode;
   iconKey?: string | null;
   displayOrder: number;
   requiredPermissionCode?: string | null;

@@ -287,7 +287,7 @@ public class AccessControlService : IAccessControlService
                 .ToArray();
             var directlyAllowed = !string.IsNullOrWhiteSpace(item.RequiredPermissionCode) && permissionSet.Contains(item.RequiredPermissionCode);
             if (!directlyAllowed && children.Length == 0) return null;
-            return new MenuItemResponse(item.Name, directlyAllowed ? item.Route : null, item.IconKey, children.Length == 0 ? null : children, false, item.Code);
+            return new MenuItemResponse(item.Name, directlyAllowed ? item.Route : null, item.IconKey, children.Length == 0 ? null : children, false, item.Code, item.MatchMode.ToString());
         }
 
         return roots

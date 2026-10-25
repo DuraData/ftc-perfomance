@@ -7,6 +7,7 @@ const exactApplicationPaths = [
   '/opms/import',
   '/opms/revisions',
   '/opms/submissions',
+  '/poe',
   '/opms/vote-numbers',
   '/opms/tids',
   '/strategic-documents',
@@ -110,6 +111,8 @@ const exactApplicationPaths = [
 
 const exactApplicationPathSet = new Set<string>(exactApplicationPaths);
 const dynamicApplicationPathPatterns = [
+  /^\/opms\/submissions\/[^/]+(?:\/(?:edit|history))?$/,
+  /^\/poe\/[^/]+(?:\/history)?$/,
   /^\/opms\/targets\/new$/,
   /^\/opms\/targets\/(?!new$)[^/]+$/,
   /^\/opms\/targets\/(?!new\/)[^/]+\/edit$/,

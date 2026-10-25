@@ -6,7 +6,7 @@ describe('application route catalogue', () => {
   it('stays synchronized with every exact route rendered by App', () => {
     const renderedPaths = [...appSource.matchAll(/case '([^']+)':/g)].map(match => match[1]).sort();
     expect([...new Set(renderedPaths)]).toEqual([...EXACT_APPLICATION_PATHS].sort());
-    expect(EXACT_APPLICATION_PATHS).toHaveLength(107);
+    expect(EXACT_APPLICATION_PATHS).toHaveLength(108);
   });
 
   it('recognizes governed dynamic detail, create, and edit routes', () => {

@@ -10988,6 +10988,9 @@ namespace FTCERP.Host.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<int>("MatchMode")
+                        .HasColumnType("int");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -11002,7 +11005,7 @@ namespace FTCERP.Host.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Route")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -11019,6 +11022,8 @@ namespace FTCERP.Host.Migrations
 
                     b.HasIndex("PublicId")
                         .IsUnique();
+
+                    b.HasIndex("Route", "MatchMode");
 
                     b.ToTable("SecurityNavigationItems");
                 });

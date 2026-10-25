@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useMemo } from 'react';
 import {
   Briefcase,
   FolderKanban,
@@ -19,7 +19,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { canonicalNavigationPath, normalizeRoutePath } from '../../routing/routeAliases';
+import { hasActiveNavigationDescendant, isNavigationItemActive, resolveNavigationSelection } from '../../routing/navigationMatching';
 import type { MenuItem } from '../../types';
 
 interface SidebarProps {
@@ -59,7 +59,6 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose, mob
     toggleSidebar,
     expandedSidebarGroups,
     toggleSidebarGroup,
-    expandSidebarGroup,
     setCurrentPath,
     currentPath,
     userProfile,
@@ -67,13 +66,7 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose, mob
     logout,
   } = useApp();
   const compact = sidebarCollapsed && !mobileOpen;
-  const activeNavigationPath = canonicalNavigationPath(currentPath);
-
-  useEffect(() => {
-    if (currentPath.startsWith('/admin/') || currentPath.startsWith('/system-administration/')) {
-      expandSidebarGroup('System Administration');
-    }
-  }, [currentPath, expandSidebarGroup]);
+  const navigationSelection = useMemo(() => resolveNavigationSelection(menuItems, currentPath), [menuItems, currentPath]);
 
   const getIcon = (_label: string, iconKey: string | undefined, depth: number) => {
     if (iconKey && iconMap[iconKey]) {
@@ -99,19 +92,11 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose, mob
     onMobileClose?.();
   };
 
-  const isPathActive = (path?: string) => {
-    if (!path) return false;
-    const normalizedPath = normalizeRoutePath(path);
-    if (activeNavigationPath === normalizedPath) return true;
-    if (normalizedPath !== '/' && activeNavigationPath.startsWith(`${normalizedPath}/`)) return true;
-    return false;
-  };
-
   const renderNavItem = (item: MenuItem, depth = 0) => {
-    const isActive = isPathActive(item.path);
-    const isExpanded = expandedSidebarGroups.includes(item.label);
+    const isActive = isNavigationItemActive(item, navigationSelection);
     const hasChildren = item.children && item.children.length > 0;
-    const hasActiveChild = hasChildren ? (item.children?.some(child => isPathActive(child.path)) ?? false) : false;
+    const hasActiveChild = hasActiveNavigationDescendant(item, navigationSelection);
+    const isExpanded = expandedSidebarGroups.includes(item.label) || hasActiveChild;
     const isGroup = !!hasChildren;
     const isLeaf = !hasChildren;
     const showSubtleActive = isGroup && (isExpanded || hasActiveChild);
@@ -137,12 +122,12 @@ export function Sidebar({ className = '', mobileOpen = false, onMobileClose, mob
     }`;
 
     return (
-      <div key={item.label}>
+      <div key={item.code ?? item.path ?? item.label} data-navigation-code={item.code} data-active={isActive || undefined} data-active-descendant={hasActiveChild || undefined}>
         <button type="button"
           onClick={() => handleNavClick(item)}
           className={buttonClassName}
           aria-label={compact ? item.label : undefined}
-          aria-current={isLeaf && isActive ? 'page' : undefined}
+          aria-current={(isLeaf && isActive) || (compact && isGroup && hasActiveChild) ? 'page' : undefined}
           aria-expanded={isGroup && !compact ? isExpanded : undefined}
           aria-controls={isGroup && !compact ? childrenId : undefined}
         >

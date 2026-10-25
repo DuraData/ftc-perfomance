@@ -24,7 +24,7 @@ public record UserProfileResponse(Guid PublicId, string UserName, string FirstNa
 
 public record RoleResponse(Guid PublicId, string Name, string? Description, bool IsSystemRole, bool IsActive);
 
-public record MenuItemResponse(string Label, string? Path, string? Icon, MenuItemResponse[]? Children, bool IsDivider, string? Code = null);
+public record MenuItemResponse(string Label, string? Path, string? Icon, MenuItemResponse[]? Children, bool IsDivider, string? Code = null, string MatchMode = "Prefix");
 
 public record LoginAuditLogResponse(Guid PublicId, Guid? UserPublicId, string? Email, string? IpAddress, string? UserAgent, bool Success, string? FailureReason, DateTime LoggedAt);
 

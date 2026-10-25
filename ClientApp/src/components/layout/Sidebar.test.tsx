@@ -73,4 +73,14 @@ describe('Sidebar navigation semantics', () => {
     const submenu = screen.getByRole('group', { name: 'IDP submenu' });
     expect(within(submenu).getByRole('button', { name: 'IDP Plans' })).toHaveAttribute('aria-current', 'page');
   });
+
+  it('exposes the owning group as current when the active leaf is hidden in collapsed navigation', () => {
+    app.sidebarCollapsed = true;
+    app.currentPath = '/operations/queue/123';
+
+    render(<Sidebar />);
+
+    expect(screen.getByRole('button', { name: 'Operations' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getAllByRole('button').filter(button => button.getAttribute('aria-current') === 'page')).toHaveLength(1);
+  });
 });

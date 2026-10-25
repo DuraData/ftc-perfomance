@@ -543,7 +543,7 @@ public static class SecurityRegistrySeeder
         {
             Nav("NAV.DASHBOARD", "Dashboard", "/dashboard", "dashboard", 10, "NAV.DASHBOARD"),
             Nav("NAV.SDBIP", "SDBIP / OPMS", null, "target", 20, null), Nav("NAV.IPMS", "IPMS", null, "target", 30, null),
-            Nav("NAV.WORKFLOW", "My Workflow", null, "workflow", 40, null), Nav("NAV.POE", "POE", "/opms/submissions", "file-text", 50, "NAV.POE"),
+            Nav("NAV.WORKFLOW", "My Workflow", null, "workflow", 40, null), Nav("NAV.POE", "POE", "/poe", "file-text", 50, "NAV.POE"),
             Nav("NAV.REPORTS", "Reports", "/reports", "reports", 60, "NAV.REPORTS"),
             Nav("NAV.STRATEGIC_DOCUMENTS", "Strategic Documents", "/strategic-documents", "file-text", 65, "NAV.STRATEGIC_DOCUMENTS"),
             Nav("NAV.IDP", "IDP", null, "map", 70, null),
@@ -873,7 +873,7 @@ public static class SecurityRegistrySeeder
         new() { Code = code, Name = name, SupportsCreate = create, SupportsRead = read, SupportsUpdate = update, SupportsDelete = delete, SupportsExport = read, SupportsImport = create, SupportsFieldSecurity = field, SupportsRecordCriteria = criteria };
     private static SecurityActionDefinition Action(string code, string name, string resource) => new() { Code = code, Name = name, ResourceCode = resource };
     private static SecurityMemberDefinition Member(string resource, string code, string name, bool sensitive = false, bool systemManaged = false) => new() { ResourceCode = resource, MemberCode = code, DisplayName = name, IsSensitive = sensitive, IsSystemManaged = systemManaged };
-    private static SecurityNavigationItem Nav(string code, string name, string? route, string icon, int order, string? permission, int? parent = null) => new() { Code = code, Name = name, Route = route, IconKey = icon, DisplayOrder = order, RequiredPermissionCode = permission, ParentId = parent };
+    private static SecurityNavigationItem Nav(string code, string name, string? route, string icon, int order, string? permission, int? parent = null, NavigationMatchMode matchMode = NavigationMatchMode.Prefix) => new() { Code = code, Name = name, Route = route, MatchMode = matchMode, IconKey = icon, DisplayOrder = order, RequiredPermissionCode = permission, ParentId = parent };
     private static Permission Permission(string resource, SecurityOperation operation) => new() { Module = "Resource", Feature = resource, Action = operation.ToString(), Code = $"{resource}.{operation.ToString().ToUpperInvariant()}", Description = $"{operation} {resource}", Kind = SecurityPermissionKind.Resource, ResourceCode = resource, Operation = operation };
     private static Permission MemberPermission(SecurityMemberDefinition member, SecurityOperation operation) => new() { Module = "Member", Feature = member.ResourceCode, Action = operation.ToString(), Code = $"{member.ResourceCode}.{member.MemberCode}.{operation.ToString().ToUpperInvariant()}", Description = $"{operation} {member.DisplayName}", Kind = SecurityPermissionKind.Member, ResourceCode = member.ResourceCode, MemberCode = member.MemberCode, Operation = operation };
 }

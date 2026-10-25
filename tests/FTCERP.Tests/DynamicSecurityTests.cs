@@ -928,6 +928,10 @@ public class DynamicSecurityTests
         var created = createdResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<SecurityNavigationDto>>().Subject.Data!;
         created.ParentPublicId.Should().Be(parent.PublicId);
         created.PublicId.Should().NotBeEmpty();
+        created.MatchMode.Should().Be("Prefix");
+        var duplicateRouteResult = await controller.CreateNavigationItem(new CreateSecurityNavigationRequest(
+            "NAV.TEST.DUPLICATE", parent.PublicId, "Duplicate child", "/test/child/", "List", 2, null, "Reject ambiguous test route", "Exact"));
+        duplicateRouteResult.Result.Should().BeOfType<ConflictObjectResult>();
         var pageResult = await controller.GetNavigationRegistryPage(new PagedQueryRequest { Page = 1, PageSize = 1, Search = "Child", SortBy = "parent", SortDirection = "asc" }, true);
         pageResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<ApiResponse<PagedResponse<SecurityNavigationDto>>>()
             .Subject.Data!.Items.Should().ContainSingle(item => item.PublicId == created.PublicId && item.ParentCode == parent.Code && item.ParentName == parent.Name);

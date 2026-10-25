@@ -1,5 +1,5 @@
 export function normalizeRoutePath(path: string) {
-  const normalized = path.split(/[?#]/, 1)[0].replace(/\/+$/, '');
+  const normalized = path.split(/[?#]/, 1)[0].replace(/\/{2,}/g, '/').replace(/\/+$/, '').toLowerCase();
   return normalized || '/';
 }
 
@@ -30,5 +30,8 @@ const canonicalRouteByAlias: Record<string, string> = {
 
 export function canonicalNavigationPath(path: string) {
   const normalized = normalizeRoutePath(path);
-  return canonicalRouteByAlias[normalized] ?? normalized;
+  const alias = Object.keys(canonicalRouteByAlias)
+    .filter(candidate => normalized === candidate || normalized.startsWith(`${candidate}/`))
+    .sort((left, right) => right.length - left.length)[0];
+  return alias ? `${canonicalRouteByAlias[alias]}${normalized.slice(alias.length)}` : normalized;
 }
