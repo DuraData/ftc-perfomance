@@ -109,7 +109,8 @@ public class AuthController : ControllerBase
             user.PublicId, user.UserName ?? user.Email!, user.FirstName, user.LastName, user.FullName, user.Email!,
             user.PhoneNumber, user.Department, user.Position, user.IsActive, user.MustChangePassword);
 
-        var enrollmentRequired = AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(user, permissions, authenticationPolicy, _jwtSettings.MfaRequiredPermissionCodes, "LOCAL");
+        var enrollmentRequired = _jwtSettings.RequireMfaEnrollment
+            && AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(user, permissions, authenticationPolicy, _jwtSettings.MfaRequiredPermissionCodes, "LOCAL");
         return Ok(new ApiResponse<LoginResponse>(true, new LoginResponse(
             expiresAt, userProfile, roles.ToArray(), permissions.ToArray(), menu, enrollmentRequired)));
     }
@@ -336,7 +337,8 @@ public class AuthController : ControllerBase
         if (user == null) return Unauthorized();
         var recoveryCodesLeft = user.TwoFactorEnabled ? await _userManager.CountRecoveryCodesAsync(user) : 0;
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions;
-        var enrollmentRequired = MfaRequirementPolicy.IsEnrollmentRequired(user.TwoFactorEnabled, permissions, _jwtSettings.MfaRequiredPermissionCodes);
+        var enrollmentRequired = _jwtSettings.RequireMfaEnrollment
+            && MfaRequirementPolicy.IsEnrollmentRequired(user.TwoFactorEnabled, permissions, _jwtSettings.MfaRequiredPermissionCodes);
         return Ok(new ApiResponse<MfaStatusResponse>(true, new MfaStatusResponse(user.TwoFactorEnabled, enrollmentRequired, recoveryCodesLeft)));
     }
 

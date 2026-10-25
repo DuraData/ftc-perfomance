@@ -492,6 +492,20 @@ public sealed class AuthSessionTests
     }
 
     [Fact]
+    public async Task Mfa_enrollment_can_be_disabled_by_configuration()
+    {
+        await using var context = NewContext();
+        var user = User("local-demo-user"); context.Users.Add(user); await context.SaveChangesAsync();
+        var service = CreateService(context, user, permissions: ["SECURITY.MANAGE_ROLES"], requireMfaEnrollment: false);
+
+        var token = (await service.GenerateTokensAsync(user)).AccessToken;
+        var principal = await service.GetPrincipalFromExpiredTokenAsync(token);
+
+        principal.Should().NotBeNull();
+        principal!.HasClaim(MfaRequirementPolicy.EnrollmentRequiredClaim, "true").Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Municipality_policy_controls_session_limits_expiry_and_local_mfa_only()
     {
         await using var context = NewContext();
@@ -581,14 +595,14 @@ public sealed class AuthSessionTests
 
     private static ApplicationDbContext NewContext() => new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
     private static ApplicationUser User(string id) => new() { Id = id, UserName = $"{id}@example.test", Email = $"{id}@example.test", FirstName = "Test", LastName = "User", IsActive = true, SecurityStamp = $"stamp-{id}" };
-    private static JwtService CreateService(ApplicationDbContext context, ApplicationUser user, int maximumSessions = 5, string[]? permissions = null, IAuthenticationPolicyResolver? policyResolver = null)
+    private static JwtService CreateService(ApplicationDbContext context, ApplicationUser user, int maximumSessions = 5, string[]? permissions = null, IAuthenticationPolicyResolver? policyResolver = null, bool requireMfaEnrollment = true)
     {
         var store = new Mock<IUserStore<ApplicationUser>>();
         var users = new Mock<UserManager<ApplicationUser>>(store.Object, null!, null!, null!, null!, null!, null!, null!, null!);
         users.Setup(manager => manager.GetRolesAsync(user)).ReturnsAsync([]);
         var access = new Mock<IAccessControlService>();
         access.Setup(service => service.GetEffectiveAccessAsync(user)).ReturnsAsync(new EffectiveAccessResult([], permissions ?? [], [], [], [], []));
-        var settings = Options.Create(new JwtSettings { Secret = "A-development-test-secret-at-least-32-characters-long", Issuer = "tests", Audience = "tests", ExpiryMinutes = 15, RefreshTokenExpiryDays = 7, SessionIdleTimeoutMinutes = 30, SessionAbsoluteTimeoutHours = 24, MaxConcurrentSessions = maximumSessions, MfaRequiredPermissionCodes = ["SECURITY.MANAGE_ROLES"] });
+        var settings = Options.Create(new JwtSettings { Secret = "A-development-test-secret-at-least-32-characters-long", Issuer = "tests", Audience = "tests", ExpiryMinutes = 15, RefreshTokenExpiryDays = 7, SessionIdleTimeoutMinutes = 30, SessionAbsoluteTimeoutHours = 24, MaxConcurrentSessions = maximumSessions, RequireMfaEnrollment = requireMfaEnrollment, MfaRequiredPermissionCodes = ["SECURITY.MANAGE_ROLES"] });
         return new JwtService(settings, users.Object, context, access.Object, policyResolver);
     }
 }

@@ -52,8 +52,9 @@ public class JwtService : IJwtService
         var absoluteExpiry = absoluteExpiresAt ?? now.AddHours(policy.SessionAbsoluteTimeoutHours);
         if (!sessionId.HasValue) await EnforceConcurrentSessionLimitAsync(user.Id, now, policy.MaximumConcurrentSessions);
         var permissions = (await _accessControlService.GetEffectiveAccessAsync(user)).EffectivePermissions;
-        var enrollmentRequired = AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(
-            user, permissions, policy, _jwtSettings.MfaRequiredPermissionCodes, authenticationMethod);
+        var enrollmentRequired = _jwtSettings.RequireMfaEnrollment
+            && AuthenticationPolicyEnforcement.RequiresLocalMfaEnrollment(
+                user, permissions, policy, _jwtSettings.MfaRequiredPermissionCodes, authenticationMethod);
         var claims = BuildAccessClaims(user, currentSessionId, authenticationMethod, enrollmentRequired);
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));

@@ -44,6 +44,7 @@ public sealed class MfaEnrollmentMiddleware(RequestDelegate next)
         var access = context.RequestServices.GetService<IAccessControlService>();
         var settings = context.RequestServices.GetService<IOptions<JwtSettings>>()?.Value;
         if (users == null || access == null || settings == null) return false;
+        if (!settings.RequireMfaEnrollment) return false;
         var user = await users.FindByIdAsync(userId);
         if (user == null || user.TwoFactorEnabled) return false;
         var permissions = (await access.GetEffectiveAccessAsync(user)).EffectivePermissions;
