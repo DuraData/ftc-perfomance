@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { useApp } from '../../context/AppContext';
@@ -9,7 +9,15 @@ interface AppShellProps {
   subtitle?: string;
 }
 
-export function AppShell({ children, title, subtitle }: AppShellProps) {
+interface PageChrome {
+  title?: string;
+  subtitle?: string;
+}
+
+const PageChromeContext = createContext<((chrome: PageChrome) => void) | null>(null);
+
+function AppShellFrame({ children, title, subtitle }: AppShellProps) {
+
   const { sidebarCollapsed, toasts } = useApp();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const mobileNavigationRef = useRef<HTMLDivElement>(null);
@@ -131,4 +139,33 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
       </div>
     </div>
   );
+}
+
+/**
+ * Owns the application chrome for the lifetime of an authenticated session.
+ * Route components still declare their title through AppShell, but only their
+ * work-area content is replaced during navigation.
+ */
+export function WorkspaceShell({ children }: { children: React.ReactNode }) {
+  const [chrome, setChrome] = useState<PageChrome>({});
+  const updateChrome = useCallback((next: PageChrome) => {
+    setChrome(current => current.title === next.title && current.subtitle === next.subtitle ? current : next);
+  }, []);
+
+  return (
+    <PageChromeContext.Provider value={updateChrome}>
+      <AppShellFrame title={chrome.title} subtitle={chrome.subtitle}>{children}</AppShellFrame>
+    </PageChromeContext.Provider>
+  );
+}
+
+export function AppShell({ children, title, subtitle }: AppShellProps) {
+  const updateChrome = useContext(PageChromeContext);
+
+  useLayoutEffect(() => {
+    updateChrome?.({ title, subtitle });
+  }, [subtitle, title, updateChrome]);
+
+  if (updateChrome) return <>{children}</>;
+  return <AppShellFrame title={title} subtitle={subtitle}>{children}</AppShellFrame>;
 }

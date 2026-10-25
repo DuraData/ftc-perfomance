@@ -5,6 +5,7 @@ import { Login } from './components/auth/Login';
 import { AccessDeniedPage, NotFoundPage, useCanAccessPath } from './components/security/AccessControl';
 import { TenantScopeBoundary } from './components/common/TenantScopeBoundary';
 import { isKnownApplicationPath } from './routing/appRoutes';
+import { WorkspaceShell } from './components/layout/AppShell';
 
 const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(module => ({ default: module.Dashboard })));
 const OPMSTargetList = lazy(() => import('./components/opms/OPMSTargetList').then(module => ({ default: module.OPMSTargetList })));
@@ -69,6 +70,20 @@ const RiskReviewsPage = lazy(() => import('./components/risk/RiskWorkspace').the
 const RiskHeatmapPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskHeatmapPage })));
 const RiskReportsPage = lazy(() => import('./components/risk/RiskWorkspace').then(module => ({ default: module.RiskReportsPage })));
 
+function RouteLoadingFallback() {
+  return (
+    <div role="status" aria-live="polite" aria-label="Loading workspace" className="space-y-4 animate-pulse">
+      <span className="sr-only">Loading workspace…</span>
+      <div className="h-24 rounded-xl border border-secondary-200 bg-white dark:border-secondary-800 dark:bg-secondary-900" />
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="h-32 rounded-xl border border-secondary-200 bg-white dark:border-secondary-800 dark:bg-secondary-900" />
+        <div className="h-32 rounded-xl border border-secondary-200 bg-white dark:border-secondary-800 dark:bg-secondary-900" />
+        <div className="h-32 rounded-xl border border-secondary-200 bg-white dark:border-secondary-800 dark:bg-secondary-900" />
+      </div>
+    </div>
+  );
+}
+
 function AppContent() {
   const { currentPath, isAuthenticated, accessReady, currentMunicipalityPublicId, currentFinancialYearPublicId } = useApp();
   const canAccessPath = useCanAccessPath(currentPath);
@@ -79,14 +94,6 @@ function AppContent() {
 
   if (!accessReady) {
     return <div role="status" aria-live="polite" className="flex min-h-screen items-center justify-center bg-secondary-50 p-6 text-sm text-secondary-600 dark:bg-secondary-950 dark:text-secondary-300">Loading your authorised workspace…</div>;
-  }
-
-  if (!isKnownApplicationPath(currentPath)) {
-    return <NotFoundPage />;
-  }
-
-  if (!canAccessPath) {
-    return <AccessDeniedPage />;
   }
 
   const renderPage = () => {
@@ -354,11 +361,19 @@ function AppContent() {
     }
   };
 
+  const page = !isKnownApplicationPath(currentPath)
+    ? <NotFoundPage />
+    : !canAccessPath
+      ? <AccessDeniedPage />
+      : renderPage();
+
   return (
     <TenantScopeBoundary municipalityPublicId={currentMunicipalityPublicId} municipalityFinancialYearPublicId={currentFinancialYearPublicId}>
-      <Suspense fallback={<div role="status" aria-live="polite" className="p-6 text-sm text-secondary-600">Loading workspace…</div>}>
-        {renderPage()}
-      </Suspense>
+      <WorkspaceShell>
+        <Suspense fallback={<RouteLoadingFallback />}>
+          {page}
+        </Suspense>
+      </WorkspaceShell>
     </TenantScopeBoundary>
   );
 }

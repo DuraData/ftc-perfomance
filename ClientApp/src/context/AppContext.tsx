@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
+import { createContext, startTransition, useContext, useState, ReactNode, useEffect, useCallback, useRef } from 'react';
 import type {
   UserRole,
   UserProfile,
@@ -353,7 +353,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [expandedSidebarGroups]);
 
   useEffect(() => {
-    const onPopState = () => setCurrentPathState(normalizeAppPath(window.location.pathname || '/dashboard'));
+    const onPopState = () => startTransition(() => setCurrentPathState(normalizeAppPath(window.location.pathname || '/dashboard')));
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -364,7 +364,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (requestedFinancialYear) switchFinancialYear(requestedFinancialYear);
     if (next.routePath === currentPath && `${window.location.pathname}${window.location.search}${window.location.hash}` === next.location) return;
     window.history.pushState({}, '', next.location);
-    setCurrentPathState(next.routePath);
+    startTransition(() => setCurrentPathState(next.routePath));
   };
 
   const login = async (email: string, password: string, twoFactorCode?: string, recoveryCode?: string): Promise<'success' | 'mfa_required' | 'mfa_enrollment_required' | 'password_change_required' | 'failed'> => {

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import axe from 'axe-core';
 import { afterEach } from 'vitest';
-import { AppShell } from './AppShell';
+import { AppShell, WorkspaceShell } from './AppShell';
 
 const app = vi.hoisted(() => ({ sidebarCollapsed: false, toasts: [] }));
 
@@ -73,5 +73,22 @@ describe('AppShell responsive navigation', () => {
 
     expect(document.title).toBe('OPMS Dashboard | OPMS');
     expect(screen.getByRole('main', { name: 'OPMS Dashboard' })).toBeInTheDocument();
+  });
+
+  it('keeps application chrome mounted while route content and page chrome change', async () => {
+    const { rerender } = render(
+      <WorkspaceShell><AppShell title="First workspace"><p>First content</p></AppShell></WorkspaceShell>,
+    );
+    const sidebar = screen.getByTestId('sidebar');
+    await waitFor(() => expect(screen.getByRole('main', { name: 'First workspace' })).toBeInTheDocument());
+
+    rerender(
+      <WorkspaceShell><AppShell title="Second workspace"><p>Second content</p></AppShell></WorkspaceShell>,
+    );
+
+    await waitFor(() => expect(screen.getByRole('main', { name: 'Second workspace' })).toBeInTheDocument());
+    expect(screen.getByTestId('sidebar')).toBe(sidebar);
+    expect(screen.queryByText('First content')).not.toBeInTheDocument();
+    expect(screen.getByText('Second content')).toBeInTheDocument();
   });
 });
